@@ -43,6 +43,7 @@
 #include "database/CEmptySqliteDB.h"
 #include "../wowViewerLib/src/gapi/vulkan/GDeviceVulkan.h"
 #include <filesystem>
+#include "flyover/FlyoverMode.h"
 #include <exception>
 #ifdef WIN32
 #include <timeapi.h>
@@ -62,6 +63,8 @@ bool stopMouse = false;
 bool stopKeyboard = false;
 
 std::shared_ptr<FrontendUI> frontendUI = nullptr;
+// Set in the --flyover mode, where F toggles between the path camera and the free camera.
+FlyoverMode *flyoverMode = nullptr;
 
 static void cursor_position_callback(GLFWwindow* window, double xpos, double ypos){
     if (stopMouse) {
@@ -157,6 +160,11 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 
 static void onKey(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
+    if (flyoverMode && key == GLFW_KEY_F && action == GLFW_PRESS) {
+        flyoverMode->requestToggleMode();
+        return;
+    }
+
     HApiContainer apiContainer = *(HApiContainer *)glfwGetWindowUserPointer(window);
     auto currentActiveScene = frontendUI->getCurrentActiveScene();
     auto controllable = currentActiveScene ? currentActiveScene->getCamera() : nullptr;
@@ -358,6 +366,14 @@ double currentFrame;
 double lastFrame;
 
 int main(int argc, char *argv[]) {
+    std::string flyoverRouteFile;
+    const bool flyoverRequested = FlyoverMode::findArgument(argc, argv, flyoverRouteFile);
+    if (flyoverRequested) {
+        // Before any output, so that stdout carries protocol lines only.
+        FlyoverMode::claimStdout();
+    }
+    int exitCode = 0;
+
 //    std::ofstream out("log.txt");
 //    std::streambuf *coutbuf = std::cout.rdbuf(); //save old buf
 //    std::cout.rdbuf(out.rdbuf()); //redirect std::cout to out.txt!
@@ -482,7 +498,11 @@ std::ios_base::Init a;
     glfwSetScrollCallback(window, scroll_callback);
     glfwSetCursorPosCallback( window, cursor_position_callback);
     glfwSetWindowSizeCallback( window, window_size_callback);
-    glfwSetWindowSizeLimits( window, canvWidth, canvHeight, GLFW_DONT_CARE, GLFW_DONT_CARE);
+    // The flyover window is resized from outside to any size.
+    glfwSetWindowSizeLimits( window,
+                             flyoverRequested ? GLFW_DONT_CARE : canvWidth,
+                             flyoverRequested ? GLFW_DONT_CARE : canvHeight,
+                             GLFW_DONT_CARE, GLFW_DONT_CARE);
     glfwSetMouseButtonCallback( window, mouse_button_callback);
 
     GLFWmonitor* windowMonitor = glfwGetPrimaryMonitor();
@@ -521,6 +541,7 @@ std::ios_base::Init a;
     //This has to be called after setting all callbacks specific to this app.
     //ImGUI takes care of previous callbacks and calls them before applying it's own logic over data
     //Otherwise keys like backspace, delete etc wont work
+    frontendUI->setFlyoverMode(flyoverRequested);
     frontendUI->initImgui(window);
     {
         int width = frontendUI->getWindowWidth();
@@ -532,6 +553,17 @@ std::ios_base::Init a;
     glfwSwapInterval(0);
     tbb::global_control global_limit(oneapi::tbb::global_control::max_allowed_parallelism,
                                      2*apiContainer->getConfig()->hardwareThreadCount());
+
+    std::unique_ptr<FlyoverMode> flyover;
+    if (flyoverRequested) {
+        flyover = std::make_unique<FlyoverMode>(*frontendUI, window);
+        if (flyover->start(flyoverRouteFile)) {
+            flyoverMode = flyover.get();
+        } else {
+            exitCode = 1;
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+        }
+    }
 
 //try {
     while (!glfwWindowShouldClose(window)) {
@@ -545,7 +577,13 @@ std::ios_base::Init a;
         currentFrame = glfwGetTime(); // seconds
         double deltaTime = currentFrame - lastFrame;
 
-        frontendUI->composeUI();
+        if (flyoverMode) {
+            // The scene is the whole window, so the UI pass is an empty frame.
+            flyoverMode->update();
+            frontendUI->composeFlyoverUI();
+        } else {
+            frontendUI->composeUI();
+        }
         auto sceneScenario = frontendUI->createFrameScenario(canvWidth, canvHeight, deltaTime);
 
         sceneComposer.draw(sceneScenario, windowSizeChanged);
@@ -588,7 +626,8 @@ std::ios_base::Init a;
     //            mainLoop(&myapp);
     //        }
 
-    return 0;
+    flyoverMode = nullptr;
+    return exitCode;
 }
 
 

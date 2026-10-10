@@ -44,6 +44,9 @@ public:
     // Check if there are any saved storages
     bool hasSavedStorages() const { return !m_storages.empty(); }
 
+    // Opens the first saved storage, as a double-click on it would. False when there is none or it fails.
+    bool openFirstStorage();
+
     // Called when fileDialog has selected a folder (from FrontendUI)
     void onFolderSelected(const std::string& path, const BuildDefinition& buildDef);
 

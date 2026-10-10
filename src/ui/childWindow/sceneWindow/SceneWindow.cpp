@@ -105,6 +105,13 @@ inline HMapSceneParams createMapSceneParams(const HApiContainer &apiContainer,
 
     result->clearColor = apiContainer->getConfig()->clearColor;
 
+    if (apiContainer->getConfig()->preloadAhead > 0) {
+        mathfu::vec3 preloadPoint;
+        if (camera->getPreloadPoint(apiContainer->getConfig()->preloadAhead, preloadPoint)) {
+            result->preloadPoint = preloadPoint;
+        }
+    }
+
     return result;
 }
 

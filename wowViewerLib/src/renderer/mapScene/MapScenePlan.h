@@ -36,6 +36,8 @@ struct MapRenderPlan {
 
     //Objects for update and rendering
     std::vector<ADTObjRenderRes> adtArray = {};
+    // Tiles loaded ahead of the camera. Loaded and kept alive, never updated or drawn.
+    std::vector<std::shared_ptr<AdtObject>> adtPreload = {};
 
     M2ObjectListContainer m2Array;
     WMOListContainer wmoArray;

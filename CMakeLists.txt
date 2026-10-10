@@ -247,6 +247,10 @@ set(SOURCE_FILES
 		src/ui/childWindow/fakeWDTGenerator/FakeWDTWindow.h
 		src/ui/childWindow/cascStorageDialog/CascStorageDialog.cpp
 		src/ui/childWindow/cascStorageDialog/CascStorageDialog.h
+		src/flyover/FlyoverMode.cpp
+		src/flyover/FlyoverMode.h
+		src/flyover/FlyoverConfig.cpp
+		src/flyover/FlyoverConfig.h
 		src/ui/childWindow/customObjectsWindow/CustomObjectsWindow.cpp
 		src/ui/childWindow/customObjectsWindow/CustomObjectsWindow.h
 		src/ui/imguiLib/ImGuizmo/ImGuizmo.cpp

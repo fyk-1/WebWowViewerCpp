@@ -46,6 +46,8 @@ public:
 
     std::shared_ptr<MapRenderPlan> getLastPlan();
     const std::shared_ptr<ICamera> &getCamera();
+    // Replaces the scene's own camera, as the flyover mode does with its path camera.
+    void setCamera(const std::shared_ptr<ICamera> &camera) { m_camera = camera; }
 
     // Returns the current Map scene's WorldObjectManager, or nullptr if the current
     // scene isn't a Map (or has none set, e.g. M2/WMO preview scenes).

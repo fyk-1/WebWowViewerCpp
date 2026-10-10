@@ -186,6 +186,8 @@ set(SOURCE_FILES
         src/engine/opengl/header.h
         src/engine/camera/firstPersonCamera.cpp
         src/engine/camera/firstPersonCamera.h
+        src/engine/camera/pathCamera.cpp
+        src/engine/camera/pathCamera.h
         src/engine/camera/firstPersonOrthoCamera.cpp
         src/engine/camera/firstPersonOrthoCamera.h
         src/engine/camera/firstPersonOrthoStaticCamera.cpp

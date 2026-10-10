@@ -431,6 +431,7 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
 
     size_t adtRenderedThisFramePrev = mapRenderPlan->adtArray.size();
     mapRenderPlan->adtArray = {};
+    mapRenderPlan->adtPreload = {};
     mapRenderPlan->adtArray.reserve(adtRenderedThisFramePrev);
 
     mathfu::mat4 viewPerspectiveMat = frustumMat*lookAtMat4;
@@ -599,6 +600,11 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
         //Cull exterior
         auto exteriorView = mapRenderPlan->viewsHolder.getOrCreateExterior(frustumData);
         checkExterior(cameraPos, exteriorView->frustumData, m_viewRenderOrder, mapRenderPlan);
+    }
+
+    //After every visible tile has been requested, so the visible ones are first in line
+    if (frameInputParams.frameParameters->preloadPoint) {
+        preloadTilesAhead(*frameInputParams.frameParameters->preloadPoint, mapRenderPlan);
     }
 
     if (!m_suppressDrawingSky && (mapRenderPlan->viewsHolder.getExterior() != nullptr || mapRenderPlan->currentWmoGroupShowExtSkybox || mapRenderPlan->currentWmoGroupIsExtLit)) {
@@ -1044,30 +1050,79 @@ void Map::checkADTCulling(int i, int j,
             }
         }
     } else if (!m_lockedMap && true) { //(m_wdtfile->mapTileTable->mainInfo[j][i].Flag_HasADT > 0) {
-        useWeightedBlend = m_wdtfile->mphd->flags.adt_has_height_texturing || m_wdtfile->mphd->flags.adt_has_big_alpha;
-        if (m_wdtfile->mphd->flags.wdt_has_maid) {
-            auto &mapFileIds = m_wdtfile->mapFileDataIDs->array[j * 64 + i];
-            if (mapFileIds.rootADT > 0) {
-                adtObject = adtObjectFactory->createObject(m_api, i, j,
-                                                        m_wdtfile->mapFileDataIDs->array[j * 64 + i],
-                                                        useWeightedBlend,
-                                                        m_wdtfile);
-            } else {
-                return;
-            }
+        createAdtTile(i, j);
+    }
+}
+
+void Map::createAdtTile(int i, int j) {
+    auto &adtObject = mapTiles[i][j];
+
+    useWeightedBlend = m_wdtfile->mphd->flags.adt_has_height_texturing || m_wdtfile->mphd->flags.adt_has_big_alpha;
+    if (m_wdtfile->mphd->flags.wdt_has_maid) {
+        auto &mapFileIds = m_wdtfile->mapFileDataIDs->array[j * 64 + i];
+        if (mapFileIds.rootADT > 0) {
+            adtObject = adtObjectFactory->createObject(m_api, i, j,
+                                                    m_wdtfile->mapFileDataIDs->array[j * 64 + i],
+                                                    useWeightedBlend,
+                                                    m_wdtfile);
         } else {
-            std::string adtFileTemplate =
-                "world/maps/" + mapName + "/" + mapName + "_" + std::to_string(i) + "_" +
-                std::to_string(j);
-            adtObject = adtObjectFactory->createObject(m_api, adtFileTemplate, mapName, i, j,
-                                                      useWeightedBlend,
-                                                      m_wdtfile);
+            return;
         }
+    } else {
+        std::string adtFileTemplate =
+            "world/maps/" + mapName + "/" + mapName + "_" + std::to_string(i) + "_" +
+            std::to_string(j);
+        adtObject = adtObjectFactory->createObject(m_api, adtFileTemplate, mapName, i, j,
+                                                  useWeightedBlend,
+                                                  m_wdtfile);
+    }
 
-        adtObject->setMapApi(this);
-        adtObject->setFreeStrategy(zeroStateLambda);
+    adtObject->setMapApi(this);
+    adtObject->setFreeStrategy(zeroStateLambda);
+}
 
-        mapTiles[i][j] = adtObject;
+/*
+robots@Impl: Tile preload ahead of the camera.
+
+The tile under the point and its eight neighbours are created, which starts their file requests, and each frame
+the free strategy is refreshed for them, so a tile outlives the adtTTLWithoutUpdate that would otherwise free it
+before the camera arrives. They go into the plan's adtPreload, not adtArray: doPostLoad uploads them after the
+visible tiles within the same per-frame cap, and nothing collects or updates them. A tile already in adtArray is
+the visible camera's and is left to it. Tiles are refreshed only while the point is within one tile of them,
+and from there the real frustum takes over.
+*/
+void Map::preloadTilesAhead(const mathfu::vec3 &point, const HMapRenderPlan &mapRenderPlan) {
+    if (m_lockedMap || m_wdtfile == nullptr || m_wdtfile->getStatus() != FileStatus::FSLoaded) return;
+    if (m_wdtfile->mphd->flags.wdt_uses_global_map_obj) return;
+
+    int centerX = worldCoordinateToAdtIndex(point.y);
+    int centerY = worldCoordinateToAdtIndex(point.x);
+    auto sceneTime = getCurrentSceneTime();
+
+    for (int i = centerX - 1; i <= centerX + 1; i++) {
+        for (int j = centerY - 1; j <= centerY + 1; j++) {
+            if ((i < 0) || (i > 63)) continue;
+            if ((j < 0) || (j > 63)) continue;
+
+            if (mapTiles[i][j] == nullptr) {
+                createAdtTile(i, j);
+            }
+
+            auto adtObject = mapTiles[i][j];
+            if (adtObject == nullptr) continue;
+
+            bool visible = false;
+            for (const auto &adtRes : mapRenderPlan->adtArray) {
+                if (adtRes.adtObject == adtObject) {
+                    visible = true;
+                    break;
+                }
+            }
+            if (visible) continue;
+
+            adtObject->getFreeStrategy()(false, true, sceneTime);
+            mapRenderPlan->adtPreload.push_back(adtObject);
+        }
     }
 }
 
@@ -1212,6 +1267,11 @@ void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRende
         for (auto &adtObject: renderPlan->adtArray) {
             adtProcessed += (adtObject.adtObject->doPostLoad(sceneRenderer, m_liquidMaterialManager)) ? 1 : 0;
             if (adtProcessed >= MAX_LOAD_ADT_PER_FRAME) break;
+        }
+        //Preloaded tiles take only what the visible ones left of the per-frame cap
+        for (auto &adtObject: renderPlan->adtPreload) {
+            if (adtProcessed >= MAX_LOAD_ADT_PER_FRAME) break;
+            adtProcessed += (adtObject->doPostLoad(sceneRenderer, m_liquidMaterialManager)) ? 1 : 0;
         }
     }
 

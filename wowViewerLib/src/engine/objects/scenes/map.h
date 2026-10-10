@@ -124,6 +124,10 @@ protected:
                          M2ObjectListContainer &m2ObjectsCandidates,
                          WMOListContainer &wmoCandidates);
 
+    // Fills mapTiles[i][j] and starts its file requests. Leaves it empty when the map has no tile there.
+    void createAdtTile(int i, int j);
+    void preloadTilesAhead(const mathfu::vec3 &point, const HMapRenderPlan &mapRenderPlan);
+
     void getPossibleHeight(const mathfu::vec4 &cameraPos, float &height);
 
     virtual void updateLightAndSkyboxData(const HMapRenderPlan &mapRenderPlan, MathHelper::FrustumCullingData &frustumData,

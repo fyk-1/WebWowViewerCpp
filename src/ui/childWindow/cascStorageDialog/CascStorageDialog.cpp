@@ -498,6 +498,12 @@ void CascStorageDialog::moveStorageDown(int index) {
     saveStorages();
 }
 
+bool CascStorageDialog::openFirstStorage() {
+    if (m_storages.empty()) return false;
+
+    return tryOpenStorage(m_storages.front());
+}
+
 bool CascStorageDialog::tryOpenStorage(const CascStorageEntry& entry) {
     if (m_openCallback) {
         BuildDefinition buildDef = entry.buildDef;

@@ -74,6 +74,9 @@ struct MapSceneParams {
 
     mathfu::vec4 clearColor;
 
+    // A world point the camera will reach later. The scene loads the map tiles around it without drawing them.
+    std::optional<mathfu::vec3> preloadPoint;
+
     // Object-id pick request for this frame, in the first render target's pixel space. Cleared after consumption.
     std::optional<std::array<int, 2>> pickRequestPixel;
     // If true, this pick request only updates MapRenderPlan::hasHoveredM2/hoveredWMO (not the

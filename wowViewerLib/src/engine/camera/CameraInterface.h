@@ -25,6 +25,11 @@ public:
     virtual void setMovementSpeed(float value) = 0;
     virtual void setCameraOffset(float x, float y, float z) {};
 
+    // A point yardsAhead further along the camera's route, when it has one. Map tiles under it get loaded early.
+    virtual bool getPreloadPoint(float yardsAhead, mathfu::vec3 &point) {
+        return false;
+    }
+
     virtual bool isCompatibleWithInfiniteZ() {
         return false;
     }

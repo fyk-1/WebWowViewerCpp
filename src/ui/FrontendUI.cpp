@@ -63,7 +63,8 @@ FrontendUI::FrontendUI(HApiContainer api) {
             std::string path = cascPath;
             if (tryOpenCasc(path, buildDef)) {
                 cascOpened = true;
-                ImGui::OpenPopup("Casc succeed");
+                // The flyover mode draws no UI, and an open popup nobody draws would hold the input.
+                if (!m_flyoverMode) ImGui::OpenPopup("Casc succeed");
                 return true;
             } else {
                 return false;
@@ -169,6 +170,20 @@ void FrontendUI::composeUI() {
 
     // Rendering
     ImGui::Render();
+}
+
+void FrontendUI::composeFlyoverUI() {
+    FrameContext::setCurrentProcessingFrameNumber(m_api->hDevice->getFrameNumber());
+
+    // The scene is drawn under the ImGui layer, so an empty frame leaves only the scene.
+    m_currentActiveScene = m_backgroundScene;
+    m_lastActiveScene = m_currentActiveScene;
+
+    ImGui::Render();
+}
+
+bool FrontendUI::openFirstStorage() {
+    return m_cascStorageDialog && m_cascStorageDialog->openFirstStorage();
 }
 
 
@@ -834,7 +849,12 @@ void FrontendUI::initImgui(
 
     StorageNotificationUI::registerSettings(imguiContext, m_storageNotifications);
 
-    ImGui::LoadIniSettingsFromDisk(ImGui::GetIO().IniFilename);
+    // The flyover mode neither reads nor writes imgui.ini, so it leaves the viewer's own layout alone.
+    if (m_flyoverMode) {
+        ImGui::GetIO().IniFilename = nullptr;
+    } else {
+        ImGui::LoadIniSettingsFromDisk(ImGui::GetIO().IniFilename);
+    }
 
     ImGuiIO &io = ImGui::GetIO();
     (void) io;

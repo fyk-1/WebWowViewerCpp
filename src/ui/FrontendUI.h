@@ -69,7 +69,15 @@ public:
     std::shared_ptr<SceneWindow> getCurrentActiveScene() {
         return m_currentActiveScene;
     };
+
+    // Flyover mode: no ImGui chrome, the background scene is the whole window. Set before initImgui.
+    void setFlyoverMode(bool value) { m_flyoverMode = value; }
+    std::shared_ptr<SceneWindow> getBackgroundScene() { return m_backgroundScene; }
+    HApiContainer getApi() { return m_api; }
+    bool openFirstStorage();
+    void composeFlyoverUI();
 private:
+    bool m_flyoverMode = false;
     std::shared_ptr<StorageNotifications> m_storageNotifications = std::make_shared<StorageNotifications>();
     ImGuiContext* imguiContext = nullptr;
     std::shared_ptr<FrontendUIRenderer> m_uiRenderer;
