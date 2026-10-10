@@ -589,7 +589,7 @@ void CmdBufRecorder::bindVertexBindings(const std::shared_ptr<IVertexBufferBindi
     m_vertexBufferBindings = vertexBufferBindings;
 }
 
-#ifdef LINK_TRACY
 VkCommandBuffer CmdBufRecorder::getNativeCmdBuffer() { return m_gCmdBuffer.getNativeCmdBuffer(); }
+#ifdef LINK_TRACY
 TracyVkCtx const& CmdBufRecorder::getTracyContext() { return m_gCmdBuffer.tracyContext; }
 #endif

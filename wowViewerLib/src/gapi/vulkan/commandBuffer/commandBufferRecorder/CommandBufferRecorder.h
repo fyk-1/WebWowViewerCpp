@@ -119,10 +119,10 @@ public:
 
     void setViewPort(ViewportType viewportType);
 
+    VkCommandBuffer getNativeCmdBuffer();
 #ifdef LINK_TRACY
-    //Those should only be used for initialization of tracy zone
-    TracyVkCtx const &getTracyContext();;
-    VkCommandBuffer getNativeCmdBuffer();;
+    //Should only be used for initialization of tracy zone
+    TracyVkCtx const &getTracyContext();
 #endif
 private:
     const GCommandBuffer &m_gCmdBuffer;
