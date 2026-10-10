@@ -196,9 +196,9 @@ void GRenderPassVLK::createRenderPass(const VkSampleCountFlagBits &sampleCountBi
         dependency.srcSubpass = 0;
         dependency.dstSubpass = VK_SUBPASS_EXTERNAL;
         dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+        dependency.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
         dependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        dependency.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+        dependency.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
         dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
         dependencies.push_back(dependency);
     }
