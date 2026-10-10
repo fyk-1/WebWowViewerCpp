@@ -69,6 +69,9 @@ VkDescriptorSet GDescriptorPoolVLK::allocate(const std::shared_ptr<GDescriptorSe
     VkDescriptorSet descriptorSet;
 
     auto result = vkAllocateDescriptorSets(m_device.getVkDevice(), &allocInfo, &descriptorSet);
+    // A pool that frees sets fragments, and its counters cannot see that: report it as full, so the device
+    // allocates from the next pool or opens a new one.
+    if (result == VK_ERROR_FRAGMENTED_POOL || result == VK_ERROR_OUT_OF_POOL_MEMORY) return nullptr;
     if (result != VK_SUCCESS) {
         std::cerr << "Counting of descriptor sets went wrong" << std::endl;
         throw std::runtime_error("failed to allocate descriptor sets!");

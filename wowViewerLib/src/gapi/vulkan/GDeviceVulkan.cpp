@@ -1721,6 +1721,8 @@ GDeviceVLK::allocateDescriptorSetPrimitive(const std::shared_ptr<GDescriptorSetL
         auto newPool = std::make_shared<GDescriptorPoolVLK>(*this, isBindlessDS);
         desciptorPool = newPool;
         dsPools.push_back(newPool);
+        // One line per pool opened. A count that keeps climbing over a long flight means sets leak, not fragmentation.
+        std::cerr << "descriptor pool opened: " << (isBindlessDS ? "bindless" : "regular") << " #" << dsPools.size() << std::endl;
 
         return newPool->allocate(hDescriptorSetLayout);
     }
