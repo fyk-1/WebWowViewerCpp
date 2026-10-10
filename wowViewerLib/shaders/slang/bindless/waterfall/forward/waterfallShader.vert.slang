@@ -61,7 +61,7 @@ void main() {
 
     int bumpTextureInd = waterfallBindless.instanceIndex_waterfallInd_bumpTextureInd_maskInd.z;
 
-    vec4 bumpValue = texture2DLod(s_Textures[bumpTextureInd], texCoord2, 0);
+    vec4 bumpValue = texture2DLod(s_Textures[nonuniformEXT(bumpTextureInd)], texCoord2, 0);
     vec3 pos = (aNormal * bumpScale) * bumpValue.z + aPosition;
 
 //    mat4 boneTransformMat =  mat4(0.0);

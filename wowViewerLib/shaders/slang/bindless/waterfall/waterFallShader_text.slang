@@ -62,26 +62,26 @@ void main() {
     WaterfallCommon waterfallCommon = waterfallCommons[waterfallBindless.instanceIndex_waterfallInd_bumpTextureInd_maskInd.y];
 
     int normalTexInd = waterfallBindless.whiteWaterInd_noiseInd_normalTexInd.z;
-    vec3 perturbedNormal = PerturbNormal(-vPosition, normalize(vNormal), s_Textures[normalTexInd], vTexCoord2_animated, waterfallCommon.values3.x);
+    vec3 perturbedNormal = PerturbNormal(-vPosition, normalize(vNormal), s_Textures[nonuniformEXT(normalTexInd)], vTexCoord2_animated, waterfallCommon.values3.x);
 
     vec2 vTexCoordNorm = vTexCoord / waterfallCommon.values1.x;
 
     int noiseInd = waterfallBindless.whiteWaterInd_noiseInd_normalTexInd.y;
 
-    float noise0 = texture(s_Textures[noiseInd], vec2(vTexCoordNorm.x - waterfallCommon.values1.z, vTexCoordNorm.y-waterfallCommon.values1.z - waterfallCommon.values2.z)).x;
-    float noise1 = texture(s_Textures[noiseInd], vec2(vTexCoordNorm.x - waterfallCommon.values1.z + 0.418f, vTexCoordNorm.y + 0.355f + waterfallCommon.values1.z - waterfallCommon.values2.z)).x;
-    float noise2 = texture(s_Textures[noiseInd], vec2(vTexCoordNorm.x + waterfallCommon.values1.z + 0.865f, vTexCoordNorm.y + 0.148f - waterfallCommon.values1.z - waterfallCommon.values2.z)).x;
-    float noise3 = texture(s_Textures[noiseInd], vec2(vTexCoordNorm.x + waterfallCommon.values1.z + 0.651, vTexCoordNorm.y + 0.752f + waterfallCommon.values1.z - waterfallCommon.values2.z)).x;
+    float noise0 = texture(s_Textures[nonuniformEXT(noiseInd)], vec2(vTexCoordNorm.x - waterfallCommon.values1.z, vTexCoordNorm.y-waterfallCommon.values1.z - waterfallCommon.values2.z)).x;
+    float noise1 = texture(s_Textures[nonuniformEXT(noiseInd)], vec2(vTexCoordNorm.x - waterfallCommon.values1.z + 0.418f, vTexCoordNorm.y + 0.355f + waterfallCommon.values1.z - waterfallCommon.values2.z)).x;
+    float noise2 = texture(s_Textures[nonuniformEXT(noiseInd)], vec2(vTexCoordNorm.x + waterfallCommon.values1.z + 0.865f, vTexCoordNorm.y + 0.148f - waterfallCommon.values1.z - waterfallCommon.values2.z)).x;
+    float noise3 = texture(s_Textures[nonuniformEXT(noiseInd)], vec2(vTexCoordNorm.x + waterfallCommon.values1.z + 0.651, vTexCoordNorm.y + 0.752f + waterfallCommon.values1.z - waterfallCommon.values2.z)).x;
 
     float noise_avr = abs(noise0 + noise1 + noise2 + noise3) * 0.25f;
     float noiseFinal = clamp(exp(waterfallCommon.values0.x * log2(noise_avr) * 2.2f) * waterfallCommon.values0.y, 0.0f, 1.0f);
 
     int whiteWaterInd = waterfallBindless.whiteWaterInd_noiseInd_normalTexInd.x;
-    vec4 whiteWater_val = texture(s_Textures[whiteWaterInd], vTexCoord2_animated);
+    vec4 whiteWater_val = texture(s_Textures[nonuniformEXT(whiteWaterInd)], vTexCoord2_animated);
 
     int maskInd = waterfallBindless.instanceIndex_waterfallInd_bumpTextureInd_maskInd.w;
-    vec4 mask_val_0 = texture(s_Textures[maskInd], vTexCoord);
-    vec4 mask_val_1 = texture(s_Textures[maskInd], vec2(vTexCoord.x, vTexCoord.y +waterfallCommon.values3.z));
+    vec4 mask_val_0 = texture(s_Textures[nonuniformEXT(maskInd)], vTexCoord);
+    vec4 mask_val_1 = texture(s_Textures[nonuniformEXT(maskInd)], vec2(vTexCoord.x, vTexCoord.y +waterfallCommon.values3.z));
 
     float mix_alpha = clamp(
         ((whiteWater_val.w * noiseFinal - mask_val_1.y * mask_val_0.x) * 2.0f + waterfallCommon.values0.z) *

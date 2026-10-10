@@ -95,7 +95,7 @@ void main() {
 //        animatedUV += GetTexScrollMtx(sceneTime, vec2(float0,float1));
 //    };
 
-    vec3 matDiffuse = color.rgb+texture(s_Textures[liquidBindless.liquidDataInd_placementMatInd_liquidMaterialType.z], animatedUV).rgb;
+    vec3 matDiffuse = color.rgb+texture(s_Textures[nonuniformEXT(liquidBindless.liquidDataInd_placementMatInd_liquidMaterialType.z)], animatedUV).rgb;
 
     vec3 sunDir = scene.extLight.uExteriorDirectColorDir.xyz;
 
