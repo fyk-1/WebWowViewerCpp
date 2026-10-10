@@ -89,14 +89,14 @@ void AdtObject::loadM2s() {
             //2. Get model
             int fileDataId = doodadDef.nameId;
             auto m2Object = m_mapApi->getM2Object(fileDataId, doodadDef);
-            objectLods[1].m2Objects[i] = m2Object;
-            objectLods[1].m2ObjectIds[i] = m2Object->getObjectId();
+            objectLods[1].m2Objects[j] = m2Object;
+            objectLods[1].m2ObjectIds[j] = m2Object->getObjectId();
         } else {
             std::string fileName = &m_adtFileObj->doodadNamesField[m_adtFileObj->mmid[doodadDef.nameId]];
             //2. Get model
             auto m2Object = m_mapApi->getM2Object(fileName, doodadDef);
-            objectLods[0].m2Objects[i] = m2Object;
-            objectLods[0].m2ObjectIds[i] = m2Object->getObjectId();
+            objectLods[1].m2Objects[j] = m2Object;
+            objectLods[1].m2ObjectIds[j] = m2Object->getObjectId();
         }
     }
 }
