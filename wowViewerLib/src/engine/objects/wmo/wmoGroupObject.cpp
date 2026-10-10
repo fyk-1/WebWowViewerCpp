@@ -211,6 +211,8 @@ void WmoGroupObject::createWaterMeshes(const HMapSceneBufferCreate &sceneRendere
     HGVertexBufferBindings binding = m_geom->getWaterVertexBindings(sceneRenderer, liquid_type, m_waterAaBB);
     if (binding == nullptr)
         return;
+    if ((int)liquid_type <= 0)
+        liquid_type = m_geom->m_legacyLiquidType;
 
     auto m_mliq = m_geom->m_mliq;
 

@@ -563,7 +563,8 @@ HGVertexBufferBindings WmoGroupGeom::getWaterVertexBindings(const HMapSceneBuffe
 
         mathfu::vec3 pos(m_mliq->basePos.x, m_mliq->basePos.y, m_mliq->basePos.z);
 
-        LiquidTypes finalLiquidType = (liquid_type != LiquidTypes::LIQUID_NONE) ? liquid_type : m_legacyLiquidType;
+        // 0 is what a group without a DBC liquid id resolves to for groupLiquid 15: the tiles carry the type.
+        LiquidTypes finalLiquidType = ((int)liquid_type > 0) ? liquid_type : m_legacyLiquidType;
         for (int j = 0; j < m_mliq->yverts; j++) {
             for (int i = 0; i < m_mliq->xverts; i++) {
                 int p = j*m_mliq->xverts + i;
