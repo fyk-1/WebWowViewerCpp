@@ -58,7 +58,7 @@ void main() {
     // For occlusion test: track screen-space bounds and nearest depth (in depth buffer space)
     float2 ndcMin = float2(1e30, 1e30);
     float2 ndcMax = float2(-1e30, -1e30);
-    float nearestDepth = 0.0; // depth buffer space; will be set properly below
+    float nearestDepth = 1.0; // depth buffer space, regular Z: smallest corner value = nearest
 
     for (uint i = 0; i < 8; i++) {
         float4 clip = constants.viewProj * corners[i];
@@ -83,7 +83,7 @@ void main() {
 
         // Convert NDC depth to depth buffer space: depthBuf = minDepth + ndc_z * range
         float depthBufValue = constants.viewportDepthMin + ndc.z * constants.viewportDepthRange;
-        nearestDepth = max(nearestDepth, depthBufValue); // reversed Z: nearest = largest value
+        nearestDepth = min(nearestDepth, depthBufValue); // regular Z: nearest = smallest value
     }
 
     if (anyBehindCamera) {
@@ -131,20 +131,19 @@ void main() {
     float mipF = log2(maxPixelDim)+1;
     int mipLevel = clamp(int(ceil(mipF)), 0, int(constants.hiZMipCount) - 1);
 
-    // Hi-Z construction uses MAX (nearest surface per region, largest value).
-    // Sample 4 corners and take MIN (opposite) = weakest occluder.
+    // Regular Z (LESS_OR_EQUAL): Hi-Z construction uses MAX (farthest surface per region, largest value).
+    // Sample 4 corners and take MAX again = weakest occluder.
     // If the object is behind even the weakest occluder → definitely fully occluded.
-    // TODO: if invertZ=false, swap min/max here and in hiZGenerate.
     float hiZDepth = textureLod(hiZMap, uvMin, float(mipLevel)).x;
-    hiZDepth = min(hiZDepth, textureLod(hiZMap, float2(uvMax.x, uvMin.y), float(mipLevel)).x);
-    hiZDepth = min(hiZDepth, textureLod(hiZMap, float2(uvMin.x, uvMax.y), float(mipLevel)).x);
-    hiZDepth = min(hiZDepth, textureLod(hiZMap, uvMax, float(mipLevel)).x);
+    hiZDepth = max(hiZDepth, textureLod(hiZMap, float2(uvMax.x, uvMin.y), float(mipLevel)).x);
+    hiZDepth = max(hiZDepth, textureLod(hiZMap, float2(uvMin.x, uvMax.y), float(mipLevel)).x);
+    hiZDepth = max(hiZDepth, textureLod(hiZMap, uvMax, float(mipLevel)).x);
 
-    // With invertZ (GREATER test): larger depth = nearer, smaller = farther.
-    // hiZDepth (min of MAX) = weakest occluder (farthest nearest-surface).
-    // If object's nearest depth (largest corner value) is still smaller (farther)
+    // Regular Z: smaller depth = nearer, larger = farther.
+    // hiZDepth (max of MAX) = weakest occluder (the farthest surface in the covered region).
+    // If object's nearest depth (smallest corner value) is still larger (farther)
     // than even the weakest occluder → object is fully behind → occluded.
-    bool occluded = nearestDepth < (hiZDepth);
+    bool occluded = nearestDepth > hiZDepth;
 
 	if (occluded) {
 /*

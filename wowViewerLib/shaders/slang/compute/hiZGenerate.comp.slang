@@ -40,18 +40,20 @@ void main() {
 
     ivec2 srcBase = dstCoord * 2;
 
+    // Regular Z (depth test LESS_OR_EQUAL, clear 1.0): a larger value is farther, and a region occludes
+    // only as far as its farthest surface, so each mip keeps the MAX of its source texels.
     // Standard 2x2 block
     float result = sampleSrc(srcBase + ivec2(0, 0));
-    result = min(result, sampleSrc(srcBase + ivec2(1, 0)));
-    result = min(result, sampleSrc(srcBase + ivec2(0, 1)));
-    result = min(result, sampleSrc(srcBase + ivec2(1, 1)));
+    result = max(result, sampleSrc(srcBase + ivec2(1, 0)));
+    result = max(result, sampleSrc(srcBase + ivec2(0, 1)));
+    result = max(result, sampleSrc(srcBase + ivec2(1, 1)));
 
     bool needExtraSampleX = ratio.x>2;
     bool needExtraSampleY = ratio.y>2;
 
-    result = needExtraSampleX ? min(result, min(sampleSrc(srcBase + uint2(2,0)).x, sampleSrc(srcBase + uint2(2,1)).x)) : result;
-    result = needExtraSampleY ? min(result, min(sampleSrc(srcBase + uint2(0,2)).x, sampleSrc(srcBase + uint2(1,2)).x)) : result;
-    result = (needExtraSampleX && needExtraSampleY) ? min(result, sampleSrc(srcBase + uint2(2,2)).x) : result;
+    result = needExtraSampleX ? max(result, max(sampleSrc(srcBase + uint2(2,0)).x, sampleSrc(srcBase + uint2(2,1)).x)) : result;
+    result = needExtraSampleY ? max(result, max(sampleSrc(srcBase + uint2(0,2)).x, sampleSrc(srcBase + uint2(1,2)).x)) : result;
+    result = (needExtraSampleX && needExtraSampleY) ? max(result, sampleSrc(srcBase + uint2(2,2)).x) : result;
 
 
     imageStore(dstMip, dstCoord, vec4(result, 0, 0, 0));
