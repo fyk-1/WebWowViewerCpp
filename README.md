@@ -1,46 +1,28 @@
-![github actions state](https://github.com/Deamon87/WebWowViewerCpp/actions/workflows/main.yml/badge.svg?branch=master)   [![Donate to support developer](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/donate/?hosted_button_id=AFUUEL3ZQVVNW)
+# flyover-viewer
 
+A flyover-only build of [Deamon87/WebWowViewerCpp](https://github.com/Deamon87/WebWowViewerCpp), made for the Wowely Planet host. The branch `flyover-decruft` keeps the map renderer, the CASC and database readers, and the stdout protocol the host speaks. The model viewer, the map editor, the exporters, the OpenGL backends and the web build are gone.
 
-# WebWowViewerCpp
+Upstream ships no license file, and this fork adds none. The third-party code it builds against keeps its own licenses.
 
-The aim of this project is to create an opensource viewer of models and maps for World of Warcraft.
+## Running
 
-There are two frontends built using this code: standalone map viewer and webgl library built for web.
+The executable is `flyover-viewer.exe`. It needs `export.db3` (the client database) and `cascStorages.json` (the list of WoW installs, first entry wins) in its working directory, and prints its usage and exits without `--flyover`.
 
-Webgl version of model viewer runs on https://wow.tools/mv/ page
+| Argument | Effect |
+| --- | --- |
+| `--flyover <route.json>` | Opens the route's map on the first storage and flies the route. Reports on stdout and takes commands on stdin; the protocol is in `src/flyover/FlyoverMode.h`. |
+| `--list-gpus` | Prints the Vulkan devices and exits. |
 
+The host also passes `--wow`, `--product` and `--db`; `src/flyover/FlyoverMode.h` has their current state. The environment variable `WWV_GPU` picks the Vulkan device, as `vvvv:dddd` hex vendor and device ids or as part of the device name.
 
-## How to build
+## Building
 
-*The following text is intended only for developers. Usual users can download ready-to-use binaries from [releases] page*
+Prerequisites:
 
-### Prerequirements:
+- Visual Studio 2022 Build Tools (MSVC, CMake and Ninja come with it)
+- The Vulkan SDK, whose `slangc` compiles the shaders
+- Git, with the submodules fetched by `git submodule update --init --recursive`
 
-- Git
-- CMake >3.13
-- Python 3
-- Any latest compiler: MSVC/Clang/GCC
+The host repository keeps three scripts for this fork in `Modules\Flyover\Viewer\`: `configure-decruft.bat`, `build-decruft.bat` and `run-decruft.ps1`. They configure into `build-decruft\`, build the `flyover-viewer` target, install into `install-decruft\`, and run a one-point route that passes when the viewer reports its first map area.
 
-### Getting sources
-
-- git clone https://github.com/Deamon87/WebWowViewerCpp.git
-- git submodule --init --recursive
-
-### Building
-
-Configure and build as usually you would do with CMake project. Lately I had issues with `makefiles`, so I recommend using `ninja` generator
-
-Otherwise, you can look at the github actions script in `.github/workflows/` folder to look at how project is built there
-
-## How to use
-
-- Grab an app from [releases] page
-- Run app
-- Open your Local Casc (File -> Open Casc Storage)
-- Update the database (File -> Update database).
-- Open Map Selection dialog (File -> Open Map Selection)
-- Select a map and adjust the zoom to find the point on minimap. Select a point and click GO
-
-Happy exploring :)
-
-[releases]:https://github.com/Deamon87/WebWowViewerCpp/releases/
+Tracy, the profiler, stays in the tree and is off by default. Configure with `-DFLYOVER_TRACY=ON` for a profiling build.
