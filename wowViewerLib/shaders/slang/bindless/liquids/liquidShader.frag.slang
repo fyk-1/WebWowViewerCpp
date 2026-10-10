@@ -30,7 +30,10 @@ layout(location = 0) out vec4 outColor;
 
 // All per-type material functions (unique names, include-guarded)
 #include "../../common/liquid/liquidWaterMat.slang"
+#include "../../common/liquid/liquidWoweeWaterMat.slang"
+#include "../../common/commonWoweeSwitch.slang"
 #include "../../common/liquid/liquidMagmaMat.slang"
+#include "../../common/liquid/liquidWoweeMagmaMat.slang"
 #include "../../common/liquid/liquidMercuryMat.slang"
 #include "../../common/liquid/liquidFogMat.slang"
 #include "../../common/liquid/liquidLeyLineMat.slang"
@@ -52,41 +55,65 @@ void main() {
 
     switch (liquidBindless.liquidDataInd_placementMatInd_liquidMaterialType.z) {
     case LIQUID_MAT_WATER: {
-        vec4 waterResult = calcWaterLiquidMat(
-            liquidInstanceData,
-            waterDatas[nonuniformEXT(dataInd)],
-            scene,
-            fogData,
-            vWorldPosition.xyz,
-            vPositionDepth.xyz, //position
-            gl_FragCoord.xy,
-            vTextCoords, //uv
-            vCellUv,
-            vPositionDepth.w,
+        vec4 waterResult;
+        if (woweeOn(scene, WOWEE_WATER)) {
+            waterResult = calcWoweeWaterMat(
+                liquidInstanceData,
+                waterDatas[nonuniformEXT(dataInd)],
+                scene,
+                fogData,
+                vWorldPosition.xyz,
+                vPositionDepth.xyz, //position
+                gl_FragCoord.xy
+            );
+        } else {
+            waterResult = calcWaterLiquidMat(
+                liquidInstanceData,
+                waterDatas[nonuniformEXT(dataInd)],
+                scene,
+                fogData,
+                vWorldPosition.xyz,
+                vPositionDepth.xyz, //position
+                gl_FragCoord.xy,
+                vTextCoords, //uv
+                vCellUv,
+                vPositionDepth.w,
 
-            s_Textures[nonuniformEXT(getLiquidTextureIndex(liquidBindless, 2))],
-            s_Textures[nonuniformEXT(getLiquidTextureIndex(liquidBindless, 3))]
-        );
+                s_Textures[nonuniformEXT(getLiquidTextureIndex(liquidBindless, 2))],
+                s_Textures[nonuniformEXT(getLiquidTextureIndex(liquidBindless, 3))]
+            );
+        }
         matDiffuse = waterResult.rgb;
         matAlpha = waterResult.a;
         break;
     }
     case LIQUID_MAT_MAGMA: {
-        vec4 magmaResult = calcMagmaLiquidMat(
-            liquidInstanceData,
-            magmaDatas[nonuniformEXT(dataInd)],
-            scene,
-            fogData,
-            vPositionDepth.xyz, //position (fog)
-            vTextCoords, //uv
-            vCellUv,
-            vPositionDepth.w,
+        vec4 magmaResult;
+        if (woweeOn(scene, WOWEE_MAGMA)) {
+            magmaResult = calcWoweeMagmaMat(
+                liquidInstanceData,
+                scene,
+                fogData,
+                vWorldPosition.xyz,
+                vPositionDepth.xyz //position
+            );
+        } else {
+            magmaResult = calcMagmaLiquidMat(
+                liquidInstanceData,
+                magmaDatas[nonuniformEXT(dataInd)],
+                scene,
+                fogData,
+                vPositionDepth.xyz, //position (fog)
+                vTextCoords, //uv
+                vCellUv,
+                vPositionDepth.w,
 
-            s_Textures[nonuniformEXT(getLiquidTextureIndex(liquidBindless, 1))],
-            s_Textures[nonuniformEXT(getLiquidTextureIndex(liquidBindless, 2))],
-            s_Textures[nonuniformEXT(getLiquidTextureIndex(liquidBindless, 3))],
-            s_Textures[nonuniformEXT(getLiquidTextureIndex(liquidBindless, 6))]
-        );
+                s_Textures[nonuniformEXT(getLiquidTextureIndex(liquidBindless, 1))],
+                s_Textures[nonuniformEXT(getLiquidTextureIndex(liquidBindless, 2))],
+                s_Textures[nonuniformEXT(getLiquidTextureIndex(liquidBindless, 3))],
+                s_Textures[nonuniformEXT(getLiquidTextureIndex(liquidBindless, 6))]
+            );
+        }
         matDiffuse = magmaResult.rgb;
         matAlpha = magmaResult.a;
         break;

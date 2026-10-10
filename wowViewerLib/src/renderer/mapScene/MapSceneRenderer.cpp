@@ -193,7 +193,7 @@ void MapSceneRenderer::updateSceneWideChunk(const std::shared_ptr<IBufferChunkVe
             (float)matAndSceneSize.width,
             (float)matAndSceneSize.height,
             !m_config->enableLightBuffer ? 1.0 : 0.0,
-            0.0
+            (float)m_config->woweeShaders
         ));
 
         blockPSVS.uViewUpSceneTime = mathfu::vec4(renderingMatrices->viewUp.xyz(), sceneTime);

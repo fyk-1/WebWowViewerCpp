@@ -7,6 +7,8 @@ precision highp int;
 #include "../../common/commonFogFunctions.slang"
 #include "../../common/commonFunctions.slang"
 #include "../../common/commonWMOMaterial.slang"
+#include "../../common/commonWoweeWmoLight.slang"
+#include "../../common/commonWoweeSwitch.slang"
 #include "../../common/commonUboSceneData.slang"
 #include "../../common/commonLiquidDepthTest.slang"
 
@@ -98,8 +100,22 @@ void main() {
 
 //    matDiffuse.rbg = vec3(0, 0, 1);
 
-    finalColor = vec4(
-        calcLight(
+    vec3 litColor;
+    if (woweeOn(scene, WOWEE_WMO)) {
+        litColor = wo_calcLight(
+            matDiffuse,
+            vNormal,
+            vPosition.xyz,
+            wmoMeshWide.UseLitColor_EnableAlpha_PixelShader_BlendMode.x == 1,
+            scene,
+            intLight,
+            accumLight,
+            vColor.rgb * 2.0,
+            spec,
+            emissive
+        );
+    } else {
+        litColor = calcLight(
             matDiffuse,
             vNormal,
             vPosition.xyz,
@@ -113,9 +129,9 @@ void main() {
             spec, /* specular */
             emissive,
             1.0 /* ao */
-        ),
-        finalOpacity
-    );
+        );
+    }
+    finalColor = vec4(litColor, finalOpacity);
 #endif
 
 #ifndef DEFERRED

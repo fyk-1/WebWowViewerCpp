@@ -7,6 +7,8 @@ precision highp int;
 #include "../../common/commonFogFunctions.slang"
 
 #include "../../common/commonADTMaterial.slang"
+#include "../../common/commonWoweeAdtLight.slang"
+#include "../../common/commonWoweeSwitch.slang"
 #include "../../common/commonUboSceneData.slang"
 #include "../../common/commonAdtIndirectDescriptorSet.slang"
 
@@ -143,22 +145,26 @@ void main() {
 //    matDiffuse.rbg = vec3(0, 0, 1);
 
 
-    finalColor = vec4(
-        calcLight(
-            matDiffuse,
-            vNormal,
-            vPosition.xyz,
-            true,
-            scene,
-            intLight,
-            accumLight, /* accumLight */
-            vec3(0.0), /*precomputedLight*/
-            vec3(0.0), /* specular */
-            vec3(0.0), /* emissive */
-            ao /* ambient occlusion */
-        ),
-        1.0
-    );
+    if (woweeOn(scene, WOWEE_ADT)) {
+        finalColor = vec4(wt_calcLight(matDiffuse, normalize(vNormal), scene, accumLight, ao), 1.0);
+    } else {
+        finalColor = vec4(
+            calcLight(
+                matDiffuse,
+                vNormal,
+                vPosition.xyz,
+                true,
+                scene,
+                intLight,
+                accumLight, /* accumLight */
+                vec3(0.0), /*precomputedLight*/
+                vec3(0.0), /* specular */
+                vec3(0.0), /* emissive */
+                ao /* ambient occlusion */
+            ),
+            1.0
+        );
+    }
 #endif
 
     //Spec part

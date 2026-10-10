@@ -6,6 +6,8 @@ precision highp int;
 #include "../../common/commonLightFunctions.slang"
 #include "../../common/commonFogFunctions.slang"
 #include "../../common/commonM2Material.slang"
+#include "../../common/commonWoweeM2Light.slang"
+#include "../../common/commonWoweeSwitch.slang"
 #include "../../common/commonLiquidDepthTest.slang"
 
 layout(location=0) in vec2 vTexCoord;
@@ -146,8 +148,21 @@ void main() {
 //    matDiffuse.rbg = vec3(0, 1, 0);
 
 
-        finalColor = vec4(
-            calcLight(
+        vec3 litColor;
+        if (woweeOn(scene, WOWEE_M2)) {
+            litColor = wm_calcLight(
+                matDiffuse,
+                l_Normal,
+                vPosition_EdgeFade.xyz,
+                meshWide.vertexShader_IsAffectedByLight_TextureMatIndex1_TextureMatIndex2.y > 0,
+                blendMode == 1,
+                scene,
+                modelWide.intLight,
+                accumLight,
+                specular
+            );
+        } else {
+            litColor = calcLight(
                 matDiffuse,
                 l_Normal,
                 vPosition_EdgeFade.xyz,
@@ -159,9 +174,9 @@ void main() {
                 specular,
                 vec3(0.0),
                 1.0 /* ao */
-            ) ,
-            finalOpacity
-        );
+            );
+        }
+        finalColor = vec4(litColor, finalOpacity);
 #endif
     }
 

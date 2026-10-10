@@ -138,6 +138,9 @@ public:
     // Skips a model (M2) whose bounding sphere spans less of the view's height than this, in percent: small props
     // drop out at a distance and large ones stay. 0 turns it off. Doodads inside WMOs are not affected.
     float minM2ScreenPercent = 0;
+    // Which WoWee shader ports draw, as a bitmask: 1 water, 2 terrain, 4 WMO, 8 M2, 16 magma and slime. The rest of each
+    // family keeps the retail shading. Reaches the shaders in the scene-wide block's uSceneSize_DisableLightBuffer.w.
+    int woweeShaders = 17;
     // Set by the host when the camera jumps, so the next FSR dispatch drops its history. The renderer clears it.
     bool fsrResetRequested = false;
 
