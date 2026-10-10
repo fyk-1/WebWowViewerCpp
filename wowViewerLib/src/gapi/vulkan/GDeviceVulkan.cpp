@@ -899,6 +899,9 @@ void GDeviceVLK::createLogicalDevice() {
     // the GPU-indirect draw path; request the feature when the device has it.
     deviceFeatures.multiDrawIndirect = supportedFeatures.multiDrawIndirect;
     m_supportsMultiDrawIndirect = supportedFeatures.multiDrawIndirect == VK_TRUE;
+    // The indirect commands carry the mesh index in firstInstance, which is only defined to work
+    // with this feature (VUID-VkDrawIndexedIndirectCommand-firstInstance-00554).
+    deviceFeatures.drawIndirectFirstInstance = supportedFeatures.drawIndirectFirstInstance;
 
     // Per-attachment blend state is required by the object-id selection attachment
     // (color attachment is blended, object-id attachment is not)
