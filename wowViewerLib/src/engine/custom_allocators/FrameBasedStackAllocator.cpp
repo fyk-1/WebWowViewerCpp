@@ -79,9 +79,11 @@ struct MemoryStoringPool {
 
 
 
-std::array<std::mutex, 2*IDevice::MAX_FRAMES_IN_FLIGHT> g_frameStackMutexes;
-std::mutex g_g_frameStackMutexes;
-std::array<std::list<std::unique_ptr<MemoryStoringPool>>, 2*IDevice::MAX_FRAMES_IN_FLIGHT> g_frameStackList;
+// Never destroyed: containers holding frame memory are freed during static destruction too (the UI and its scene
+// die in an atexit handler), which can run after this file's statics are gone.
+auto &g_frameStackMutexes = *new std::array<std::mutex, 2*IDevice::MAX_FRAMES_IN_FLIGHT>();
+auto &g_g_frameStackMutexes = *new std::mutex();
+auto &g_frameStackList = *new std::array<std::list<std::unique_ptr<MemoryStoringPool>>, 2*IDevice::MAX_FRAMES_IN_FLIGHT>();
 
 
 
