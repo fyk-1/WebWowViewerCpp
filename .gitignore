@@ -15,3 +15,7 @@ node_modules
 casc_config.txt
 test/.casc_config
 test/casc_config.txt
+
+# Tracy 0.10 release binaries and the built tracy-gpu-csvexport.exe; tools/tracy/README.md says how to get them
+/tools/tracy/bin/
+
