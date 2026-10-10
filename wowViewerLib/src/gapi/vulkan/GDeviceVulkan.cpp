@@ -855,6 +855,81 @@ std::string VkMemoryHeapFlagBitsGetStrings(VkMemoryHeapFlags value) {
     return string;
 }
 
+// True when WWV_GPU names the device: "vvvv:dddd" as hex vendor and device ids, else a case-insensitive part of the name.
+static bool gpuMatchesRequest(const VkPhysicalDeviceProperties &props, const std::string &request) {
+    auto isHex = [](char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 0; };
+    if (request.size() == 9 && request[4] == ':' &&
+        std::all_of(request.begin(), request.begin() + 4, isHex) &&
+        std::all_of(request.begin() + 5, request.end(), isHex)) {
+        return props.vendorID == std::stoul(request.substr(0, 4), nullptr, 16) &&
+               props.deviceID == std::stoul(request.substr(5, 4), nullptr, 16);
+    }
+
+    auto lower = [](std::string s) {
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+        return s;
+    };
+    return lower(props.deviceName).find(lower(request)) != std::string::npos;
+}
+
+// Prints one line per Vulkan device, as "gpu <vendor:device> <type> <name>". No surface is made, so every device shows.
+int GDeviceVLK::listPhysicalDevices(std::ostream &out) {
+    _putenv("VK_LOADER_DRIVERS_DISABLE=*dzn*");
+
+    if (volkInitialize()) {
+        std::cerr << "Failed to initialize volk loader" << std::endl;
+        return 1;
+    }
+
+    uint32_t apiVersion = VK_API_VERSION_1_0;
+    if (vkEnumerateInstanceVersion != nullptr)
+        vkEnumerateInstanceVersion(&apiVersion);
+    if (apiVersion > VK_API_VERSION_1_2)
+        apiVersion = VK_API_VERSION_1_2;
+
+    VkApplicationInfo appInfo = {};
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pApplicationName = "WoW Map Viewer";
+    appInfo.apiVersion = apiVersion;
+
+    VkInstanceCreateInfo createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    createInfo.pApplicationInfo = &appInfo;
+
+    VkInstance instance = VK_NULL_HANDLE;
+    if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+        std::cerr << "failed to create instance!" << std::endl;
+        return 1;
+    }
+    volkLoadInstance(instance);
+
+    uint32_t deviceCount = 0;
+    vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+    std::vector<VkPhysicalDevice> devices(deviceCount);
+    vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+    for (const auto &device : devices) {
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(device, &props);
+
+        const char *type = "other";
+        switch (props.deviceType) {
+            case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: type = "discrete"; break;
+            case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: type = "integrated"; break;
+            case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: type = "virtual"; break;
+            case VK_PHYSICAL_DEVICE_TYPE_CPU: type = "cpu"; break;
+            default: break;
+        }
+
+        char id[32];
+        snprintf(id, sizeof(id), "%04x:%04x", props.vendorID, props.deviceID);
+        out << "gpu " << id << " " << type << " " << props.deviceName << std::endl;
+    }
+
+    vkDestroyInstance(instance, nullptr);
+    return 0;
+}
+
 void GDeviceVLK::pickPhysicalDevice() {
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(vkInstance, &deviceCount, nullptr);
@@ -866,15 +941,36 @@ void GDeviceVLK::pickPhysicalDevice() {
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(vkInstance, &deviceCount, devices.data());
 
-    for (const auto& device : devices) {
-        if (isDeviceSuitable(device)) {
-            physicalDevice = device;
+    auto select = [&](VkPhysicalDevice device, const char *how) {
+        physicalDevice = device;
 
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(device, &props);
+        std::cout << "Selected " << props.deviceName << " -- " <<  (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? "suitable GPU" : "integrated GPU") << how << std::endl;
+    };
+
+    const char *requestEnv = getenv("WWV_GPU");
+    const std::string request = requestEnv ? requestEnv : "";
+    if (!request.empty()) {
+        for (const auto& device : devices) {
             VkPhysicalDeviceProperties props;
             vkGetPhysicalDeviceProperties(device, &props);
-            std::cout << "Selected " << props.deviceName << " -- " <<  (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? "suitable GPU" : "integrated GPU") << std::endl;
+            if (gpuMatchesRequest(props, request) && isDeviceSuitable(device)) {
+                select(device, " (WWV_GPU)");
+                break;
+            }
+        }
+        if (physicalDevice == VK_NULL_HANDLE) {
+            std::cerr << "gpu: WWV_GPU=" << request << " matched no suitable device; using the first suitable" << std::endl;
+        }
+    }
 
-            break;
+    if (physicalDevice == VK_NULL_HANDLE) {
+        for (const auto& device : devices) {
+            if (isDeviceSuitable(device)) {
+                select(device, "");
+                break;
+            }
         }
     }
 

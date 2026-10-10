@@ -45,6 +45,9 @@
 #include "../wowViewerLib/src/gapi/vulkan/GDeviceVulkan.h"
 #include <filesystem>
 #include "flyover/FlyoverMode.h"
+#ifndef SKIP_VULKAN
+#include "../wowViewerLib/src/gapi/vulkan/GDeviceVulkan.h"
+#endif
 #include <exception>
 #ifdef WIN32
 #include <timeapi.h>
@@ -381,6 +384,13 @@ double currentFrame;
 double lastFrame;
 
 int main(int argc, char *argv[]) {
+    // Lists the Vulkan devices and exits, before any window or device exists.
+#ifndef SKIP_VULKAN
+    for (int i = 1; i < argc; i++) {
+        if (std::string(argv[i]) == "--list-gpus") return GDeviceVLK::listPhysicalDevices(std::cout);
+    }
+#endif
+
     std::string flyoverRouteFile;
     const bool flyoverRequested = FlyoverMode::findArgument(argc, argv, flyoverRouteFile);
     if (flyoverRequested) {

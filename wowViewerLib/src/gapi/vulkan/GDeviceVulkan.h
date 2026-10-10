@@ -48,6 +48,7 @@ class gMeshTemplate;
 #include "GDescriptorSetUpdater.h"
 
 #include <optional>
+#include <ostream>
 
 VkSampleCountFlagBits sampleCountToVkSampleCountFlagBits(uint8_t sampleCount);
 
@@ -61,6 +62,9 @@ class GDeviceVLK : public IDevice, public std::enable_shared_from_this<GDeviceVL
 public:
     explicit GDeviceVLK(vkCallInitCallback * callBacks);
     ~GDeviceVLK() override;
+
+    // Writes one "gpu <vendor:device> <type> <name>" line per Vulkan device; 0, or 1 when no instance can be made.
+    static int listPhysicalDevices(std::ostream &out);
 
     GDeviceType getDeviceType() override {return GDeviceType::GVulkan; };
 
