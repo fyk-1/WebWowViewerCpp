@@ -716,6 +716,36 @@ void GpuIndirectDrawsVLK::dispatchFrustumCulling(CmdBufRecorder &cmdBuf, const m
 void GpuIndirectDrawsVLK::dispatchIndirectCulling(CmdBufRecorder &cmdBuf, uint32_t drawCommandCount, uint32_t renderMode, uint32_t startIndex) {
     if (!m_cullIndirectMaterial || drawCommandCount == 0) return;
 
+    // Barrier: earlier gather writes and indirect draw reads of the draw buffer → this gather's writes;
+    // frustum, occlusion and classification writes → this gather's reads
+    {
+        auto bufferBarrier = [](VkBuffer buffer, VkAccessFlags srcAccess, VkAccessFlags dstAccess) {
+            return VkBufferMemoryBarrier{
+                VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+                nullptr,
+                srcAccess,
+                dstAccess,
+                VK_QUEUE_FAMILY_IGNORED,
+                VK_QUEUE_FAMILY_IGNORED,
+                buffer,
+                0,
+                VK_WHOLE_SIZE
+            };
+        };
+        std::vector<VkBufferMemoryBarrier> preBarriers = {
+            bufferBarrier(m_indirectDrawBuffer->getGPUBuffer(),
+                          VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
+                          VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT),
+            bufferBarrier(m_visibilityBuffer->getGPUBuffer(), VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT),
+            bufferBarrier(m_classificationBuffer->getGPUBuffer(), VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT),
+        };
+        cmdBuf.recordPipelineBufferBarrier(
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            preBarriers
+        );
+    }
+
     cmdBuf.bindComputePipeline(m_cullIndirectMaterial->pipeline);
     cmdBuf.bindDescriptorSets(VK_PIPELINE_BIND_POINT_COMPUTE, m_cullIndirectMaterial->descriptorSets);
 
