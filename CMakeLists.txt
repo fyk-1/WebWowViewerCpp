@@ -59,11 +59,6 @@ if(WIN32)
 	link_libraries(wsock32 ws2_32 -ldbghelp winmm)
 endif()
 
-# DB Importer
-set(DBIMPORTER_LINK_SQLITE OFF)
-set(DBIMPORTER_SQLITE_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/3rdparty/SQLiteCpp/include")
-add_subdirectory(${CMAKE_SOURCE_DIR}/3rdparty/DBImporter EXCLUDE_FROM_ALL)
-
 #ZLib library
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
 add_subdirectory(${CMAKE_SOURCE_DIR}/3rdparty/zlib EXCLUDE_FROM_ALL)
@@ -164,99 +159,42 @@ include_directories(${GLEW_INCLUDE_DIRS})
 
 
 set(SOURCE_FILES
-		src/persistance/httpFile/httpFile.cpp
-		src/persistance/httpFile/httpFile.h
-		src/persistance/ZipRequestProcessor.cpp
-		src/persistance/ZipRequestProcessor.h
-#		src/persistance/HttpZipRequestProcessor.cpp
-#		src/persistance/HttpZipRequestProcessor.h
 		src/persistance/CascRequestProcessor.cpp
 		src/persistance/CascRequestProcessor.h
-		src/persistance/HttpRequestProcessor.cpp
-		src/persistance/HttpRequestProcessor.h
+		src/persistance/StorageError.h
 
 		src/ui/imguiLib/imgui.cpp
-		src/ui/imguiLib/imgui_demo.cpp
 		src/ui/imguiLib/imgui_draw.cpp
 		src/ui/imguiLib/imgui_widgets.cpp
 		src/ui/imguiLib/imgui_tables.cpp
 		src/ui/imguiLib/imguiImpl/imgui_impl_glfw.cpp
 		src/ui/FrontendUI.cpp src/ui/FrontendUI.h
+		src/ui/StorageNotifications.h
 		src/database/CSqliteDB.cpp src/database/CSqliteDB.h
-		src/minimapGenerator/minimapGenerator.cpp
-		src/screenshots/screenshotMaker.h
-		src/screenshots/screenshotMaker.cpp
-		src/screenshots/lodepng/lodepng.cpp
-		src/screenshots/lodepng/lodepng.h
-
-		src/exporters/gltfExporter/GLTFExporter.cpp
-		src/exporters/gltfExporter/GLTFExporter.h
-
-        src/ui/imguiLib/groupPanel/groupPanel.cpp
-		src/ui/imguiLib/groupPanel/groupPanel.h
-
-		src/ui/imguiLib/disablableButton/disablableButton.cpp
-		src/ui/imguiLib/disablableButton/disablableButton.h
-		src/minimapGenerator/storage/CMinimapDataDB.cpp
-		src/minimapGenerator/storage/CMinimapDataDB.h
-		src/minimapGenerator/entities.h
-		src/ui/imguiLib/compactColorPicker/compactColorPicker.cpp
-		src/ui/imguiLib/compactColorPicker/compactColorPicker.h
-		src/ui/imguiLib/imageButton2/imageButton2.cpp
-		src/ui/imguiLib/imageButton2/imageButton2.h
-		src/exporters/dataExporter/DataExporterClass.cpp
-		src/exporters/dataExporter/DataExporterClass.h
 		src/database/CEmptySqliteDB.cpp
 		src/database/CEmptySqliteDB.h
-		src/ui/imguiLib/stateSaver/stateSaver.h
-		src/ui/imguiLib/stateSaver/stateSaver.cpp
-		src/ui/childWindow/databaseUpdateWorkflow/DatabaseUpdateWorkflow.cpp
-		src/ui/childWindow/databaseUpdateWorkflow/DatabaseUpdateWorkflow.h
 		src/database/buildInfoParser/buildDefinition.h
 		src/database/buildInfoParser/buildInfoParser.cpp
 		src/database/buildInfoParser/buildInfoParser.h
-		src/ui/childWindow/minimapGeneratonWindow/MinimapGenerationWindow.cpp
-		src/ui/childWindow/minimapGeneratonWindow/MinimapGenerationWindow.h
 		src/ui/renderer/uiScene/FrontendUIRenderer.cpp
 		src/ui/renderer/uiScene/FrontendUIRenderer.h
 		src/ui/renderer/uiScene/FrontendUIRendererFactory.cpp
 		src/ui/renderer/uiScene/FrontendUIRendererFactory.h
 		src/ui/renderer/uiScene/ImGUIPlan.cpp
 		src/ui/renderer/uiScene/ImGUIPlan.h
-        src/ui/renderer/uiScene/IFrontendUIBufferCreate.h
+		src/ui/renderer/uiScene/IFrontendUIBufferCreate.h
 		src/ui/renderer/uiScene/materials/UIMaterial.h
-        src/ui/childWindow/mapSelectionWindow/MapSelectDialog.cpp
-		src/ui/childWindow/mapSelectionWindow/MapSelectDialog.h
-		src/ui/imguiLib/wheelCapture/wheelCapture.cpp
-		src/ui/imguiLib/wheelCapture/wheelCapture.h src/ui/childWindow/BLPViewer.cpp src/ui/childWindow/BLPViewer.h src/ui/childWindow/keysUpdateWorkflow/KeysUpdateWorkflow.cpp src/ui/childWindow/keysUpdateWorkflow/KeysUpdateWorkflow.h
-		src/ui/childWindow/textureRenderer/DebugRendererWindow.cpp
-		src/ui/childWindow/textureRenderer/DebugRendererWindow.h
-        src/ui/childWindow/fileListWindow/FileListWindow.cpp
-        src/ui/childWindow/fileListWindow/FileListWindow.h
 		src/ui/childWindow/sceneWindow/SceneWindow.cpp
 		src/ui/childWindow/sceneWindow/SceneWindow.h
-		src/ui/childWindow/m2Window/M2Window.cpp
-		src/ui/childWindow/m2Window/M2Window.h
-		src/ui/imguiLib/hasFocus/imguiHasFocus.cpp
-		src/ui/imguiLib/hasFocus/imguiHasFocus.h
-		src/ui/imguiLib/floatCenterSlider/floatCenterSlider.h
-		src/ui/imguiLib/floatCenterSlider/floatCenterSlider.cpp
-		src/ui/imguiLib/compactFloatEditor/compactFloatEditor.cpp
-		src/ui/imguiLib/compactFloatEditor/compactFloatEditor.h
-		src/ui/childWindow/fakeWDTGenerator/FakeWDTWindow.cpp
-		src/ui/childWindow/fakeWDTGenerator/FakeWDTWindow.h
 		src/ui/childWindow/cascStorageDialog/CascStorageDialog.cpp
 		src/ui/childWindow/cascStorageDialog/CascStorageDialog.h
+		src/ui/childWindow/cascStorageDialog/CascStorageEntry.h
 		src/flyover/FlyoverMode.cpp
 		src/flyover/FlyoverMode.h
 		src/flyover/FlyoverConfig.cpp
 		src/flyover/FlyoverConfig.h
 		src/flyover/CrashStack.cpp
 		src/flyover/CrashStack.h
-		src/ui/childWindow/customObjectsWindow/CustomObjectsWindow.cpp
-		src/ui/childWindow/customObjectsWindow/CustomObjectsWindow.h
-		src/ui/imguiLib/ImGuizmo/ImGuizmo.cpp
-		src/ui/imguiLib/ImGuizmo/ImGuizmo.h
 )
 
 set(PROTOBUF_FILES_ "")
@@ -325,12 +263,10 @@ message(ccp WoWViewerLib_INCLUDE_DIRS = ${WoWViewerLib_INCLUDE_DIRS})
 target_include_directories(WoWFrontendLib PUBLIC ${WoWViewerLib_INCLUDE_DIRS})
 target_include_directories(WoWFrontendLib PUBLIC ${PROJECT_SOURCE_DIR}/WoWViewerLib/3rdparty/mathfu/include)
 target_include_directories(WoWFrontendLib PUBLIC ${PROJECT_SOURCE_DIR}/WoWViewerLib/3rdparty/mathfu/include)
-target_include_directories(WoWFrontendLib PUBLIC ${PROJECT_SOURCE_DIR}/3rdparty/clipboard/include)
 
 #target_compile_options(WoWFrontendLib PRIVATE "-static")
 target_compile_definitions(WoWFrontendLib PUBLIC -DIMGUI_USER_CONFIG=<imguiCustomConfig.h>)
 target_include_directories(WoWFrontendLib PUBLIC src/ui/imguiLib)
-target_include_directories(WoWFrontendLib PUBLIC 3rdparty/imgui-notify/example/src)
 
 add_dependencies(WoWFrontendLib WoWViewerLib)
 #add_dependencies(WoWFrontendLib storm)
@@ -383,7 +319,6 @@ endif ()
 
 
 target_link_libraries(WoWFrontendLib SQLiteCpp sqlite3)
-target_link_libraries(DBImporterLib SQLiteCpp)
 if (NOT MSVC)
     find_library(DL_EXISTS dl)
     message("DL_EXISTS = ${DL_EXISTS}")
@@ -418,7 +353,6 @@ endif()
 
 #target_link_libraries(WoWFrontendLib storm)
 target_link_libraries(WoWFrontendLib TactCppLib)
-target_link_libraries(WoWFrontendLib DBImporterLib)
 target_link_libraries(WoWFrontendLib cpr::cpr)
 
 target_link_libraries(WoWFrontendLib ${glew_lib})
@@ -426,7 +360,6 @@ target_link_libraries(WoWFrontendLib ${glew_lib})
 if (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	include_directories(WoWFrontendLib "./wowViewerLib/src/opengl")
 	target_link_libraries(WoWFrontendLib opengl32)
-	target_link_libraries(WoWFrontendLib -lwininet)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 	FIND_LIBRARY(OpenGL_LIBRARY OpenGL)
 	MARK_AS_ADVANCED(OpenGL_LIBRARY)

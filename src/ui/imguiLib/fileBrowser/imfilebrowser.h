@@ -18,7 +18,6 @@
 #include "../../../../wowViewerLib/src/include/string_utils.h"
 #include "../../../database/buildInfoParser/buildDefinition.h"
 #include "../../../database/buildInfoParser/buildInfoParser.h"
-#include "../../../database/product_db_parser/productDbParser.h"
 
 using ImGuiFileBrowserFlags = int;
 
@@ -271,22 +270,6 @@ inline void ImGui::FileBrowser::loadBuildsFromBuildInfo() {
             std::cout << "error while trying to read and parse .build.info";
         }
     }
-
-    /*
-    std::string productDBFile = GetSelected() / ".product.db";
-    if (fileExistsNotNull1(productDBFile)) {
-        std::string productFileContent;
-        readWholeFileToString(productDBFile, productFileContent);
-
-        try {
-            if (!productFileContent.empty()) {
-                buildDefs.merge(ProductDbParser::parseFileContent(productFileContent));
-            }
-        } catch (...) {
-            std::cout << "error while trying to read and parse .product.db";
-        }
-    }
-    */
 
 
     availableBuilds = std::vector<BuildDefinition>(buildDefs.begin(), buildDefs.end());

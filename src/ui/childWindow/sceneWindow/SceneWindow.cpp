@@ -8,7 +8,6 @@
 #include "../../../../wowViewerLib/src/engine/objects/scenes/m2Scene.h"
 #include "../../../../wowViewerLib/src/engine/objects/scenes/wmoScene.h"
 #include "../../../../wowViewerLib/src/engine/objects/scenes/NullScene.h"
-#include "../../../screenshots/screenshotMaker.h"
 #include "../../../../wowViewerLib/src/engine/camera/m2TiedCamera.h"
 #include "../../../../wowViewerLib/src/engine/objects/m2/m2Object.h"
 #include "../../../../wowViewerLib/src/renderer/mapScene/MapSceneParams.h"
@@ -414,47 +413,6 @@ SceneWindow::render(double deltaTime,
     scenario->cullFunctions.push_back(
         m_sceneRenderer->createCullUpdateRenderChain(wowSceneFrameInput, updateFrameNumberLambda)
     );
-}
-
-void
-SceneWindow::makeScreenshot(float fov,
-                            uint32_t screenShotWidth, uint32_t screenShotHeight,
-                            const std::string &screenshotFilename,
-                            const HFrameScenario &scenario,
-                            const std::function<uint32_t()> &updateFrameNumberLambda)
-{
-    auto screenShotRenderView = m_sceneRenderer->createRenderView(true);
-    auto wowSceneScreenshotFrameInput = std::make_shared<FrameInputParams<MapSceneParams>>();
-    wowSceneScreenshotFrameInput->delta = 0;
-
-    auto camera = getCamera();
-
-    wowSceneScreenshotFrameInput->frameParameters = createMapSceneParams(
-        m_api,
-        camera,
-        fov,
-        {{
-             camera,
-             {
-                 {0, 0},
-                 {static_cast<unsigned int>(screenShotWidth), static_cast<unsigned int>(screenShotHeight)}
-             },
-             screenShotRenderView
-         }},
-        m_currentScene
-    );
-
-    auto processingFrame = updateFrameNumberLambda();
-
-    scenario->cullFunctions.push_back(
-        m_sceneRenderer->createCullUpdateRenderChain(wowSceneScreenshotFrameInput, updateFrameNumberLambda)
-    );
-
-    scenario->onFinish.push_back([screenShotRenderView, screenShotWidth, screenShotHeight, screenshotFilename, processingFrame]() {
-        saveDataFromDrawStage([screenShotRenderView, processingFrame](int x, int y, int width, int height, uint8_t* data){
-            screenShotRenderView->readRGBAPixels(processingFrame, x, y, width, height, data);
-        }, screenshotFilename, screenShotWidth, screenShotHeight);
-    });
 }
 
 std::shared_ptr<IVideoRecordingContext> SceneWindow::startVideoRecording(uint32_t framebufferWidth, uint32_t framebufferHeight,

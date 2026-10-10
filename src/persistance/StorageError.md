@@ -14,5 +14,5 @@ provided; without a callback the exception propagates. Failed file requests
 report once and are rejected. Successful reads produce no error event, including
 partially encrypted files whose unavailable later blocks are zero-filled.
 
-`StorageNotifications` and `StorageNotificationUI` implement the queue, category
-preferences, and ImGui toasts. Existing `notify*` INI keys are retained.
+`StorageNotifications` implements the thread-safe queue and the category
+preferences; the flyover viewer draws no toasts.

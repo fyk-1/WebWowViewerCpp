@@ -67,12 +67,6 @@ public:
                 const std::shared_ptr<SceneWindow> &debugWindow,
                 const std::function<uint32_t()> &updateFrameNumberLambda);
 
-    void makeScreenshot(float fov,
-                        uint32_t screenShotWidth, uint32_t screenShotHeight,
-                        const std::string &screenshotFilename,
-                        const HFrameScenario &scenario,
-                        const std::function<uint32_t()> &updateFrameNumberLambda);
-
     std::shared_ptr<IVideoRecordingContext> startVideoRecording(uint32_t framebufferWidth, uint32_t framebufferHeight,
                                                                 uint32_t outputWidth, uint32_t outputHeight,
                                                                 const std::string &videoFilename);
