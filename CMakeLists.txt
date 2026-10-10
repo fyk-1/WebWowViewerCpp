@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(WoWStudio)
+project(FlyoverViewer)
 include(ExternalProject)
 
 enable_language( C CXX ASM )
@@ -309,11 +309,11 @@ if (NOT Vulkan_FOUND)
 endif()
 
 add_library(WoWFrontendLib STATIC ${SOURCE_FILES} ${SOURCE_FILES_VULKAN} ${PROTOBUF_FILES_})
-add_executable(WowStudio src/main.cpp)
-target_link_libraries(WowStudio WoWFrontendLib)
+add_executable(flyover-viewer src/main.cpp)
+target_link_libraries(flyover-viewer WoWFrontendLib)
 if (MSVC)
 	# A PDB with public symbols beside the exe, which the crash handler reads for its stack; the optimisations /DEBUG turns off are kept on.
-	target_link_options(WowStudio PRIVATE /DEBUG /OPT:REF /OPT:ICF)
+	target_link_options(flyover-viewer PRIVATE /DEBUG /OPT:REF /OPT:ICF)
 endif()
 
 if (Vulkan_FOUND)
@@ -438,7 +438,7 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
 #target_link_options(WoWFrontendLib PUBLIC "SHELL: -llibg")
 
-install(TARGETS WowStudio
+install(TARGETS flyover-viewer
 		EXPORT ${PROJECT_NAME}Targets
 		LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -452,10 +452,10 @@ if(WIN32)
 	# The signed FSR 3.1 DLL the upscaler loads by name; without it beside the executable the scene is stretched instead.
 	install(FILES "${PROJECT_SOURCE_DIR}/3rdparty/FidelityFX-SDK/PrebuiltSignedDLL/amd_fidelityfx_vk.dll" DESTINATION bin COMPONENT libraries)
 	# Also beside the built executable, so a run from the build tree gets FSR too.
-	add_custom_command(TARGET WowStudio POST_BUILD
+	add_custom_command(TARGET flyover-viewer POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different
 			"${PROJECT_SOURCE_DIR}/3rdparty/FidelityFX-SDK/PrebuiltSignedDLL/amd_fidelityfx_vk.dll"
-			"$<TARGET_FILE_DIR:WowStudio>")
+			"$<TARGET_FILE_DIR:flyover-viewer>")
 endif()
 
 if( MINGW )

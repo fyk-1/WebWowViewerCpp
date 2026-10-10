@@ -466,7 +466,7 @@ std::ios_base::Init a;
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     }
 
-    auto window = glfwCreateWindow(windowWidth, windowHeight, "WowMapViewer", nullptr, nullptr);
+    auto window = glfwCreateWindow(windowWidth, windowHeight, "flyover-viewer", nullptr, nullptr);
 
 #ifdef LINK_VULKAN
     vkCallInitCallback callback;
