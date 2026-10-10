@@ -2195,16 +2195,29 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
         {
 //            ZoneScopedN("submit buffers");
             VkZone(uploadCmd, "submit buffers")
+
+            // Records are taken once per buffer, and only a buffer that has some pays for barriers.
+            struct PendingUpload {
+                HGBufferVLK buffer;
+                std::vector<VulkanCopyCommands> records;
+            };
+            std::vector<PendingUpload> pending;
+            pending.reserve(l_this->allBuffers.size());
             for (const auto& buffer : l_this->allBuffers) {
-                uploadCmd.submitFullMemoryBarrierPreWrite(buffer);
+                auto submitRecords = buffer.get()->getSubmitRecords();
+                if (submitRecords.get().empty())
+                    continue;
+                pending.push_back({buffer.get(), submitRecords.get()});
             }
 
-            for (const auto& buffer : l_this->allBuffers) {
-                uploadCmd.submitBufferUploads(buffer);
-            }
+            if (!pending.empty()) {
+                uploadCmd.submitUploadBatchBarrierPreWrite();
 
-            for (const auto& buffer : l_this->allBuffers) {
-                uploadCmd.submitFullMemoryBarrierPostWrite(buffer);
+                for (const auto& upload : pending) {
+                    uploadCmd.submitBufferUploads(upload.records);
+                }
+
+                uploadCmd.submitUploadBatchBarrierPostWrite();
             }
 
         }

@@ -67,7 +67,22 @@ class PagedComponentStorage {
     std::atomic<int> m_pageCount = 0;
     size_t m_totalSize = 0;
 
-    bool m_dirty = false;
+    // Span of ids written through getPtrMutable since the last take/clear: min in the low 32 bits,
+    // max in the high 32. One word, so a take can never see one end of a span without the other.
+    static constexpr uint64_t EMPTY_DIRTY_RANGE = 0x00000000FFFFFFFFull;
+    std::atomic<uint64_t> m_dirtyRange = EMPTY_DIRTY_RANGE;
+
+    void markDirty(uint32_t id) {
+        uint64_t cur = m_dirtyRange.load(std::memory_order_relaxed);
+        while (true) {
+            uint32_t curMin = (uint32_t) cur;
+            uint32_t curMax = (uint32_t) (cur >> 32);
+            if (id >= curMin && id <= curMax) return;
+
+            uint64_t next = (uint64_t) (std::min)(curMin, id) | ((uint64_t) (std::max)(curMax, id) << 32);
+            if (m_dirtyRange.compare_exchange_weak(cur, next, std::memory_order_relaxed)) return;
+        }
+    }
 public:
     void expand() {
         int count = m_pageCount.load(std::memory_order_relaxed);
@@ -85,7 +100,7 @@ public:
         auto pageOffset = offset % PageSize;
         if (pageIndex < 0 || pageIndex >= m_pageCount.load(std::memory_order_acquire))
             return nullptr;
-        m_dirty = true;
+        markDirty((uint32_t) offset);
         return &(*m_pages[pageIndex])[pageOffset];
     }
 
@@ -97,9 +112,37 @@ public:
         return &(*m_pages[pageIndex])[pageOffset];
     }
 
-    bool isDirty() const { return m_dirty; }
-    void clearDirty() { m_dirty = false; }
+    bool isDirty() const { return m_dirtyRange.load(std::memory_order_relaxed) != EMPTY_DIRTY_RANGE; }
+    void clearDirty() { m_dirtyRange.store(EMPTY_DIRTY_RANGE, std::memory_order_relaxed); }
 
+    // Returns the inclusive span of ids written since the last take/clear, and resets it.
+    // False when nothing was written.
+    bool takeDirtyRange(uint32_t &minId, uint32_t &maxId) {
+        uint64_t range = m_dirtyRange.exchange(EMPTY_DIRTY_RANGE, std::memory_order_acq_rel);
+        if (range == EMPTY_DIRTY_RANGE) return false;
+        minId = (uint32_t) range;
+        maxId = (uint32_t) (range >> 32);
+        return true;
+    }
+
+    // Copy `count` elements starting at id `first` into a contiguous destination buffer
+    template<typename U>
+    void copyRangeToBuffer(U *dest, size_t first, size_t count) const {
+        static_assert(std::is_same_v<T, U>, "Type mismatch in copyRangeToBuffer");
+        assert(first + count <= m_totalSize);
+        int pageCount = m_pageCount.load(std::memory_order_acquire);
+        while (count > 0) {
+            size_t pageIndex = first / PageSize;
+            if (pageIndex >= (size_t) pageCount) break;
+
+            size_t pageOffset = first % PageSize;
+            size_t toCopy = std::min<size_t>(count, PageSize - pageOffset);
+            std::memcpy(dest, m_pages[pageIndex]->data() + pageOffset, toCopy * sizeof(T));
+            dest += toCopy;
+            first += toCopy;
+            count -= toCopy;
+        }
+    }
 
     // Copy all pages into a contiguous destination buffer with type checking
     template<typename U>
@@ -208,6 +251,13 @@ public:
         return std::get<I - 1>(m_componentStorages).isDirty();
     }
 
+    // Take (and reset) the inclusive span of ids of component type I (1-based) written through
+    // getObjectById<I> since the last take/clear. False when nothing was written.
+    template<int I>
+    bool takeComponentDirtyRange(uint32_t &minId, uint32_t &maxId) {
+        static_assert(I > 0 && I <= ComponentAmount, "Component index out of range");
+        return std::get<I - 1>(m_componentStorages).takeDirtyRange(minId, maxId);
+    }
 
     // Clear the dirty flag for component type I (1-based)
     template<int I>
@@ -224,6 +274,12 @@ public:
         std::get<I - 1>(m_componentStorages).copyToBuffer(dest, count);
     }
 
+    // Copy `count` slots of component I starting at slot `first` to a destination buffer with type checking
+    template<int I, typename U>
+    void copyComponentRangeToBuffer(U *dest, size_t first, size_t count) const {
+        static_assert(I > 0 && I <= ComponentAmount, "Component index out of range");
+        std::get<I - 1>(m_componentStorages).copyRangeToBuffer(dest, first, count);
+    }
 
     // Get total capacity of component storage (number of slots, including dead ones)
     template<int I>

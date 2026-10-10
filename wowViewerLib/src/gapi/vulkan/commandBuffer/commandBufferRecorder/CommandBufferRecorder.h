@@ -16,6 +16,7 @@ class RenderPassHelper;
 class GCommandBuffer;
 class CommandBufferDebugLabel;
 class IMesh;
+struct VulkanCopyCommands;
 class ComputePipelineVLK;
 typedef std::shared_ptr<ComputePipelineVLK> HComputePipelineVLK;
 
@@ -106,8 +107,13 @@ public:
     void recordPipelineBufferBarrier(VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask, const std::vector<VkBufferMemoryBarrier> &imageBarrierData);
     void copyBufferToImage(VkBuffer buffer, VkImage image, const std::vector<VkBufferImageCopy> &regions);
     void submitBufferUploads(const std::shared_ptr<GBufferVLK> &bufferVLK);
+    // Records the copies of records already taken from GBufferVLK::getSubmitRecords()
+    void submitBufferUploads(const std::vector<VulkanCopyCommands> &submits);
     void submitFullMemoryBarrierPostWrite(const std::shared_ptr<GBufferVLK> &bufferVLK);
     void submitFullMemoryBarrierPreWrite(const std::shared_ptr<GBufferVLK> &bufferVLK);
+    // One memory barrier either side of a whole batch of uploads, replacing the per-buffer pair
+    void submitUploadBatchBarrierPreWrite();
+    void submitUploadBatchBarrierPostWrite();
 
     friend class RenderPassHelper;
 

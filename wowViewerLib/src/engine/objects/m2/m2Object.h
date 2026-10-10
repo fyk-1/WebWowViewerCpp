@@ -10,6 +10,7 @@ class M2ObjectListContainer;
 #define _USE_MATH_DEFINES
 
 #include <cstdint>
+#include <cstring>
 #include <oneapi/tbb/concurrent_unordered_set.h>
 #include <oneapi/tbb/parallel_sort.h>
 #include <unordered_set>
@@ -236,6 +237,11 @@ private:
 
 public:
     void setAABB(const CAaBox &aabb) {
+        // Any mutable access marks the slot for upload to the GPU, so an unchanged box is not written
+        const auto *current = m2Factory->getObjectByIdConst<1>(this->getObjectId());
+        if (current != nullptr && std::memcmp(current, &aabb, sizeof(CAaBox)) == 0)
+            return;
+
         *m2Factory->getObjectById<1>(this->getObjectId()) = aabb;
     }
 

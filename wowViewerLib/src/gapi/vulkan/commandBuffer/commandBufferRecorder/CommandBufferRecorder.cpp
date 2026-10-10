@@ -315,12 +315,15 @@ void CmdBufRecorder::submitBufferUploads(const std::shared_ptr<GBufferVLK> &buff
 
     auto submitRecords = bufferVLK->getSubmitRecords();
 
-    if (submitRecords.get().empty())
+    submitBufferUploads(submitRecords.get());
+}
+
+void CmdBufRecorder::submitBufferUploads(const std::vector<VulkanCopyCommands> &submits) {
+    if (submits.empty())
         return;
 
     std::vector<VkBufferMemoryBarrier> barrierVec = {{}};
 
-    const auto &submits = submitRecords.get();
     for (int i = 0; i < submits.size(); i++) {
         auto &submit = submits[i];
         if (submit.needsBarrier && !submit.copyRegions.empty()) {
@@ -393,6 +396,61 @@ void CmdBufRecorder::submitFullMemoryBarrierPreWrite(const std::shared_ptr<GBuff
     };
 
     this->recordPipelineBufferBarrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, barrierVec);
+}
+
+// robots@Impl: The stages and accesses below are every way the renderers touch an uploaded buffer (compute culling,
+// animation and particle sims, indirect draws, vertex/index fetch, uniform and storage reads, and transfer copies when a buffer is
+// resized). SHADER_WRITE is on both sides because the compute passes also write some of the uploaded buffers.
+static constexpr VkPipelineStageFlags UPLOAD_CONSUMER_STAGES =
+    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+    VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT |
+    VK_PIPELINE_STAGE_VERTEX_INPUT_BIT |
+    VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+    VK_PIPELINE_STAGE_TRANSFER_BIT;
+static constexpr VkAccessFlags UPLOAD_CONSUMER_ACCESS =
+    VK_ACCESS_SHADER_READ_BIT |
+    VK_ACCESS_SHADER_WRITE_BIT |
+    VK_ACCESS_INDIRECT_COMMAND_READ_BIT |
+    VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT |
+    VK_ACCESS_INDEX_READ_BIT |
+    VK_ACCESS_UNIFORM_READ_BIT |
+    VK_ACCESS_TRANSFER_READ_BIT;
+
+void CmdBufRecorder::submitUploadBatchBarrierPreWrite() {
+    VkMemoryBarrier barrier = {
+        VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+        nullptr,
+        UPLOAD_CONSUMER_ACCESS | VK_ACCESS_TRANSFER_WRITE_BIT,
+        VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT
+    };
+
+    vkCmdPipelineBarrier(
+        m_gCmdBuffer.m_cmdBuffer,
+        UPLOAD_CONSUMER_STAGES,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,
+        1, &barrier,
+        0, nullptr,
+        0, nullptr);
+}
+
+void CmdBufRecorder::submitUploadBatchBarrierPostWrite() {
+    VkMemoryBarrier barrier = {
+        VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+        nullptr,
+        VK_ACCESS_TRANSFER_WRITE_BIT,
+        UPLOAD_CONSUMER_ACCESS
+    };
+
+    vkCmdPipelineBarrier(
+        m_gCmdBuffer.m_cmdBuffer,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        UPLOAD_CONSUMER_STAGES,
+        0,
+        1, &barrier,
+        0, nullptr,
+        0, nullptr);
 }
 
 void CmdBufRecorder::setViewPort(ViewportType viewportType) {

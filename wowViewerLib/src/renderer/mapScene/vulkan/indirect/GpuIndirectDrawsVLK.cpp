@@ -187,7 +187,9 @@ std::shared_ptr<GpuIndirectDrawsVLK::FrameDrawData> GpuIndirectDrawsVLK::buildFr
 
 void GpuIndirectDrawsVLK::syncM2Aabbs() {
     ZoneScoped;
-    if (!m2Factory->isComponentDirty<1>()) return;
+    // Taken before the copy, so a write landing after it stays marked for the next frame
+    uint32_t dirtyMin, dirtyMax;
+    if (!m2Factory->takeComponentDirtyRange<1>(dirtyMin, dirtyMax)) return;
 
     size_t capacity = m2Factory->getComponentCapacity<1>();
     if (capacity > m_m2CullCapacity) {
@@ -195,19 +197,31 @@ void GpuIndirectDrawsVLK::syncM2Aabbs() {
     }
     if (capacity == 0) return;
 
-    m_m2AabbScratch.resize(capacity);
-    m2Factory->copyComponentToBuffer<1>(m_m2AabbScratch.data(), capacity);
+    // Upload the written span, plus the slots the factory grew by since the last sync (never uploaded)
+    size_t first = dirtyMin;
+    size_t last = std::min<size_t>(dirtyMax, capacity - 1);
+    if (capacity > m_syncedM2AabbCount) {
+        first = std::min<size_t>(first, m_syncedM2AabbCount);
+        last = capacity - 1;
+    }
+    if (first > last) {
+        m_syncedM2AabbCount = (uint32_t)capacity;
+        return;
+    }
+    size_t count = last - first + 1;
 
-    m_gpuAabbScratch.resize(capacity);
-    for (size_t i = 0; i < capacity; i++) {
+    m_m2AabbScratch.resize(count);
+    m2Factory->copyComponentRangeToBuffer<1>(m_m2AabbScratch.data(), first, count);
+
+    m_gpuAabbScratch.resize(count);
+    for (size_t i = 0; i < count; i++) {
         auto &src = m_m2AabbScratch[i];
         auto &dst = m_gpuAabbScratch[i];
         dst.min = mathfu::vec4_packed(mathfu::vec4(src.min.x, src.min.y, src.min.z, 1.0f));
         dst.max = mathfu::vec4_packed(mathfu::vec4(src.max.x, src.max.y, src.max.z, 1.0f));
     }
 
-    m_aabbBuffer->uploadData(m_gpuAabbScratch.data(), (int)(capacity * sizeof(GPUAabb)));
-    m2Factory->clearComponentDirty<1>();
+    m_aabbBuffer->uploadDataAtOffset(m_gpuAabbScratch.data(), (int)(count * sizeof(GPUAabb)), first * sizeof(GPUAabb));
     m_syncedM2AabbCount = (uint32_t)capacity;
 }
 
