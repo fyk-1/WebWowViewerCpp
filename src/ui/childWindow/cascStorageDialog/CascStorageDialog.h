@@ -35,6 +35,9 @@ public:
     // Opens the first saved storage, as a double-click on it would. False when there is none or it fails.
     bool openFirstStorage();
 
+    // Opens the build in the folder through the same callback, the entry never added to the list.
+    bool openBuild(const std::string& cascPath, const BuildDefinition& buildDef);
+
 private:
     HApiContainer m_api;
     StorageOpenCallback m_openCallback;

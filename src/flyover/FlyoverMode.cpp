@@ -1,6 +1,13 @@
 //
 // Flyover: `--flyover <file.json>` flies a PathCamera along a route, reports on stdout and takes commands on stdin.
 //
+// `--wow <dir> --product <name>` (each also as `--x=value`) opens that install's product, as `<dir>/.build.info`
+// spells it, instead of the first storage in cascStorages.json. One without the other is a usage error.
+// A failure to open the install exits 2.
+//
+// `--db <file>` (also `--db=<file>`) opens that SQLite file as the client database instead of `./export.db3`.
+// A file that is missing or fails to open exits 2 before any window exists.
+//
 
 #include "FlyoverMode.h"
 
@@ -28,6 +35,8 @@
 #include "FlyoverConfig.h"
 #include "../ui/FrontendUI.h"
 #include "../ui/childWindow/sceneWindow/SceneWindow.h"
+#include "../database/CSqliteDB.h"
+#include "../database/buildInfoParser/buildInfoParser.h"
 #include "../../3rdparty/nlohmann/json.hpp"
 #include "../../wowViewerLib/src/engine/camera/firstPersonCamera.h"
 #include "../../wowViewerLib/src/engine/camera/pathCamera.h"
@@ -120,6 +129,25 @@ namespace {
         }
         return true;
     }
+
+    enum class Found { Absent, Value, NoValue };
+
+    // `--name value` or `--name=value`.
+    Found findValue(int argc, char *argv[], const std::string &name, std::string &value) {
+        for (int i = 1; i < argc; i++) {
+            std::string argument = argv[i];
+            if (argument == name) {
+                if (i + 1 >= argc) return Found::NoValue;
+                value = argv[i + 1];
+                return Found::Value;
+            }
+            if (argument.rfind(name + "=", 0) == 0) {
+                value = argument.substr(name.size() + 1);
+                return value.empty() ? Found::NoValue : Found::Value;
+            }
+        }
+        return Found::Absent;
+    }
 }
 
 bool FlyoverMode::findArgument(int argc, char *argv[], std::string &routeFile) {
@@ -135,6 +163,39 @@ bool FlyoverMode::findArgument(int argc, char *argv[], std::string &routeFile) {
         }
     }
     return false;
+}
+
+bool FlyoverMode::findInstall(int argc, char *argv[], FlyoverInstall &install, std::string &error) {
+    const Found wow = findValue(argc, argv, "--wow", install.wowDir);
+    const Found product = findValue(argc, argv, "--product", install.product);
+    if (wow == Found::NoValue || product == Found::NoValue) {
+        error = std::string(wow == Found::NoValue ? "--wow" : "--product") + " needs a value";
+        return false;
+    }
+    if ((wow == Found::Value) != (product == Found::Value)) {
+        error = "--wow and --product go together";
+        return false;
+    }
+    return true;
+}
+
+bool FlyoverMode::findDatabase(int argc, char *argv[], std::string &file, std::string &error) {
+    if (findValue(argc, argv, "--db", file) == Found::NoValue) {
+        error = "--db needs a value";
+        return false;
+    }
+    return true;
+}
+
+bool FlyoverMode::canOpenDatabase(const std::string &file) {
+    // CSqliteDB opens with OPEN_CREATE, so a missing file is turned away first rather than made.
+    if (!std::ifstream(file, std::ios::binary).is_open()) return false;
+    try {
+        CSqliteDB probe(file);
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 void FlyoverMode::claimStdout() {
@@ -232,7 +293,58 @@ bool FlyoverMode::loadRoute(const std::string &file, FlyoverRoute &route, std::s
     return true;
 }
 
-bool FlyoverMode::start(const std::string &routeFile) {
+bool FlyoverMode::openInstall(const FlyoverInstall &install, std::string &error) {
+    const std::string buildInfoPath = install.wowDir + "/.build.info";
+    std::ifstream file(buildInfoPath, std::ios::binary);
+    if (!file.is_open()) {
+        error = "cannot read " + buildInfoPath;
+        return false;
+    }
+    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+    // The parser returns an unordered set, so each row goes through it on its own to keep the file's order.
+    std::vector<std::string> lines;
+    std::string line;
+    for (char c : content) {
+        if (c == '\n') {
+            lines.push_back(line);
+            line.clear();
+        } else if (c != '\r') {
+            line += c;
+        }
+    }
+    if (!line.empty()) lines.push_back(line);
+
+    BuildDefinition buildDef;
+    bool found = false;
+    try {
+        for (size_t i = 1; i < lines.size() && !found; i++) {
+            if (lines[i].empty()) continue;
+            std::string row = lines[0] + "\n" + lines[i];
+            for (const auto &definition : BuildInfoParser::parseFileContent(row)) {
+                if (definition.productName == install.product) {
+                    buildDef = definition;
+                    found = true;
+                }
+            }
+        }
+    } catch (const std::exception &exception) {
+        error = buildInfoPath + ": " + exception.what();
+        return false;
+    }
+    if (!found) {
+        error = buildInfoPath + " lists no product " + install.product;
+        return false;
+    }
+
+    if (!m_frontendUI.openBuild(install.wowDir, buildDef)) {
+        error = "could not open " + install.product + " in " + install.wowDir;
+        return false;
+    }
+    return true;
+}
+
+bool FlyoverMode::start(const std::string &routeFile, const FlyoverInstall &install) {
     FlyoverRoute route;
     std::string error;
     if (!loadRoute(routeFile, route, error)) {
@@ -240,7 +352,13 @@ bool FlyoverMode::start(const std::string &routeFile) {
         return false;
     }
 
-    if (!m_frontendUI.openFirstStorage()) {
+    if (install.given()) {
+        if (!openInstall(install, error)) {
+            std::cerr << "flyover: " << error << std::endl;
+            m_failureExitCode = 2;
+            return false;
+        }
+    } else if (!m_frontendUI.openFirstStorage()) {
         std::cerr << "flyover: could not open the first storage in cascStorages.json" << std::endl;
         return false;
     }

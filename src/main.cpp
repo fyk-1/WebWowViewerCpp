@@ -327,9 +327,24 @@ int main(int argc, char *argv[]) {
 
     std::string flyoverRouteFile;
     const bool flyoverRequested = FlyoverMode::findArgument(argc, argv, flyoverRouteFile);
+    FlyoverInstall flyoverInstall;
+    std::string flyoverDatabase;
     if (flyoverRequested) {
         // Before any output, so that stdout carries protocol lines only.
         FlyoverMode::claimStdout();
+        std::string usageError;
+        if (!FlyoverMode::findInstall(argc, argv, flyoverInstall, usageError)) {
+            std::cerr << "flyover: " << usageError << std::endl;
+            return 2;
+        }
+        if (!FlyoverMode::findDatabase(argc, argv, flyoverDatabase, usageError)) {
+            std::cerr << "flyover: " << usageError << std::endl;
+            return 2;
+        }
+        if (!flyoverDatabase.empty() && !FlyoverMode::canOpenDatabase(flyoverDatabase)) {
+            std::cerr << "flyover: cannot open database " << flyoverDatabase << std::endl;
+            return 2;
+        }
     }
     int exitCode = 0;
     if (!flyoverRequested) {
@@ -411,7 +426,9 @@ std::ios_base::Init a;
 
     SceneComposer sceneComposer = SceneComposer(apiContainer);
 
-    frontendUI = std::make_shared<FrontendUI>(apiContainer);
+    frontendUI = flyoverDatabase.empty()
+        ? std::make_shared<FrontendUI>(apiContainer)
+        : std::make_shared<FrontendUI>(apiContainer, flyoverDatabase);
 
     glfwSetWindowUserPointer(window, &apiContainer);
     glfwSetKeyCallback(window, onKey);
@@ -477,10 +494,10 @@ std::ios_base::Init a;
     std::unique_ptr<FlyoverMode> flyover;
     if (flyoverRequested) {
         flyover = std::make_unique<FlyoverMode>(*frontendUI, window);
-        if (flyover->start(flyoverRouteFile)) {
+        if (flyover->start(flyoverRouteFile, flyoverInstall)) {
             flyoverMode = flyover.get();
         } else {
-            exitCode = 1;
+            exitCode = flyover->failureExitCode();
             glfwSetWindowShouldClose(window, GLFW_TRUE);
         }
     }

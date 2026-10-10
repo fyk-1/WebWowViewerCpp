@@ -23,7 +23,8 @@ class FrontendUI : public IScene, public std::enable_shared_from_this<FrontendUI
 public:
     void createDatabaseHandler();
 
-    FrontendUI(HApiContainer api);
+    // The client database is `databaseFile`, `./export.db3` unless the caller names another.
+    FrontendUI(HApiContainer api, const std::string &databaseFile = "./export.db3");
     ~FrontendUI() override {
         ImGui::DestroyContext(this->imguiContext);
     };
@@ -53,9 +54,12 @@ public:
     std::shared_ptr<SceneWindow> getBackgroundScene() { return m_backgroundScene; }
     HApiContainer getApi() { return m_api; }
     bool openFirstStorage();
+    // Opens the build in the folder, as the storage dialog does for a folder the user picked.
+    bool openBuild(const std::string &cascPath, const BuildDefinition &buildDef);
     void composeFlyoverUI();
 private:
     bool m_flyoverMode = false;
+    std::string m_databaseFile;
     std::shared_ptr<StorageNotifications> m_storageNotifications = std::make_shared<StorageNotifications>();
     ImGuiContext* imguiContext = nullptr;
     std::shared_ptr<FrontendUIRenderer> m_uiRenderer;

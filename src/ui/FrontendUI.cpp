@@ -21,8 +21,9 @@
 #include "../../wowViewerLib/src/renderer/frame/FrameProfile.h"
 #include "../../3rdparty/filesystem_impl/include/ghc/filesystem.hpp"
 
-FrontendUI::FrontendUI(HApiContainer api) {
+FrontendUI::FrontendUI(HApiContainer api, const std::string &databaseFile) {
     m_api = api;
+    m_databaseFile = databaseFile;
 
     this->createDatabaseHandler();
     m_uiRenderer = FrontendUIRendererFactory::createForwardRenderer(m_api->hDevice);
@@ -55,6 +56,10 @@ void FrontendUI::composeFlyoverUI() {
 
 bool FrontendUI::openFirstStorage() {
     return m_cascStorageDialog && m_cascStorageDialog->openFirstStorage();
+}
+
+bool FrontendUI::openBuild(const std::string &cascPath, const BuildDefinition &buildDef) {
+    return m_cascStorageDialog && m_cascStorageDialog->openBuild(cascPath, buildDef);
 }
 
 
@@ -201,9 +206,9 @@ inline bool fileExistsNotNull (const std::string& name) {
 
 void FrontendUI::createDatabaseHandler() {
     bool useEmptyDatabase = false;
-    if (fileExistsNotNull("./export.db3")) {
+    if (fileExistsNotNull(m_databaseFile)) {
         try{
-            m_api->databaseHandler = std::make_shared<CSqliteDB>("./export.db3");
+            m_api->databaseHandler = std::make_shared<CSqliteDB>(m_databaseFile);
         } catch(std::exception const& e) {
             std::cout << "Failed to open database: " << e.what() << std::endl;
             useEmptyDatabase = true;

@@ -95,6 +95,13 @@ bool CascStorageDialog::openFirstStorage() {
     return tryOpenStorage(m_storages.front());
 }
 
+bool CascStorageDialog::openBuild(const std::string& cascPath, const BuildDefinition& buildDef) {
+    CascStorageEntry entry;
+    entry.cascLocalFolder = cascPath;
+    entry.buildDef = buildDef;
+    return tryOpenStorage(entry);
+}
+
 bool CascStorageDialog::tryOpenStorage(const CascStorageEntry& entry) {
     if (m_openCallback) {
         BuildDefinition buildDef = entry.buildDef;
