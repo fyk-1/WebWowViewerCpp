@@ -139,6 +139,22 @@ float calculateClassicFog(in PSFog fogData, float viewDistance) {
     return 0.0f;
 }
 
+// Mode 2, legacy fog data: fog rising from the ground. Its density is y per yard at the terrain under the camera and
+// falls off by e every falloff yards above it; the visibility is exp of minus the density integrated along the view
+// ray, so a ray from high up to the ground meets little fog while a long ray near the ground meets much.
+// classicFogParams: y the ground density, w the falloff. densityParams.w is the camera's height above the terrain,
+// heightDelta the point's height above the camera.
+float calculateHeightClassicFog(in PSFog fogData, float viewDistance, float heightDelta) {
+    vec4 params = fogData.classicFogParams;
+    float falloff = max(params.w, 1.0f);
+    float a = max(fogData.densityParams.w, 0.0f);
+    float b = max(fogData.densityParams.w + heightDelta, 0.0f);
+    float densityA = exp(-a / falloff);
+    float densityB = exp(-b / falloff);
+    float meanDensity = abs(b - a) > 0.01f ? falloff * (densityA - densityB) / (b - a) : densityA;
+    return exp(-params.y * viewDistance * meanDensity);
+}
+
 // Calculates height-adjusted vertex position for fog calculations
 vec3 calculateAdjustedViewPosition(in vec3 vertexInViewSpace, in vec3 viewSpaceUp, float fogZScalar) {
     float dotVal = dot(viewSpaceUp, vertexInViewSpace);
@@ -293,7 +309,9 @@ vec4 makeFog2(const in PSFog fogData, in vec4 final, in vec3 uViewUp, in vec3 ve
     float viewDistance = length(vertexInViewSpace);
 
     // First try classic fog calculation
-    float fogFactor = calculateClassicFog(fogData, viewDistance);
+    float fogFactor = fogData.classicFogParams.x == 2.0f
+        ? calculateHeightClassicFog(fogData, viewDistance, dot(uViewUp, vertexInViewSpace))
+        : calculateClassicFog(fogData, viewDistance);
     bool usingClassicFog = bool(fogData.classicFogParams.x);
 
     // If classic fog is not enabled, use advanced fog calculation

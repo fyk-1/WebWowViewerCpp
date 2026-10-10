@@ -91,7 +91,7 @@ namespace {
     X(Float, fsrSharpness)     X(Float, fsrOutputScale)     X(Float, minM2ScreenPercent) \
     X(Float, groundAltitude)   X(Float, minM2ScreenPercentAir) \
     X(Int, woweeShaders) \
-    X(Float, fogDensityIncreaser) \
+    X(Float, fogDensityIncreaser)     X(Float, classicFogStrength) X(Float, classicFogFalloff) \
     X(Float, adtSpecMult) \
     X(Float, currentGlow) \
     X(Double, adtTTLWithoutUpdate) \

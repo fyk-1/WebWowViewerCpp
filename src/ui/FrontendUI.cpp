@@ -220,6 +220,8 @@ void FrontendUI::createDatabaseHandler() {
     if (useEmptyDatabase) {
         m_api->databaseHandler = std::make_shared<CEmptySqliteDB>();
     }
+    if (m_api->databaseHandler != nullptr)
+        m_api->getConfig()->classicFog = m_api->databaseHandler->usesClassicFog();
 }
 
 void FrontendUI::createFontTexture() {

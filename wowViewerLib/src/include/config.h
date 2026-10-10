@@ -167,6 +167,12 @@ public:
     bool fsrResetRequested = false;
 
     float fogDensityIncreaser = 0;
+    // Set when the database opens, from IClientDatabase::usesClassicFog: the map renderer then draws fog that rises from
+    // the ground, densest at the terrain under the camera and thinning by a factor of e every classicFogFalloff yards
+    // above it. At classicFogStrength 1 the ground density is the game's: 90 % cover at the zone's FogEnd.
+    bool classicFog = false;
+    float classicFogStrength = 1;
+    float classicFogFalloff = 60;
     // Set by the map every frame: the camera's height above the terrain under it, averaged over several seconds, in yards.
     float cameraAltitude = 0;
 

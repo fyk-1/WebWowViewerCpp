@@ -120,6 +120,9 @@ private:
     // A database of a pre-Cataclysm build stores LightData.FogEnd in 1/36 of a yard, where later builds store yards.
     // Told apart by the newest expansion the Map table lists.
     bool m_legacyFogUnits = false;
+public:
+    bool usesClassicFog() override { return m_legacyFogUnits; }
+private:
     std::vector<SkySceneXPlayerConditionRecord> m_skySceneXPlayerConditionCache;
 
     bool getHasLiquidTypeXTexture(SQLite::Database &sqliteDatabase) {

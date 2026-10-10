@@ -254,6 +254,15 @@ void MapSceneRenderer::updateSceneWideChunk(const std::shared_ptr<IBufferChunkVe
                 fogResult.FogDensity * densityMultFix,
                 0);
             fogData.classicFogParams = mathfu::vec4(0, 0, 0, 0);
+            if (m_config->classicFog && !m_config->disableFog && fdd->FogDataFound) {
+                // Legacy fog data: fog rising from the ground. Its density at ground level covers 90 % at the zone's
+                // FogEnd, times classicFogStrength. The shader thins it with height from the camera's altitude, carried
+                // in densityParams.w, which classic mode leaves unread.
+                float zoneEnd = std::max(fogResult.FogEnd, 1.0f);
+                float groundDensity = std::log(10.0f) / zoneEnd * std::max(m_config->classicFogStrength, 0.0f);
+                fogData.classicFogParams = mathfu::vec4(2.0f, groundDensity, 0.0f, std::max(m_config->classicFogFalloff, 1.0f));
+                fogData.densityParams.w = std::max(m_config->cameraAltitude, 0.0f);
+            }
             fogData.heightPlane = heightPlane;
             fogData.color_and_heightRate = mathfu::vec4(fogResult.FogColor, fogResult.FogHeightScaler
     //            * 0.01

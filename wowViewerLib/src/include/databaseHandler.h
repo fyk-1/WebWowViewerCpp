@@ -11,6 +11,8 @@
 
 class IClientDatabase {
 public:
+    // True for a pre-Cataclysm build's data, whose fog runs from FogEnd * FogScaler to FogEnd, in yards once read.
+    virtual bool usesClassicFog() { return false; }
     virtual void getMapArray(std::vector<MapRecord> &mapRecords) = 0;
     virtual bool getMapById(int mapId, MapRecord &mapRecord) = 0;
     virtual AreaRecord getArea(int areaId) = 0;
