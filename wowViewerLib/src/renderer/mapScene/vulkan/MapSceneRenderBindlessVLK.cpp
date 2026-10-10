@@ -132,6 +132,18 @@ static const ShaderConfig wmoBindlessGBufferShaderConfig = {
     wmoBindlessShaderConfig.typeOverrides
 };
 
+// The liquid render mode is read by fragment shaders through a storage buffer and rewritten between
+// passes with vkCmdUpdateBuffer, so each rewrite waits for every draw recorded before it.
+static void renderModeWriteBarrier(VkCommandBuffer cmdBuf) {
+    VkMemoryBarrier memBarrier = {VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    memBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    memBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    vkCmdPipelineBarrier(cmdBuf,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 1, &memBarrier, 0, nullptr, 0, nullptr);
+}
+
 static const ShaderConfig adtBindlessShaderConfig = {
     "bindless/adt/forward",
     "bindless/adt/forward",
@@ -2356,6 +2368,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                         auto debugHelper = frameBufCmd.beginDebugLabel("Below Liquid Pass", {0, 0, 0.5f});
                         // Set render mode to "below liquid" (0)
                         uint32_t modeBelow = 0;
+                        renderModeWriteBarrier(frameBufCmd.getNativeCmdBuffer());
                         vkCmdUpdateBuffer(frameBufCmd.getNativeCmdBuffer(),
                                           l_this->m_renderModeBuffer->getGPUBuffer(),
                                           0, sizeof(uint32_t), &modeBelow);
@@ -2404,6 +2417,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                         auto debugHelper = frameBufCmd.beginDebugLabel("Above liquid pass", {0, 0, 0.5f});
                         // Set render mode to "above liquid" (1)
                         uint32_t modeAbove = 1;
+                        renderModeWriteBarrier(frameBufCmd.getNativeCmdBuffer());
                         vkCmdUpdateBuffer(frameBufCmd.getNativeCmdBuffer(),
                                           l_this->m_renderModeBuffer->getGPUBuffer(),
                                           0, sizeof(uint32_t), &modeAbove);
@@ -2450,6 +2464,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                     // Reset render mode to "all" (2) for subsequent passes
                     {
                         uint32_t modeAll = 2;
+                        renderModeWriteBarrier(frameBufCmd.getNativeCmdBuffer());
                         vkCmdUpdateBuffer(frameBufCmd.getNativeCmdBuffer(),
                                           l_this->m_renderModeBuffer->getGPUBuffer(),
                                           0, sizeof(uint32_t), &modeAll);
