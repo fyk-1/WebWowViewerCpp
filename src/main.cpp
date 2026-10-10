@@ -591,12 +591,15 @@ std::ios_base::Init a;
 
         double currentDeltaAfterDraw = (glfwGetTime() - currentFrame)*(1000.0f);
         lastFrame = currentFrame;
-        if (currentDeltaAfterDraw < 5.0) {
+        // A frame-rate cap sleeps out the rest of its frame time; uncapped keeps the 5 ms floor.
+        double frameRateCap = apiContainer->getConfig()->frameRateCap;
+        double minFrameMs = frameRateCap > 0 ? std::max(5.0, 1000.0 / frameRateCap) : 5.0;
+        if (currentDeltaAfterDraw < minFrameMs) {
             using namespace std::chrono_literals;
 #ifdef WIN32
-            sqlite3_sleep(5.0f-currentDeltaAfterDraw);
+            sqlite3_sleep((int)(minFrameMs-currentDeltaAfterDraw));
 #else
-            std::this_thread::sleep_for(std::chrono::milliseconds((int)(5.0-currentDeltaAfterDraw)));
+            std::this_thread::sleep_for(std::chrono::milliseconds((int)(minFrameMs-currentDeltaAfterDraw)));
 #endif
         }
 

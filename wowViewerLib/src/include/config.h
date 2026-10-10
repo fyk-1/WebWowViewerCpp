@@ -121,6 +121,8 @@ public:
     // Yards ahead on a camera's route whose map tiles are loaded before they are seen. 0 or less turns it off.
     // Only a camera that knows its route answers it (the flyover path camera).
     float preloadAhead = 1200;
+    // Frames per second the main loop holds to at most. 0 or less leaves it uncapped.
+    float frameRateCap = 0;
 
     float fogDensityIncreaser = 0;
 

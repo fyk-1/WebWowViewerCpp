@@ -51,6 +51,10 @@ the scene and the cameras live.
 Far plane: flyover sets farPlaneForCulling to 1000 at startup, before the route file's config is applied,
 so fog at full strength at 1000 yards has geometry behind it. The normal UI mode keeps 400.
 
+Frame rate: flyover sets frameRateCap to 30 the same way. The swapchain presents in mailbox mode, which
+never waits for vsync, so an uncapped viewer renders as fast as the GPU allows; a camera at taxi speed
+reads smooth at 30. The normal UI mode stays uncapped.
+
 End of stdin queues quit, so a host that dies leaves no orphaned viewer. A route command for the same map
 whose point list matches the current route (count, and coordinate sum within 0.01) is a refresh: distance
 and camera stay, and speed, lookAhead, loop, mode and config apply. A differing point list restarts the
@@ -228,6 +232,7 @@ bool FlyoverMode::start(const std::string &routeFile) {
     m_api = m_frontendUI.getApi();
     // Before the route's config, so a file value still wins.
     m_api->getConfig()->farPlaneForCulling = 1000;
+    m_api->getConfig()->frameRateCap = 30;
     applyRoute(route, true);
 
     std::thread(&FlyoverMode::readStdin, m_queue).detach();
