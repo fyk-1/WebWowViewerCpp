@@ -5,7 +5,11 @@
 #ifndef AWEBWOWVIEWERCPP_ENTITYACTORSFACTORY_H
 #define AWEBWOWVIEWERCPP_ENTITYACTORSFACTORY_H
 
+#include <array>
+#include <atomic>
+#include <cstdlib>
 #include <memory>
+#include <typeinfo>
 #include <functional>
 #include <iostream>
 #include <mutex>
@@ -20,50 +24,66 @@ void addEntityDeallocationRecord(std::function<void()> callback);
 void executeEntityDeallocators(bool forceDealloc);
 
 
+// The most blocks or pages one storage holds. The tables of them are allocated once at this size and never move, since
+// readers on the cull and render threads index them without the factory's lock while createObject grows them: a growing
+// std::vector reallocated under such a reader, which then read a moved-from block and got null or garbage back.
+static constexpr int EntityMaxBlocks = 4096;
+
 // Block-based memory pool for MainClass (supports placement new/delete)
 template<uint16_t MemoryBlockSize, typename T>
 class MainClassBlockPool {
     static constexpr int BlockSizeInBytes = MemoryBlockSize * sizeof(T);
-    std::vector<std::vector<uint8_t>> objectPools;
+    std::unique_ptr<std::unique_ptr<uint8_t[]>[]> objectPools = std::make_unique<std::unique_ptr<uint8_t[]>[]>(EntityMaxBlocks);
+    // Published after the block is in place, so a reader that sees the count sees the block.
+    std::atomic<int> blockCount = 0;
 public:
     inline T * getPtrFromOffset(int offset) const {
         auto blockIndex = offset / MemoryBlockSize;
         auto blockOffset = (offset % MemoryBlockSize);
         auto byteOffset = blockOffset * sizeof(T);
 
-        if (blockIndex >= (int)objectPools.size())
-            return nullptr;
-
-        auto &objectPool = objectPools[blockIndex];
-        if (byteOffset >= objectPool.size())
+        if (blockIndex < 0 || blockIndex >= blockCount.load(std::memory_order_acquire))
             return nullptr;
 
         return (T *)&objectPools[blockIndex][byteOffset];
     }
     void expand() {
-        auto &newMemory = objectPools.emplace_back();
-        newMemory.resize(BlockSizeInBytes);
+        int count = blockCount.load(std::memory_order_relaxed);
+        if (count >= EntityMaxBlocks) {
+            std::cerr << "EntityFactory: more than " << EntityMaxBlocks << " blocks of " << typeid(T).name() << std::endl;
+            std::abort();
+        }
+        objectPools[count] = std::make_unique<uint8_t[]>(BlockSizeInBytes);
+        blockCount.store(count + 1, std::memory_order_release);
     }
 };
 
 // Paged storage for auxiliary component types
-// Each page is a fixed-size array. Pointers into pages remain stable on growth.
+// Each page is a fixed-size array. Pointers into pages remain stable on growth, and so does the table of pages.
 // copyToBuffer assembles pages into a contiguous destination (e.g. GPU staging buffer).
 template<uint16_t PageSize, typename T>
 class PagedComponentStorage {
-    std::vector<std::unique_ptr<std::array<T, PageSize>>> m_pages;
+    std::unique_ptr<std::unique_ptr<std::array<T, PageSize>>[]> m_pages = std::make_unique<std::unique_ptr<std::array<T, PageSize>>[]>(EntityMaxBlocks);
+    std::atomic<int> m_pageCount = 0;
     size_t m_totalSize = 0;
+
     bool m_dirty = false;
 public:
     void expand() {
-        m_pages.push_back(std::make_unique<std::array<T, PageSize>>());
+        int count = m_pageCount.load(std::memory_order_relaxed);
+        if (count >= EntityMaxBlocks) {
+            std::cerr << "EntityFactory: more than " << EntityMaxBlocks << " pages of " << typeid(T).name() << std::endl;
+            std::abort();
+        }
+        m_pages[count] = std::make_unique<std::array<T, PageSize>>();
+        m_pageCount.store(count + 1, std::memory_order_release);
         m_totalSize += PageSize;
     }
 
     inline T * getPtrMutable(int offset) {
         auto pageIndex = offset / PageSize;
         auto pageOffset = offset % PageSize;
-        if (pageIndex < 0 || pageIndex >= (int)m_pages.size())
+        if (pageIndex < 0 || pageIndex >= m_pageCount.load(std::memory_order_acquire))
             return nullptr;
         m_dirty = true;
         return &(*m_pages[pageIndex])[pageOffset];
@@ -72,7 +92,7 @@ public:
     inline const T * getPtrConst(int offset) const {
         auto pageIndex = offset / PageSize;
         auto pageOffset = offset % PageSize;
-        if (pageIndex < 0 || pageIndex >= (int)m_pages.size())
+        if (pageIndex < 0 || pageIndex >= m_pageCount.load(std::memory_order_acquire))
             return nullptr;
         return &(*m_pages[pageIndex])[pageOffset];
     }
@@ -80,13 +100,16 @@ public:
     bool isDirty() const { return m_dirty; }
     void clearDirty() { m_dirty = false; }
 
+
     // Copy all pages into a contiguous destination buffer with type checking
     template<typename U>
     void copyToBuffer(U *dest, size_t count) const {
         static_assert(std::is_same_v<T, U>, "Type mismatch in copyToBuffer");
         assert(count <= m_totalSize);
         size_t remaining = count;
-        for (auto &page : m_pages) {
+        int pageCount = m_pageCount.load(std::memory_order_acquire);
+        for (int i = 0; i < pageCount; i++) {
+            auto &page = m_pages[i];
             size_t toCopy = std::min<size_t>(remaining, (size_t)PageSize);
             if (toCopy == 0) break;
             std::memcpy(dest, page->data(), toCopy * sizeof(T));
@@ -185,6 +208,7 @@ public:
         return std::get<I - 1>(m_componentStorages).isDirty();
     }
 
+
     // Clear the dirty flag for component type I (1-based)
     template<int I>
     void clearComponentDirty() {
@@ -199,6 +223,7 @@ public:
         static_assert(I > 0 && I <= ComponentAmount, "Component index out of range");
         std::get<I - 1>(m_componentStorages).copyToBuffer(dest, count);
     }
+
 
     // Get total capacity of component storage (number of slots, including dead ones)
     template<int I>
