@@ -251,6 +251,8 @@ set(SOURCE_FILES
 		src/flyover/FlyoverMode.h
 		src/flyover/FlyoverConfig.cpp
 		src/flyover/FlyoverConfig.h
+		src/flyover/CrashStack.cpp
+		src/flyover/CrashStack.h
 		src/ui/childWindow/customObjectsWindow/CustomObjectsWindow.cpp
 		src/ui/childWindow/customObjectsWindow/CustomObjectsWindow.h
 		src/ui/imguiLib/ImGuizmo/ImGuizmo.cpp
@@ -309,6 +311,10 @@ endif()
 add_library(WoWFrontendLib STATIC ${SOURCE_FILES} ${SOURCE_FILES_VULKAN} ${PROTOBUF_FILES_})
 add_executable(WowStudio src/main.cpp)
 target_link_libraries(WowStudio WoWFrontendLib)
+if (MSVC)
+	# A PDB with public symbols beside the exe, which the crash handler reads for its stack; the optimisations /DEBUG turns off are kept on.
+	target_link_options(WowStudio PRIVATE /DEBUG /OPT:REF /OPT:ICF)
+endif()
 
 if (Vulkan_FOUND)
 	add_definitions(-DLINK_VULKAN)

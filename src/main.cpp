@@ -9,6 +9,7 @@
 #ifdef _WIN32
  #include <errhandlingapi.h>
  #include <libloaderapi.h>
+ #include "flyover/CrashStack.h"
 #endif
 
 // Include GLEW. Always include it before gl.h and glfw.h, since it's a bit magic.
@@ -330,6 +331,12 @@ extern "C" void my_function_to_handle_aborts(int signal_number)
       (with a dialog box on Windows).
      */
 
+#ifdef _WIN32
+    // A fault on the main thread reaches here through the CRT's SEH filter, which keeps the original exception for the
+    // signal handler: walk that, since the breakpoint below only shows this handler.
+    fprintf(stderr, "crash: signal %d\n", signal_number);
+    if (auto info = (EXCEPTION_POINTERS *) *__pxcptinfoptrs()) printCrashStack(info);
+#endif
     std::cout << "HELLO" << std::endl;
     __debugbreak();
 }
@@ -339,6 +346,12 @@ extern "C" void my_function_to_handle_aborts(int signal_number)
 
 #ifdef _WIN32
 void beforeCrash() {
+    // An uncaught exception lands here through std::terminate: name it before the breakpoint the handler below walks.
+    if (auto pending = std::current_exception()) {
+        try { std::rethrow_exception(pending); }
+        catch (const std::exception &e) { fprintf(stderr, "crash: uncaught exception: %s\n", e.what()); }
+        catch (...) { fputs("crash: uncaught exception of an unknown type\n", stderr); }
+    }
     std::cout << "HELLO" << std::endl;
     __debugbreak();
 }
@@ -349,12 +362,14 @@ static LONG WINAPI windows_exception_handler(EXCEPTION_POINTERS * ExceptionInfo)
     {
         case EXCEPTION_ACCESS_VIOLATION:
             fputs("Error: EXCEPTION_ACCESS_VIOLATION\n", stderr);
+            printCrashStack(ExceptionInfo);
             break;
         case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
             fputs("Error: EXCEPTION_ARRAY_BOUNDS_EXCEEDED\n", stderr);
             break;
         case EXCEPTION_BREAKPOINT:
             fputs("Error: EXCEPTION_BREAKPOINT\n", stderr);
+            printCrashStack(ExceptionInfo);
             break;
     }
 	return 0;

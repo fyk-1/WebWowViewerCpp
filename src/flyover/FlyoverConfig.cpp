@@ -23,7 +23,7 @@ that path. A field is added or removed here and nowhere else.
 The debug toggles that break the frame are left out on purpose: stopBufferUpdates, stepBufferUpdate,
 doubleCameraDebug, controlSecondCamera, swapMainAndDebug, cameraM2 and drawDepthBuffer. The structs
 liquidColors, skyColors and fogResult, the sky-scene condition set and the river override holder are not
-in the table either.
+in the table either, nor is fsrResetRequested, a request that FlyoverMode sets and the renderer clears.
 */
 
 namespace {
@@ -38,6 +38,7 @@ namespace {
 #define FLYOVER_CONFIG_FIELDS(X) \
     X(Bool, renderAdt) \
     X(Bool, renderWMO) \
+    X(Bool, skipUnreachableWmoGroups) \
     X(Bool, renderM2) \
     X(Bool, renderM2Decals) \
     X(Bool, renderRibbons) \
@@ -63,6 +64,7 @@ namespace {
     X(Bool, drawM2BB) \
     X(Bool, enableObjectPicking) \
     X(Bool, enableFXAA) \
+    X(Bool, fsrUpscaling) \
     X(Bool, enableLightBuffer) \
     X(Bool, useWotlkLogic) \
     X(Bool, disableGlow) \
@@ -86,6 +88,8 @@ namespace {
     X(Float, preloadAhead) \
     X(Float, frameRateCap) \
     X(Float, renderScale) \
+    X(Float, fsrSharpness)     X(Float, fsrOutputScale)     X(Float, minM2ScreenPercent) \
+    X(Int, woweeShaders) \
     X(Float, fogDensityIncreaser) \
     X(Float, adtSpecMult) \
     X(Float, currentGlow) \

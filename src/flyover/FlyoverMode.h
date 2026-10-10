@@ -28,6 +28,8 @@ struct FlyoverRoute {
     float lookAhead = 60.0f;
     bool loop = true;
     bool freeMode = false;
+    // A route of one point: free mode only, a switch to the path is refused.
+    bool freeOnly = false;
     int timeOfDay = -1;
     // Config fields as name and value text, in file order.
     std::vector<std::pair<std::string, std::string>> config;
@@ -49,9 +51,8 @@ public:
     void update();
     // The F key.
     void requestToggleMode();
-
 private:
-    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, ModeToggle, Route, Config, ConfigDump, Quit };
+    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, ModeToggle, Look, Move, FreeSpeed, Route, Config, ConfigDump, Quit };
     struct Command {
         CommandType type;
         std::string name;
@@ -83,6 +84,7 @@ private:
     std::shared_ptr<PathCamera> m_path;
     std::shared_ptr<FirstPersonCamera> m_free;
     bool m_isFree = false;
+    float m_freeSpeed = 0.3f;
     bool m_paused = false;
     int m_mapId = -1;
     int m_wdtFileId = -1;
