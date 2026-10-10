@@ -969,7 +969,9 @@ bool WmoObject::startTraversingWMOGroup(
         }
 
         for (int i = 0; i< mainGeom->groupsLen; i++) {
-            if ((mainGeom->groups[i].flags.EXTERIOR) > 0 || !m_api->getConfig()->usePortalCulling) { //exterior
+            //Interior groups lit from outside are open to the sky: Stormwind (107243) is 305 of them behind one EXTERIOR group
+            //whose four portals are all walls, so from above the portal walk reached none of the city. They start the walk too.
+            if ((mainGeom->groups[i].flags.EXTERIOR) > 0 || (mainGeom->groups[i].flags.EXTERIOR_LIT) > 0 || !m_api->getConfig()->usePortalCulling) { //exterior
                 if (this->groupObjects[i] != nullptr) {
                     bool drawDoodads, drawGroup;
                     resolveGroupVisibility(i, drawDoodads, drawGroup);
@@ -1047,7 +1049,7 @@ void WmoObject::triggerExteriorGroupLoads(WMOGroupListContainer &wmoGroupArray) 
         auto &flags = mainGeom->groups[i].flags;
         //Same group filters as the exterior branches of startTraversingWMOGroup
         bool groupIsLoadTriggered = hasPortals
-            ? ((flags.EXTERIOR > 0) || portalCullingOff)
+            ? ((flags.EXTERIOR > 0) || (flags.EXTERIOR_LIT > 0) || portalCullingOff)
             : ((flags.EXTERIOR > 0) || (flags.EXTERIOR_CULL > 0) || (flags.ALWAYSDRAW > 0) || portalCullingOff);
         if (!groupIsLoadTriggered) continue;
 
@@ -1117,7 +1119,9 @@ void WmoObject::drainPortalTraversal(
         //Copy the item out: the worklist grows inside the loop
         PortalTraversalWorkItem workItem = portalWorkList[workIndex];
 
-        if (workItem.localLevel > 8) continue;
+        //Only a runaway guard: duplicates are portalCrossedFrustums' job. Stormwind (107243) nests its
+        //groups up to 28 portals deep from its one EXTERIOR group, and a cap of 8 left most of the city out.
+        if (workItem.localLevel > 64) continue;
 
         int groupId = workItem.groupId;
         auto &localFrustumPlanes = workItem.frustumPlanes;
@@ -1145,11 +1149,16 @@ void WmoObject::drainPortalTraversal(
         }
 
         for (int j = moprIndex; j < moprIndex+numItems; j++) {
+            //Deeper walks reach groups the depth cap of 8 never did: a reference, portal or group out of range is skipped.
+            if (j >= mainGeom->portalReferencesLen) break;
             const SMOPortalRef * relation = &mainGeom->portalReferences[j];
+            if (relation->portal_index >= mainGeom->portalsLen) continue;
             const SMOPortal * portalInfo = &mainGeom->portals[relation->portal_index];
 
             int nextGroup = relation->group_index;
             const C4Plane &plane = portalInfo->plane;
+
+            if (nextGroup < 0 || nextGroup >= mainGeom->groupsLen || groupObjects[nextGroup] == nullptr) continue;
 
             //Skip portals into groups whose world box (incl. doodads) is outside the global
             //frustum: the portal lies on the group's boundary, so it cannot be visible either.
@@ -1306,7 +1315,9 @@ void WmoObject::drainPortalTraversal(
                     this->addSplitChildWMOsToView(*interiorView, nextGroup);
                 }
 
-                portalWorkList.push_back({nextGroup, thisPortalPlanes, globalLevel + 1, workItem.localLevel + 1});
+                //A bound on the walk as a whole, against diamond and cyclic paths multiplying past the depth cap
+                if (portalWorkList.size() < 8192)
+                    portalWorkList.push_back({nextGroup, thisPortalPlanes, globalLevel + 1, workItem.localLevel + 1});
 
             } else if (((nextGroupInfo.flags.EXTERIOR) > 0) && traversingStartedFromInterior) {
                 //5.2 The portal is from interior into exterior wmo group.
@@ -1321,6 +1332,7 @@ void WmoObject::drainPortalTraversal(
         }
     }
 }
+
 
 bool WmoObject::isGroupWmoInterior(int groupId) {
     const SMOGroupInfo *groupInfo = &this->mainGeom->groups[groupId];
