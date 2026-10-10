@@ -59,8 +59,8 @@ void main() {
 
     caclWMOFragMat(uPixelShader, wmoMeshWide.UseLitColor_EnableAlpha_PixelShader_BlendMode.y == 1,
                    s_Textures[nonuniformEXT(text1)], s_Textures[nonuniformEXT(text2)], s_Textures[nonuniformEXT(text3)], s_Textures[nonuniformEXT(text4)],
-                   s_Textures[text5], s_Textures[text6], s_Textures[text7], s_Textures[text8],
-                   s_Textures[text9],
+                   s_Textures[nonuniformEXT(text5)], s_Textures[nonuniformEXT(text6)], s_Textures[nonuniformEXT(text7)], s_Textures[nonuniformEXT(text8)],
+                   s_Textures[nonuniformEXT(text9)],
                    vPosition.xyz, vNormal, vTexCoord, vTexCoord2, vTexCoord3, vTexCoord4,
                    vColor2,
                    vColorSecond,
