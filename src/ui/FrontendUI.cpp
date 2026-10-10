@@ -29,7 +29,7 @@ FrontendUI::FrontendUI(HApiContainer api) {
 
     m_backgroundScene = std::make_shared<SceneWindow>(api, true, m_uiRenderer, false);
 
-    // Initialize CASC storage dialog with callback
+    // Load the saved CASC storages, with the callback that opens one
     m_cascStorageDialog = std::make_shared<CascStorageDialog>(
         m_api,
         [this](const std::string& cascPath, BuildDefinition& buildDef) -> bool {
@@ -41,9 +41,6 @@ FrontendUI::FrontendUI(HApiContainer api) {
             }
         }
     );
-
-    // Show the dialog on startup if there are saved storages or always
-    m_cascStorageDialog->show();
 }
 
 void FrontendUI::composeFlyoverUI() {
