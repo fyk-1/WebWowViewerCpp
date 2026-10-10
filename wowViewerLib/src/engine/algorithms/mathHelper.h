@@ -24,6 +24,10 @@ inline constexpr T fromRadian(T x) {
 template<typename T>
 inline const CAaBox &retrieveAABB(T &object);
 
+// A size the small-model cull may measure an object by, besides its culling box; 0 when the object has none.
+template<typename T>
+inline float retrieveScreenRadius(const T &object) { return 0.0f; }
+
 
 class MathHelper {
 public:

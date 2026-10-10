@@ -38,6 +38,10 @@ struct M2LoadedStatus {
     bool m_loaded = false;
     bool m_geomLoaded = false;
     bool m_hasAABB = false;
+    // Half the diagonal of the model's static bounding box in the world, 0 until it loads. The culling box follows
+    // the playing animation's bounds, which can cover a small part of the model (a lamp's flame, not its post), so the
+    // small-model cull measures with whichever is larger.
+    float m_screenRadius = 0;
 };
 
 extern std::shared_ptr<EntityFactory<10000, M2ObjId, M2Object, CAaBox, M2LoadedStatus>> m2Factory;
@@ -470,6 +474,12 @@ template<>
 inline const CAaBox &retrieveAABB<>(const M2ObjId &objectId) {
     auto * ptr = m2Factory->getObjectByIdConst<1>(objectId);
     return ptr ? *ptr : nonexitsting;
+}
+
+template<>
+inline float retrieveScreenRadius<>(const M2ObjId &objectId) {
+    auto * ptr = m2Factory->getObjectByIdConst<2>(objectId);
+    return ptr ? ptr->m_screenRadius : 0.0f;
 }
 
 

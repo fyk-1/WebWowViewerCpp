@@ -546,6 +546,7 @@ void M2Object::createAABB() {
 
         //this.diameter = vec3.distance(worldAABB[0],worldAABB[1]);
         setAABB(worldAABB);
+        status->m_screenRadius = (mathfu::vec3(worldAABB.max) - mathfu::vec3(worldAABB.min)).Length() * 0.5f;
     }
 
     {

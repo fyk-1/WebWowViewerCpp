@@ -37,7 +37,7 @@ public:
             const CAaBox &aabb = retrieveAABB(objects[i]);
             mathfu::vec3 aabbMin = mathfu::vec3(aabb.min.x, aabb.min.y, aabb.min.z);
             mathfu::vec3 aabbMax = mathfu::vec3(aabb.max.x, aabb.max.y, aabb.max.z);
-            float radius = (aabbMax - aabbMin).Length() * 0.5f;
+            float radius = std::max((aabbMax - aabbMin).Length() * 0.5f, retrieveScreenRadius(objects[i]));
             float distance = ((aabbMin + aabbMax) * 0.5f - cameraPos).Length();
             if (distance <= radius) continue;
             if (100.0f * radius / (distance * tanHalfFovY) < minScreenPercent) culling_res[i] = 0xFFFFFFFF;
