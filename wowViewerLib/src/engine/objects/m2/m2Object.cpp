@@ -1539,28 +1539,6 @@ const bool M2Object::checkFrustumCulling (const mathfu::vec4 &cameraPos, const M
 }
 
 void M2Object::drawBBInternal(const CAaBox &bb, mathfu::vec3 &color, mathfu::mat4 &placementMatrix) {
-    /*
-    mathfu::vec3 center = mathfu::vec3(
-        (bb.min.x + bb.max.x) / 2,
-        (bb.min.y + bb.max.y) / 2,
-        (bb.min.z + bb.max.z) / 2
-    );
-
-    mathfu::vec3 scale = mathfu::vec3(
-        bb.max.x - center[0],
-        bb.max.y - center[1],
-        bb.max.z - center[2]
-    );
-
-    ShaderRuntimeData *shader = this->m_api->getBBShader();
-    glUniform3fv(shader->getUnf("uBBScale"), 1, &scale[0]);
-    glUniform3fv(shader->getUnf("uBBCenter"), 1, &center[0]);
-    glUniform3fv(shader->getUnf("uColor"), 3, &color[0]); //red
-    glUniformMatrix4fv(shader->getUnf("uPlacementMat"), 1, GL_FALSE, &placementMatrix[0]);
-
-    glDrawElements(GL_LINES, 48, GL_UNSIGNED_SHORT, 0);
-
-     */
 }
 
 void M2Object::drawBB(mathfu::vec3 &color) {

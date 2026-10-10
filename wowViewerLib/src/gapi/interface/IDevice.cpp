@@ -30,8 +30,6 @@ bool IDevice::getIsDTXCompressedTexturesSupported() {
     }
     return (compressedTexturesSupported == 1);
 
-#elif (WITH_GLESv2)
-    return false;
 #else
     return true;
 #endif

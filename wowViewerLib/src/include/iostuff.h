@@ -10,11 +10,7 @@
 
 #include <cstdint>
 #include <vector>
-#ifdef WITH_GLESv2
-typedef float animTime_t;
-#else
 typedef double animTime_t;
-#endif
 
 enum class CacheHolderType {
     CACHE_M2,

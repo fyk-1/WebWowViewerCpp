@@ -6,12 +6,6 @@ include(CheckCXXCompilerFlag)
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
-set(LINK_GLEW 1)
-set(LINK_OGL2 0)
-set(LINK_OGL3 0)
-set(LINK_OGL4 0)
-set(LINK_EGL 1 PARENT_SCOPE)
-set(LINK_EGL 1)
 option(LINK_VULKAN "Enable Vulkan" ON)
 set(LINK_OPENMP 0)
 set(ENABLE_SIMD 1)
@@ -24,40 +18,8 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif ()
 
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set(LINK_GLEW 0)
-endif()
-#MacOS system
-if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set(LINK_OGL2 0)
-    set(LINK_GLEW 0)
-endif()
 if (MSVC)
     add_definitions(-DNOMINMAX)
-endif()
-
-if (CMAKE_NDK_BUILD)
-    set(LINK_GLEW 0)
-ENDIF()
-
-if (NOT EGL_PATH)
-    set(LINK_EGL 0 PARENT_SCOPE)
-    set(LINK_EGL 0)
-endif()
-
-
-if (LINK_OGL2)
-    add_definitions(-DLINK_OGL2)
-endif()
-if (LINK_EGL)
-    add_definitions(-DLINK_EGL)
-    add_definitions(-DWITH_GLESv2)
-endif()
-if (LINK_OGL3)
-    add_definitions(-DLINK_OGL3)
-endif()
-if (LINK_OGL4)
-    add_definitions(-DLINK_OGL4)
 endif()
 
 set(My_Vectorize_Compile_Options "")
@@ -120,33 +82,6 @@ endif()
 
 
 message(CMAKE_SYSTEM_NAME = ${CMAKE_SYSTEM_NAME})
-string(TOUPPER ${CMAKE_SYSTEM_NAME} CMAKE_SYSTEM_NAME_LOWERCASE)
-if (LINK_GLEW)
-    if (WIN32)
-        MESSAGE(IT IS WINDOWS!!!!)
-
-        set(GLEW_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/3rdparty/glew_win/include)
-        if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-            set(GLEW_LIBRARIES ${PROJECT_SOURCE_DIR}/3rdparty/glew_win/lib/Release/x64/glew32.lib )
-            set(GLEW_DLL "${PROJECT_SOURCE_DIR}/3rdparty/glew_win/bin/Release/x64/glew32.dll")
-        elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
-            set(GLEW_LIBRARIES ${PROJECT_SOURCE_DIR}/3rdparty/glew_win/lib/Release/Win32/glew32.lib )
-            set(GLEW_DLL "${PROJECT_SOURCE_DIR}/3rdparty/glew_win/bin/Release/Win32/glew32.dll")
-        endif()
-    elseif(NOT CMAKE_SYSTEM_NAME_LOWERCASE MATCHES "ANDROID")
-
-        find_package(GLEW REQUIRED)
-        if (GLEW_FOUND)
-            set(glew_include ${GLEW_INCLUDE_DIRS})
-            include_directories(${GLEW_INCLUDE_DIRS})
-            link_libraries(${GLEW_LIBRARIES})
-        endif()
-    endif(WIN32)
-
-    set(GLEW_INCLUDE_DIRS ${GLEW_INCLUDE_DIRS} PARENT_SCOPE)
-    include_directories(${GLEW_INCLUDE_DIRS})
-else()
-endif(LINK_GLEW)
 
 
 
@@ -156,10 +91,6 @@ set(SOURCE_FILES
 		src/persistence/RequestProcessor.h
         3rdparty/OffsetAllocator/offsetAllocator.cpp
         3rdparty/OffsetAllocator/offsetAllocator.hpp
-        src/engine/shader/ShaderRuntimeData.cpp
-        src/engine/shader/ShaderRuntimeData.cpp
-        src/engine/shader/ShaderRuntimeData.h
-        src/engine/opengl/header.h
         src/engine/camera/firstPersonCamera.cpp
         src/engine/camera/firstPersonCamera.h
         src/engine/camera/pathCamera.cpp
@@ -384,136 +315,6 @@ set(SOURCE_FILES
         src/engine/objects/worldObject/WorldObjectManager.h
 )
 
-if (LINK_OGL2)
-    set(OPENGL20_IMPLEMENTATION
-        src/gapi/ogl2.0/textures/GBlpTextureGL20.cpp
-        src/gapi/ogl2.0/textures/GBlpTextureGL20.h
-        src/gapi/ogl2.0/buffers/GVertexBufferDynamicGL20.cpp
-        src/gapi/ogl2.0/buffers/GVertexBufferGL20.cpp
-        src/gapi/ogl2.0/buffers/GVertexBufferGL20.h
-        src/gapi/ogl2.0/buffers/GIndexBufferGL20.cpp
-        src/gapi/ogl2.0/buffers/GIndexBufferGL20.h
-        src/gapi/ogl2.0/buffers/GUniformBufferGL20.cpp
-        src/gapi/ogl2.0/buffers/GUniformBufferGL20.h
-        src/gapi/ogl2.0/GRenderTargetGL20.cpp
-        src/gapi/ogl2.0/GRenderTargetGL20.h
-        src/gapi/ogl2.0/GDeviceGL20.cpp
-        src/gapi/ogl2.0/GDeviceGL20.h
-        src/gapi/ogl2.0/meshes/GMeshGL20.cpp
-        src/gapi/ogl2.0/meshes/GMeshGL20.h
-        src/gapi/ogl2.0/GVertexBufferBindingsGL20.cpp
-        src/gapi/ogl2.0/GVertexBufferBindingsGL20.h
-        src/gapi/ogl2.0/GShaderPermutationGL20.cpp
-        src/gapi/ogl2.0/GShaderPermutationGL20.h
-        src/gapi/ogl2.0/shaders/GM2ShaderPermutationGL20.cpp
-        src/gapi/ogl2.0/shaders/GM2ShaderPermutationGL20.h
-        src/gapi/UniformBufferStructures.h
-        src/gapi/ogl2.0/meshes/GM2MeshGL20.cpp
-        src/gapi/ogl2.0/meshes/GM2MeshGL20.h
-        src/gapi/ogl2.0/textures/GTextureGL20.cpp
-        src/gapi/ogl2.0/textures/GTextureGL20.h
-        src/gapi/ogl2.0/shaders/GM2ParticleShaderPermutationGL20.cpp
-        src/gapi/ogl2.0/shaders/GM2ParticleShaderPermutationGL20.h
-        src/gapi/ogl2.0/meshes/GParticleMeshGL20.cpp
-        src/gapi/ogl2.0/meshes/GParticleMeshGL20.h
-        src/gapi/ogl2.0/shaders/GWMOShaderPermutationGL20.cpp
-        src/gapi/ogl2.0/shaders/GWMOShaderPermutationGL20.h
-        src/gapi/ogl2.0/shaders/GAdtShaderPermutationGL20.cpp
-        src/gapi/ogl2.0/shaders/GAdtShaderPermutationGL20.h
-        src/gapi/ogl2.0/GOcclusionQueryGL20.cpp
-        src/gapi/ogl2.0/GOcclusionQueryGL20.h)
-endif()
-
-if (LINK_OGL3)
-set(OPENGL33_IMPLEMENTATION
-        src/gapi/ogl3.3/textures/GBlpTextureGL33.cpp
-        src/gapi/ogl3.3/textures/GBlpTextureGL33.h
-        src/gapi/ogl3.3/buffers/GVertexBufferDynamicGL33.cpp
-        src/gapi/ogl3.3/buffers/GVertexBufferGL33.cpp
-        src/gapi/ogl3.3/buffers/GVertexBufferGL33.h
-        src/gapi/ogl3.3/buffers/GIndexBufferGL33.cpp
-        src/gapi/ogl3.3/buffers/GIndexBufferGL33.h
-        src/gapi/ogl3.3/buffers/GUniformBufferGL33.cpp
-        src/gapi/ogl3.3/buffers/GUniformBufferGL33.h
-        src/gapi/ogl3.3/GRenderTargetGL33.cpp
-        src/gapi/ogl3.3/GRenderTargetGL33.h
-        src/gapi/ogl3.3/GDeviceGL33.cpp
-        src/gapi/ogl3.3/GDeviceGL33.h
-        src/gapi/ogl3.3/meshes/GMeshGL33.cpp
-        src/gapi/ogl3.3/meshes/GMeshGL33.h
-        src/gapi/ogl3.3/GVertexBufferBindingsGL33.cpp
-        src/gapi/ogl3.3/GVertexBufferBindingsGL33.h
-        src/gapi/ogl3.3/GShaderPermutationGL33.cpp
-        src/gapi/ogl3.3/GShaderPermutationGL33.h
-        src/gapi/ogl3.3/shaders/GM2ShaderPermutationGL33.cpp
-        src/gapi/ogl3.3/shaders/GM2ShaderPermutationGL33.h
-        src/gapi/UniformBufferStructures.h
-        src/gapi/ogl3.3/meshes/GM2MeshGL33.cpp
-        src/gapi/ogl3.3/meshes/GM2MeshGL33.h
-        src/gapi/ogl3.3/textures/GTextureGL33.cpp
-        src/gapi/ogl3.3/textures/GTextureGL33.h
-        src/gapi/ogl3.3/shaders/GM2ParticleShaderPermutationGL33.cpp
-        src/gapi/ogl3.3/shaders/GM2ParticleShaderPermutationGL33.h
-        src/gapi/ogl3.3/meshes/GParticleMeshGL33.cpp
-        src/gapi/ogl3.3/meshes/GParticleMeshGL33.h
-        src/gapi/ogl3.3/shaders/GWMOShaderPermutationGL33.cpp
-        src/gapi/ogl3.3/shaders/GWMOShaderPermutationGL33.h
-        src/gapi/ogl3.3/shaders/GAdtShaderPermutationGL33.cpp
-        src/gapi/ogl3.3/shaders/GAdtShaderPermutationGL33.h
-        src/gapi/ogl3.3/GOcclusionQueryGL33.cpp
-        src/gapi/ogl3.3/GOcclusionQueryGL33.h
-        src/gapi/ogl3.3/buffers/GUnformBufferChunk33.h
-        src/gapi/ogl3.3/GFrameBufferGL33.cpp
-        src/gapi/ogl3.3/GFrameBufferGL33.h
-        src/gapi/ogl3.3/shaders/GFFXgauss4.cpp
-        src/gapi/ogl3.3/shaders/GSkyConus.cpp
-        src/gapi/ogl3.3/shaders/GFFXgauss4.h
-        src/gapi/ogl3.3/shaders/GFFXGlow.cpp
-        src/gapi/ogl3.3/shaders/GFFXGlow.h
-        src/gapi/ogl3.3/shaders/GWaterShaderGL33.cpp
-        src/gapi/ogl3.3/shaders/GWaterShaderGL33.h
-        src/gapi/ogl3.3/shaders/GWaterfallShaderGL33.cpp
-        src/gapi/ogl3.3/shaders/GWaterfallShaderGL33.h)
-endif()
-
-if (LINK_OGL4)
-set(OPENGL4x_IMPLEMENTATION    src/gapi/ogl4.x/textures/GBlpTextureGL4x.cpp
-        src/gapi/ogl4.x/textures/GBlpTextureGL4x.h
-        src/gapi/ogl4.x/buffers/GVertexBufferGL4x.cpp
-        src/gapi/ogl4.x/buffers/GVertexBufferGL4x.h
-        src/gapi/ogl4.x/buffers/GIndexBufferGL4x.cpp
-        src/gapi/ogl4.x/buffers/GIndexBufferGL4x.h
-        src/gapi/ogl4.x/buffers/GUniformBufferGL4x.cpp
-        src/gapi/ogl4.x/buffers/GUniformBufferGL4x.h
-        src/gapi/ogl4.x/GRenderTargetGL4x.cpp
-        src/gapi/ogl4.x/GRenderTargetGL4x.h
-        src/gapi/ogl4.x/GDeviceGL4x.cpp
-        src/gapi/ogl4.x/GDeviceGL4x.h
-        src/gapi/ogl4.x/meshes/GMeshGL4x.cpp
-        src/gapi/ogl4.x/meshes/GMeshGL4x.h
-        src/gapi/ogl4.x/GVertexBufferBindingsGL4x.cpp
-        src/gapi/ogl4.x/GVertexBufferBindingsGL4x.h
-        src/gapi/ogl4.x/GShaderPermutationGL4x.cpp
-        src/gapi/ogl4.x/GShaderPermutationGL4x.h
-        src/gapi/ogl4.x/shaders/GM2ShaderPermutationGL4x.cpp
-        src/gapi/ogl4.x/shaders/GM2ShaderPermutationGL4x.h
-        src/gapi/UniformBufferStructures.h
-        src/gapi/ogl4.x/meshes/GM2MeshGL4x.cpp
-        src/gapi/ogl4.x/meshes/GM2MeshGL4x.h
-        src/gapi/ogl4.x/textures/GTextureGL4x.cpp
-        src/gapi/ogl4.x/textures/GTextureGL4x.h
-        src/gapi/ogl4.x/shaders/GM2ParticleShaderPermutationGL4x.cpp
-        src/gapi/ogl4.x/shaders/GM2ParticleShaderPermutationGL4x.h
-        src/gapi/ogl4.x/meshes/GParticleMeshGL4x.cpp
-        src/gapi/ogl4.x/meshes/GParticleMeshGL4x.h
-        src/gapi/ogl4.x/shaders/GWMOShaderPermutationGL4x.cpp
-        src/gapi/ogl4.x/shaders/GWMOShaderPermutationGL4x.h
-        src/gapi/ogl4.x/shaders/GAdtShaderPermutationGL4x.cpp
-        src/gapi/ogl4.x/shaders/GAdtShaderPermutationGL4x.h
-        src/gapi/ogl4.x/GOcclusionQueryGL4x.cpp
-        src/gapi/ogl4.x/GOcclusionQueryGL4x.h src/gapi/ogl4.x/syncronization/GPUFenceGL44.cpp src/gapi/ogl4.x/syncronization/GPUFenceGL44.h src/engine/persistance/header/skelFileHeader.h)
-endif()
-
 if (LINK_VULKAN)
     set(VULKAN_IMPLEMENTATION
             src/gapi/vulkan/GDeviceVulkan.cpp
@@ -729,7 +530,7 @@ endif()
 
 
 
-add_library(WoWViewerLib STATIC ${SOURCE_FILES} ${OPENGL20_IMPLEMENTATION} ${OPENGL33_IMPLEMENTATION} ${OPENGL4x_IMPLEMENTATION} ${VULKAN_IMPLEMENTATION})
+add_library(WoWViewerLib STATIC ${SOURCE_FILES} ${VULKAN_IMPLEMENTATION})
 if (NOT MSVC)
     target_compile_options(WoWViewerLib PUBLIC -Werror=return-type)
 endif()
@@ -785,8 +586,6 @@ if (LINK_OPENMP)
     endif()
 endif()
 
-target_link_libraries(WoWViewerLib ${GLEW_LIBRARIES})
-
 set_property(TARGET tbb PROPERTY CXX_STANDARD 17)
 set_property(TARGET tbbmalloc PROPERTY CXX_STANDARD 17)
 
@@ -797,12 +596,6 @@ if (UNIX)
 target_link_libraries(WoWViewerLib Threads::Threads)
 endif()
 #target_link_options(WoWViewerLib PUBLIC "SHELL: -lstdc++")
-
-if (WIN32)
-    install(FILES ${GLEW_DLL}
-            DESTINATION ${CMAKE_INSTALL_BINDIR}
-            )
-endif()
 
 if (ENABLE_SIMD)
     mathfu_configure_flags(WoWViewerLib TRUE)
@@ -887,13 +680,6 @@ else()
     target_compile_definitions(WoWViewerLib PUBLIC -DSKIP_VULKAN)
 endif()
 
-if (LINK_EGL)
-    target_compile_definitions(WoWViewerLib PUBLIC -DWITH_GLESv2)
-    target_include_directories(WoWViewerLib PUBLIC ${EGL_PATH}/include/)
-    target_link_libraries(WoWViewerLib ${EGL_PATH}/libGLESv2.lib)
-    target_link_libraries(WoWViewerLib ${EGL_PATH}/libEGL.lib)
-endif()
-
 if (1)
     add_subdirectory(shaders)
 
@@ -901,13 +687,6 @@ if (1)
     add_dependencies(WoWViewerLib SPIRV_BUILD_SHADERS)
     message("SPIRV_META_DIR (include) = ${SPIRV_META_DIR}")
     target_include_directories(WoWViewerLib PUBLIC ${SPIRV_META_DIR})
-
-    if (LINK_OGL2)
-        add_dependencies(WoWViewerLib ShadersGLSL20)
-    endif()
-    if (LINK_OGL3)
-        add_dependencies(WoWViewerLib ShadersGLSL33)
-    endif()
 endif()
 
 set(ext_inDir ${PROJECT_SOURCE_DIR}/3rdparty/mathfu/include ${PROJECT_SOURCE_DIR}/3rdparty/mathfu/dependencies/vectorial/include)

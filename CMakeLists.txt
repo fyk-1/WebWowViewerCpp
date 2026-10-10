@@ -68,8 +68,6 @@ add_subdirectory(3rdparty/TactCpp EXCLUDE_FROM_ALL)
 
 add_subdirectory(wowViewerLib)
 
-include_directories(${GLEW_INCLUDE_DIRS})
-
 
 set(SOURCE_FILES
 		src/persistance/CascRequestProcessor.cpp
@@ -114,19 +112,7 @@ set(SOURCE_FILES_VULKAN
 		src/ui/renderer/uiScene/vulkan/FrontendUIRenderForwardVLK.cpp
 		src/ui/renderer/uiScene/vulkan/FrontendUIRenderForwardVLK.h)
 
-#########################################################
-# FIND OPENGL
-#########################################################
-set(OpenGL_GL_PREFERENCE GLVND)
-find_package(OpenGL REQUIRED)
-include_directories(${OpenGL_INCLUDE_DIRS})
-link_directories(${OpenGL_LIBRARY_DIRS})
-if(NOT OPENGL_FOUND)
-	message(ERROR " OPENGL not found!")
-endif(NOT OPENGL_FOUND)
-
 #Build the executiable
-include_directories(${glew_include})
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package( Threads REQUIRED )
@@ -198,9 +184,6 @@ if (MSVC)
 	endif()
 endif()
 
-target_link_libraries(WoWFrontendLib ${GLEW_LIBRARIES})
-target_link_libraries(WoWFrontendLib ${OPENGL_LIBRARIES})
-target_link_libraries(WoWFrontendLib ${OPENGL_LIB})
 #target_link_libraries(WoWFrontendLib zlibstatic)
 
 target_link_libraries(WoWFrontendLib SQLiteCpp sqlite3)
@@ -231,20 +214,6 @@ target_link_libraries(WoWFrontendLib glfw)
 
 target_link_libraries(WoWFrontendLib TactCppLib)
 target_link_libraries(WoWFrontendLib cpr::cpr)
-
-target_link_libraries(WoWFrontendLib ${glew_lib})
-
-if (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-	include_directories(WoWFrontendLib "./wowViewerLib/src/opengl")
-	target_link_libraries(WoWFrontendLib opengl32)
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-	FIND_LIBRARY(OpenGL_LIBRARY OpenGL)
-	MARK_AS_ADVANCED(OpenGL_LIBRARY)
-
-	target_link_libraries(WoWFrontendLib ${OpenGL_LIBRARY})
-else()
-	target_link_libraries(WoWFrontendLib GL)
-endif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
 #target_link_options(WoWFrontendLib PUBLIC "SHELL: -llibg")
 

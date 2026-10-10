@@ -898,49 +898,6 @@ void AdtObject::collectMeshes(ADTObjRenderRes &adtRes, COpaqueMeshCollector &opa
     }
 }
 void AdtObject::collectMeshesLod(std::vector<HGMesh> &renderedThisFrame) {
-   /*
-    if (!m_loaded) return;
-    if (lodCommands.size() <= 0) return;
-
-    GLuint blackPixelTexture = this->m_api->getBlackPixelTexture();
-    ShaderRuntimeData *adtLodShader = this->m_api->getAdtLodShader();
-
-    mathfu::vec3 adtPos = mathfu::vec3(m_adtFile->mapTile[m_adtFile->mcnkMap[0][0]].position);
-    glUniform3f(adtLodShader->getUnf("uPos"),
-                adtPos.x,
-                adtPos.y,
-                adtPos.z);
-
-    glBindBuffer(GL_ARRAY_BUFFER, this->heightVboLod);
-    glVertexAttribPointer(+adtLodShader::Attribute::aHeight, 1, GL_FLOAT, GL_FALSE, 4, nullptr);
-
-    glBindBuffer(GL_ARRAY_BUFFER, this->indexVBOLod);
-    glVertexAttribPointer(+adtLodShader::Attribute::aIndex, 1, GL_FLOAT, GL_FALSE, 4, nullptr);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->stripVBOLod);
-
-    glActiveTexture(GL_TEXTURE0);
-    if (lodDiffuseTexture->getIsLoaded()) {
-        glBindTexture(GL_TEXTURE_2D, lodDiffuseTexture->getGlTexture());
-    } else {
-        glBindTexture(GL_TEXTURE_2D, blackPixelTexture);
-    }
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    glActiveTexture(GL_TEXTURE1);
-    if (lodNormalTexture->getIsLoaded()) {
-        glBindTexture(GL_TEXTURE_2D, lodNormalTexture->getGlTexture());
-    } else {
-        glBindTexture(GL_TEXTURE_2D, blackPixelTexture);
-    }
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    for (int i = 0; i < lodCommands.size(); i++) {
-        glDrawElements(GL_TRIANGLES, lodCommands[i].length, GL_UNSIGNED_SHORT, (void *)(lodCommands[i].index * 2));
-    }
-    */
 }
 
 

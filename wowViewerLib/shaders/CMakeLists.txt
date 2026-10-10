@@ -6,28 +6,19 @@ if(EXISTS "${private_extensions_dir}/CMakeLists.txt")
     set(SHADER_COMPILATION_DEPENDS shaders_ext ${SHADER_CHANGED_FILES})
 endif()
 
-if (ANDROID)
-    set(GLSL_TARGET_FOLDER ${ANDROID_ASSETSFOLDER})
-else()
-    set(GLSL_TARGET_FOLDER ${CMAKE_BINARY_DIR})
-endif()
+set(GLSL_TARGET_FOLDER ${CMAKE_BINARY_DIR})
 
 message( Shader SPIRV_OPT_APP = ${SPIRV_OPT_APP})
 message( COMPILE_SHADER_WITH_DEBUG = ${COMPILE_SHADER_WITH_DEBUG})
 
 if (COMPILE_SHADER_WITH_DEBUG EQUAL 1)
-    set(SHADER_DEBUG_FLAG "-g")
     set(SLANG_SHADER_DEBUG_FLAG "-g2")
-    set(APP_RUN_PREFIX "")
     set (SPIRV_OPT_APP "")
 else()
-    set(SHADER_DEBUG_FLAG "")
     set(SLANG_SHADER_DEBUG_FLAG "")
 endif()
 
-if (EMSCRIPTEN)
-    set(APP_RUN_PREFIX node --experimental-wasm-simd)
-endif()
+set(APP_RUN_PREFIX "")
 
 message(INFO "GLSL_TARGET_FOLDER = ${GLSL_TARGET_FOLDER}")
 
@@ -38,54 +29,28 @@ set(SPIRV_META_FILE ${SPIRV_META_DIR_local}/ShaderDefinitions.h)
 
 file(MAKE_DIRECTORY SPIRV_META_DIR)
 
-if(NOT ANDROID)
-    #GLSL Compiler
-    add_subdirectory(${PROJECT_SOURCE_DIR}/shaders/3rdparty/spirv-cross EXCLUDE_FROM_ALL)
-    set(BUILD_EXTERNAL OFF)
-    set(ENABLE_OPT OFF)
+#GLSL Compiler
+add_subdirectory(${PROJECT_SOURCE_DIR}/shaders/3rdparty/spirv-cross EXCLUDE_FROM_ALL)
+set(BUILD_EXTERNAL OFF)
+set(ENABLE_OPT OFF)
 
-    #SPIRV_Reflections
-    set(SPIRV_REF_SOURCES
-            src/spirv/spirv_refl_main.cpp
-            src/spirv/webGLSLCompiler.cpp
-            src/spirv/webGLSLCompiler.h
-            src/spirv/dumpShaderFields.h src/spirv/dumpGLSLShader.h)
+#SPIRV_Reflections
+set(SPIRV_REF_SOURCES
+        src/spirv/spirv_refl_main.cpp
+        src/spirv/webGLSLCompiler.cpp
+        src/spirv/webGLSLCompiler.h
+        src/spirv/dumpShaderFields.h src/spirv/dumpGLSLShader.h)
 
-    add_executable(spirv_reflection ${SPIRV_REF_SOURCES})
-    set_target_properties(spirv_reflection PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
-    target_link_libraries(spirv_reflection spirv-cross-c)
-    target_include_directories(spirv_reflection PUBLIC ${PROJECT_SOURCE_DIR}/3rdparty/spirv-cross/)
-    if(EMSCRIPTEN)
-        target_link_options(spirv_reflection PUBLIC -s NODERAWFS=1)
-    endif()
-    set_target_properties(spirv_reflection PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+add_executable(spirv_reflection ${SPIRV_REF_SOURCES})
+set_target_properties(spirv_reflection PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+target_link_libraries(spirv_reflection spirv-cross-c)
+target_include_directories(spirv_reflection PUBLIC ${PROJECT_SOURCE_DIR}/3rdparty/spirv-cross/)
+set_target_properties(spirv_reflection PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-#    set(PATH_TO_NATIVE_GLSL_VALIDATOR "${CMAKE_BINARY_DIR}/glslang{CMAKE_EXECUTABLE_SUFFIX}")
 #    set(PATH_TO_NATIVE_SPIRV_REFLECTION "${CMAKE_BINARY_DIR}/spirv_reflection${CMAKE_EXECUTABLE_SUFFIX}")
-    if (NOT PATH_TO_NATIVE_GLSL_VALIDATOR)
-        set(PATH_TO_NATIVE_GLSL_VALIDATOR $<TARGET_FILE:glslang-standalone>)
-    else()
-        MESSAGE(WARNING "PATH_TO_NATIVE_GLSL_VALIDATOR = ${PATH_TO_NATIVE_GLSL_VALIDATOR}")
-    endif()
-    set(PATH_TO_NATIVE_SPIRV_REFLECTION $<TARGET_FILE:spirv_reflection>)
+set(PATH_TO_NATIVE_SPIRV_REFLECTION $<TARGET_FILE:spirv_reflection>)
 
-    add_executable(mark-position-invariant tools/mark-position-invariant.cpp)
-else()
-    MESSAGE(WARNING "PYTHON_EXECUTABLE = ${PYTHON_EXECUTABLE}")
-    MESSAGE(WARNING "PATH_TO_NATIVE_GLSL_VALIDATOR = ${PATH_TO_NATIVE_GLSL_VALIDATOR}")
-    MESSAGE(WARNING "PATH_TO_NATIVE_SPIRV_REFLECTION = ${PATH_TO_NATIVE_SPIRV_REFLECTION}")
-    if (NOT EXISTS "${PATH_TO_NATIVE_GLSL_VALIDATOR}")
-        MESSAGE(ERROR "Native precompiled GLSL Validator is required for Android")
-        return()
-    endif()
-    if (NOT EXISTS "${PATH_TO_NATIVE_SPIRV_REFLECTION}")
-        MESSAGE(ERROR "Native precompiled Spirv Reflection is required for Android")
-        return()
-    endif()
-
-    add_custom_target(glslang-standalone)
-    add_custom_target(spirv_reflection)
-endif()
+add_executable(mark-position-invariant tools/mark-position-invariant.cpp)
 
 
 set(spirvNonOptDir ${CMAKE_BINARY_DIR}/spirv_raw)
@@ -170,14 +135,7 @@ macro(configure_filesVLK rootDir srcCommonDirs shaderDirs shaderFileExts inputTy
 #                message(SPIRVOpt = ${SPIRVOpt})
 
 #                message("inputType = ${inputType}")
-                if (${inputType} STREQUAL "glsl")
-#                    message("glsl SPIRV_NonOpt = ${SPIRV_NonOpt}")
-                    add_custom_command(
-                            OUTPUT ${SPIRV_NonOpt}
-                            COMMAND ${CMAKE_COMMAND} -E make_directory "${destDir}"
-                            COMMAND ${APP_RUN_PREFIX} ${PATH_TO_NATIVE_GLSL_VALIDATOR} -V ${SHADER_DEBUG_FLAG} ${srcTemplatePath} -o ${SPIRV_NonOpt}
-                            DEPENDS ${srcTemplatePath} ${commonFiles})
-                elseif (${inputType} STREQUAL "slang")
+                if (${inputType} STREQUAL "slang")
 #                    message("slang SPIRV_NonOpt = ${SPIRV_NonOpt}")
                     # These vertex shaders (M2, WMO, ADT, M2 particles) each feed both the GBuffer depth fill and the
                     # forward colour pass, two pipelines whose depths must match bit for bit.
@@ -214,14 +172,6 @@ macro(configure_filesVLK rootDir srcCommonDirs shaderDirs shaderFileExts inputTy
     endforeach(shaderDir)
 endmacro(configure_filesVLK)
 
-#configure_filesVLK(
-#        ${PROJECT_SOURCE_DIR}/shaders/glsl/
-#        "${PROJECT_SOURCE_DIR}/shaders/glsl/common;${PROJECT_SOURCE_DIR}/shaders/glsl/bindless;${PROJECT_SOURCE_DIR}/shaders/glsl/forwardRendering"
-#        "."
-#        ".vert;.frag"
-#        "glsl"
-#        ${spirvOptDir})
-
 configure_filesVLK(
         "${PROJECT_SOURCE_DIR}/shaders/slang/"
         "${PROJECT_SOURCE_DIR}/shaders/slang/common;${PROJECT_SOURCE_DIR}/shaders/slang/bindless;${PROJECT_SOURCE_DIR}/shaders/slang/forwardRendering"
@@ -251,49 +201,19 @@ add_custom_target(SPIRV_BUILD_SHADERS DEPENDS ${SPIRV_BINARY_FILES})
 
 
 add_custom_target(
-        ShadersGLSL20
-        DEPENDS ${GLSL20Files}
-)
-add_custom_target(
         ShadersVulkanNonOpt
         DEPENDS ${SPIRV_BINARY_FILES_NON_OPT}
 )
-add_dependencies(ShadersGLSL20 spirv_reflection)
-
-
-add_custom_target(
-        ShadersGLSL33
-        DEPENDS ${GLSL30Files}
-)
-add_dependencies(ShadersGLSL33 spirv_reflection)
-
-add_custom_target(
-    GenerateForWebgl
-    DEPENDS ${GLSL20Files}
-    DEPENDS ${GLSL30Files}
-)
 
 #Add shaders on install
-if (NOT EMSCRIPTEN)
-    if(LINK_OGL2)
-        install(FILES ${GLSL20Files}
-                DESTINATION ${CMAKE_INSTALL_BINDIR}/glsl/glsl20/
+if(LINK_VULKAN)
+    if(SPIRV_OPT_APP)
+        install(DIRECTORY ${CMAKE_BINARY_DIR}/spirv/
+                DESTINATION ${CMAKE_INSTALL_BINDIR}/spirv
         )
-    endif()
-    if(LINK_OGL3)
-        install(FILES ${GLSL30Files}
-                DESTINATION ${CMAKE_INSTALL_BINDIR}/glsl/glsl3.3/
+    else()
+        install(DIRECTORY ${CMAKE_BINARY_DIR}/spirv_raw/
+                DESTINATION ${CMAKE_INSTALL_BINDIR}/spirv
         )
-    endif()
-    if(LINK_VULKAN)
-        if(SPIRV_OPT_APP)
-            install(DIRECTORY ${CMAKE_BINARY_DIR}/spirv/
-                    DESTINATION ${CMAKE_INSTALL_BINDIR}/spirv
-            )
-        else()
-            install(DIRECTORY ${CMAKE_BINARY_DIR}/spirv_raw/
-                    DESTINATION ${CMAKE_INSTALL_BINDIR}/spirv
-            )
-        endif()
     endif()
 endif()
