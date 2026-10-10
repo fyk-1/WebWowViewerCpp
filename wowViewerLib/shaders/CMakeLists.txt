@@ -68,6 +68,8 @@ if(NOT ANDROID)
         MESSAGE(WARNING "PATH_TO_NATIVE_GLSL_VALIDATOR = ${PATH_TO_NATIVE_GLSL_VALIDATOR}")
     endif()
     set(PATH_TO_NATIVE_SPIRV_REFLECTION $<TARGET_FILE:spirv_reflection>)
+
+    add_executable(mark-position-invariant tools/mark-position-invariant.cpp)
 else()
     MESSAGE(WARNING "PYTHON_EXECUTABLE = ${PYTHON_EXECUTABLE}")
     MESSAGE(WARNING "PATH_TO_NATIVE_GLSL_VALIDATOR = ${PATH_TO_NATIVE_GLSL_VALIDATOR}")
@@ -177,12 +179,21 @@ macro(configure_filesVLK rootDir srcCommonDirs shaderDirs shaderFileExts inputTy
                             DEPENDS ${srcTemplatePath} ${commonFiles})
                 elseif (${inputType} STREQUAL "slang")
 #                    message("slang SPIRV_NonOpt = ${SPIRV_NonOpt}")
+                    # These vertex shaders (M2, WMO, ADT, M2 particles) each feed both the GBuffer depth fill and the
+                    # forward colour pass, two pipelines whose depths must match bit for bit.
+                    set(MARK_POSITION_INVARIANT "")
+                    set(MARK_POSITION_INVARIANT_TOOL "")
+                    if (TARGET mark-position-invariant AND srcTemplatePath MATCHES "/bindless/(m2/forward/m2Shader|wmo/forward/wmoShader|adt/forward/adtShader|m2Particle/forward/m2ParticleShader|m2Particle/forward/m2ParticleGpuShader)\\.vert\\.slang$")
+                        set(MARK_POSITION_INVARIANT COMMAND mark-position-invariant ${SPIRV_NonOpt} ${SPIRV_NonOpt})
+                        set(MARK_POSITION_INVARIANT_TOOL mark-position-invariant)
+                    endif()
                     add_custom_command(
                         OUTPUT ${SPIRV_NonOpt}
                         COMMAND ${CMAKE_COMMAND} -E make_directory "${destDir}"
                         COMMAND ${APP_RUN_PREFIX} ${SLANG_COMPILER} ${srcTemplatePath} ${SLANG_SHADER_DEBUG_FLAG} -preserve-params -matrix-layout-row-major -target spirv -entry main -o ${SPIRV_NonOpt}
+                        ${MARK_POSITION_INVARIANT}
 #                        COMMAND ${APP_RUN_PREFIX} ${SLANG_COMPILER} ${srcTemplatePath} -matrix-layout-column-major -target glsl -entry main -o ${SPIRV_NonOpt}.glsl
-                        DEPENDS ${srcTemplatePath} ${commonFiles} ${SHADER_COMPILATION_DEPENDS}
+                        DEPENDS ${srcTemplatePath} ${commonFiles} ${SHADER_COMPILATION_DEPENDS} ${MARK_POSITION_INVARIANT_TOOL}
                         VERBATIM)
 
 #                    message("command = ${APP_RUN_PREFIX} ${SLANG_COMPILER} ${srcTemplatePath} -preserve-params -matrix-layout-row-major -target spirv -entry main -o ${SPIRV_NonOpt}")
