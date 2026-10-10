@@ -1,9 +1,3 @@
-[submodule "3rdparty/zipper"]
-	path = 3rdparty/zipper
-	url = https://github.com/sebastiandev/zipper
-[submodule "wowViewerLib/mathfu"]
-	path = wowViewerLib/mathfu
-	url = https://github.com/Deamon87/mathfu.git
 [submodule "wowViewerLib/3rdparty/mathfu"]
 	path = wowViewerLib/3rdparty/mathfu
 	url = https://github.com/google/mathfu.git
@@ -13,12 +7,6 @@
 [submodule "3rdparty/zlib"]
 	path = 3rdparty/zlib
 	url = https://github.com/madler/zlib
-[submodule "3rdparty/stormlib"]
-	path = 3rdparty/stormlib
-	url = https://github.com/ladislav-zezula/StormLib.git
-[submodule "3rdparty/casclib"]
-	path = 3rdparty/casclib
-	url = https://github.com/ladislav-zezula/CascLib.git
 [submodule "wowViewerLib/shaders/3rdparty/glsllang"]
 	path = wowViewerLib/shaders/3rdparty/glsllang
 	url = https://github.com/KhronosGroup/glslang.git
@@ -32,27 +20,12 @@
 [submodule "3rdparty/filesystem_impl"]
 	path = 3rdparty/filesystem_impl
 	url = https://github.com/gulrak/filesystem.git
-[submodule "wowViewerLib/3rdparty/tinygltf"]
-	path = wowViewerLib/3rdparty/tinygltf
-	url = https://github.com/syoyo/tinygltf
-[submodule "emscripten_port/3rdparty/zipper"]
-	path = emscripten_port/3rdparty/zipper
-	url = https://github.com/sebastiandev/zipper.git
-[submodule "3rdparty/DBImporter"]
-	path = 3rdparty/DBImporter
-	url = https://github.com/Deamon87/DBImporter.git
 [submodule "wowViewerLib/3rdparty/oneTbb"]
 	path = wowViewerLib/3rdparty/oneTbb
 	url = https://github.com/Deamon87/oneTBBWasm.git
-[submodule "3rdparty/hiberlite"]
-	path = 3rdparty/hiberlite
-	url = https://github.com/paulftw/hiberlite.git
 [submodule "wowViewerLib/3rdparty/tracy"]
 	path = wowViewerLib/3rdparty/tracy
 	url = https://github.com/wolfpld/tracy.git
-[submodule "3rdparty/imgui-notify"]
-	path = 3rdparty/imgui-notify
-	url = https://github.com/patrickcjk/imgui-notify.git
 [submodule "3rdparty/TactCpp"]
 	path = 3rdparty/TactCpp
 	url = https://github.com/Deamon87/TactCpp

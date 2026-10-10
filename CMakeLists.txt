@@ -15,29 +15,6 @@ if(COMMAND cmake_policy)
 endif(COMMAND cmake_policy)
 cmake_policy(SET CMP0079 NEW)
 
-set(INCLUDE_PROTOBUF_LIB 0)
-
-set(USE_NEON 0)
-if (CMAKE_NDK_BUILD MATCHES 1)
-	include_directories(BEFORE SYSTEM "${NDK_PATH}/include/c++/4.9.x/" "${NDK_PATH}/sysroot/usr/include/")
-	message(ERROR " CMAKE_SYSTEM_PROCESSOR = ${CMAKE_SYSTEM_PROCESSOR}")
-	message(ERROR " ANDROID_ABI = ${ANDROID_ABI}")
-	#TODO: check ANDROID_ARM_NEON too
-	if(${ANDROID_ABI} STREQUAL "armeabi-v7a")
-		include_directories(${ANDROID_SYSROOT}/usr/include/arm-linux-androideabi)  
-		set(USE_NEON 1)
-	elseif(${ANDROID_ABI} STREQUAL "arm64-v8a")
-		include_directories(${ANDROID_SYSROOT}/usr/include/aarch64-linux-android)
-		set(USE_NEON 1)
-	elseif(${ANDROID_ABI} STREQUAL "x86_64")
-		include_directories(${ANDROID_SYSROOT}/usr/include/x86_64-linux-android)
-		set(USE_NEON 0)
-	else() 
-		include_directories(${ANDROID_SYSROOT}/usr/include/arm-linux-androideabi)
-		set(USE_NEON 0) 
-	endif()
-endif() 
-
 if (WIN32 AND MSVC)
     if(CMAKE_SIZEOF_VOID_P EQUAL 8)
         set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /DWIN64")
@@ -75,85 +52,21 @@ endif()
 add_definitions(-DSQLITE_ENABLE_FTS5)
 include_directories(${CMAKE_SOURCE_DIR}/3rdparty/SQLiteCpp/sqlite3)
 
-if (NOT CMAKE_NDK_BUILD MATCHES 1)
-	set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
-	add_subdirectory(${CMAKE_SOURCE_DIR}/3rdparty/glfw EXCLUDE_FROM_ALL)
-endif()
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
+add_subdirectory(${CMAKE_SOURCE_DIR}/3rdparty/glfw EXCLUDE_FROM_ALL)
 
 #c++ 17 FS implementation
 add_subdirectory(${CMAKE_SOURCE_DIR}/3rdparty/filesystem_impl EXCLUDE_FROM_ALL)
 
 include(FetchContent)
 
-#cpr
-check_include_file("limits.h" HAVE_LIMITS_H)
-add_compile_definitions(HAVE_LIMITS_H)
-SET(CMAKE_USE_LIBSSH2 0)
-SET(CPR_BUILD_TESTS 0)
-SET(CURL_USE_LIBPSL 0)
-SET(BUILD_LIBCURL_DOCS 0)
-SET(ENABLE_CURL_MANUAL 0)
-SET(CURL_ZLIB OFF CACHE STRING "" FORCE) # disable this lib to download the zlib as external project
-
-# First, try to find CPR if it's already installed on the system
-find_package(cpr QUIET)
-
-if(NOT cpr_FOUND)
-    # If not found, check if it's already been fetched by another dependency
-    FetchContent_Declare(cpr
-        GIT_REPOSITORY https://github.com/libcpr/cpr.git
-        GIT_TAG 2b2b16989708d81d4fe062240e085a2f5a61f74a # the commit hash for 1.9.9
-        EXCLUDE_FROM_ALL
-    )
-
-    FetchContent_GetProperties(cpr)
-    message("cpr_POPULATED = ${cpr_POPULATED}")
-
-    if(NOT cpr_POPULATED)
-        # Fetch the content using previously declared details
-        FetchContent_MakeAvailable(cpr)
-        message("cpr_BINARY_DIR = ${cpr_BINARY_DIR}")
-        message("cpr_SOURCE_DIR = ${cpr_SOURCE_DIR}")
-
-        # Bring the populated content into the build
-        set(BUILD_SHARED_LIBS ON CACHE BOOL "")
-        set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
-    endif()
-endif()
-
-
-#StormLib
-#add_subdirectory(3rdparty/stormlib)
-
-if (CMAKE_NDK_BUILD MATCHES 1)
-	set(CMAKE_SYSTEM_NAME_TEMPTEMP ${CMAKE_SYSTEM_NAME})
-	set(CMAKE_SYSTEM_NAME "Linux")
-endif() 
 if (WIN32)
 	set(WITH_LIBTOMCRYPT true)
 endif()
 
 add_subdirectory(3rdparty/TactCpp EXCLUDE_FROM_ALL)
 
-# Protobuf
-if (INCLUDE_PROTOBUF_LIB)
-	set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build tests" FORCE)
-	set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build tests")
-	set(protobuf_BUILD_CONFORMANCE OFF CACHE BOOL "Build conformance tests")
-	add_subdirectory(3rdparty/protobuf-cpp/protobuf-3.21.5 EXCLUDE_FROM_ALL)
-endif ()
-
-
-if (CMAKE_NDK_BUILD MATCHES 1)
-
-	set(CMAKE_SYSTEM_NAME "${CMAKE_SYSTEM_NAME_TEMPTEMP}")
-endif()
-
 add_subdirectory(wowViewerLib)
-if (LINK_EGL)
-	add_definitions(-DLINK_EGL)
-	add_definitions(-DWITH_GLESv2)
-endif()
 
 include_directories(${GLEW_INCLUDE_DIRS})
 
@@ -197,15 +110,6 @@ set(SOURCE_FILES
 		src/flyover/CrashStack.h
 )
 
-set(PROTOBUF_FILES_ "")
-if (INCLUDE_PROTOBUF_LIB)
-	set(PROTOBUF_FILES_
-			src/database/product_db_parser/productDbParser.cpp
-			src/database/product_db_parser/productDbParser.h
-			src/database/product_db_parser/protobuf_out/ProtoDatabase.pb.cc
-			src/database/product_db_parser/protobuf_out/ProtoDatabase.pb.h)
-endif()
-
 set(SOURCE_FILES_VULKAN
 		src/ui/renderer/uiScene/vulkan/FrontendUIRenderForwardVLK.cpp
 		src/ui/renderer/uiScene/vulkan/FrontendUIRenderForwardVLK.h)
@@ -213,27 +117,13 @@ set(SOURCE_FILES_VULKAN
 #########################################################
 # FIND OPENGL
 #########################################################
-if (NOT CMAKE_NDK_BUILD MATCHES 1)
-	set(OpenGL_GL_PREFERENCE GLVND)
-	find_package(OpenGL REQUIRED)
-	include_directories(${OpenGL_INCLUDE_DIRS})
-	link_directories(${OpenGL_LIBRARY_DIRS})
-	if(NOT OPENGL_FOUND)
-		message(ERROR " OPENGL not found!")
-	endif(NOT OPENGL_FOUND)
-else()
-#	if (${ANDROID_PLATFORM_LEVEL} LESS 12)
-#		message(FATAL_ERROR "OpenGL 2 is not supported before API level 11 /
-#                      (currently using ${ANDROID_PLATFORM_LEVEL}).")
-#		return()
-#	elseif (${ANDROID_PLATFORM_LEVEL} LESS 18)
-		add_definitions("-DDYNAMIC_ES3")
-		set(GL3STUB_SRC gl3stub.c)
-		set(OPENGL_LIB GLESv3)
-#	else ()
-#		set(OPENGL_LIB GLESv3)
-#	endif (${ANDROID_PLATFORM_LEVEL} LESS 12)
-endif()
+set(OpenGL_GL_PREFERENCE GLVND)
+find_package(OpenGL REQUIRED)
+include_directories(${OpenGL_INCLUDE_DIRS})
+link_directories(${OpenGL_LIBRARY_DIRS})
+if(NOT OPENGL_FOUND)
+	message(ERROR " OPENGL not found!")
+endif(NOT OPENGL_FOUND)
 
 #Build the executiable
 include_directories(${glew_include})
@@ -246,7 +136,7 @@ if (NOT Vulkan_FOUND)
 	set(SOURCE_FILES_VULKAN "")
 endif()
 
-add_library(WoWFrontendLib STATIC ${SOURCE_FILES} ${SOURCE_FILES_VULKAN} ${PROTOBUF_FILES_})
+add_library(WoWFrontendLib STATIC ${SOURCE_FILES} ${SOURCE_FILES_VULKAN})
 add_executable(flyover-viewer src/main.cpp)
 target_link_libraries(flyover-viewer WoWFrontendLib)
 if (MSVC)
@@ -269,7 +159,6 @@ target_compile_definitions(WoWFrontendLib PUBLIC -DIMGUI_USER_CONFIG=<imguiCusto
 target_include_directories(WoWFrontendLib PUBLIC src/ui/imguiLib)
 
 add_dependencies(WoWFrontendLib WoWViewerLib)
-#add_dependencies(WoWFrontendLib storm)
 
 #TODO: platform dependant!!
 add_dependencies(WoWFrontendLib glfw)
@@ -313,10 +202,6 @@ target_link_libraries(WoWFrontendLib ${GLEW_LIBRARIES})
 target_link_libraries(WoWFrontendLib ${OPENGL_LIBRARIES})
 target_link_libraries(WoWFrontendLib ${OPENGL_LIB})
 #target_link_libraries(WoWFrontendLib zlibstatic)
-if(INCLUDE_PROTOBUF_LIB)
-	target_link_libraries(WoWFrontendLib libprotobuf-lite)
-endif ()
-
 
 target_link_libraries(WoWFrontendLib SQLiteCpp sqlite3)
 if (NOT MSVC)
@@ -342,16 +227,8 @@ endif(NOT MSVC)
 target_link_libraries(WoWFrontendLib WoWViewerLib)
 
 target_link_libraries(WoWFrontendLib Threads::Threads)
-if (NOT CMAKE_NDK_BUILD MATCHES 1)
-	target_link_libraries(WoWFrontendLib glfw)
-else()
-	target_link_libraries(WoWFrontendLib EGL)
-	target_link_libraries(WoWFrontendLib GLESv2)
-	target_link_libraries(WoWFrontendLib android)
-	target_link_libraries(WoWFrontendLib log)
-endif()
+target_link_libraries(WoWFrontendLib glfw)
 
-#target_link_libraries(WoWFrontendLib storm)
 target_link_libraries(WoWFrontendLib TactCppLib)
 target_link_libraries(WoWFrontendLib cpr::cpr)
 
@@ -403,37 +280,6 @@ endif( MINGW )
 include( InstallRequiredSystemLibraries )
 
 # Actually install it when make install is called.
-# Note, this works with CPack
 if( CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS )
 	install( PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS} DESTINATION bin COMPONENT System )
 endif( CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS )
-
-add_subdirectory(test EXCLUDE_FROM_ALL)
-target_link_libraries(wow_viewer_tests_run WoWFrontendLib)
-set_target_properties(wow_viewer_tests_run PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
-target_include_directories(wow_viewer_tests_run
-    PRIVATE
-    "$<TARGET_PROPERTY:WoWFrontendLib,INTERFACE_INCLUDE_DIRECTORIES>"
-)
-
-add_subdirectory(offlineRenderer EXCLUDE_FROM_ALL)
-
-
-
-
-include(CPack)
-
-add_executable(TEST_LIGHT_BLENDING
-    testApps/TestLightBlending.cpp
-    wowViewerLib/src/engine/algorithms/mathHelper.cpp
-    wowViewerLib/src/engine/algorithms/grahamScan.cpp
-#    wowViewerLib/src/engine/custom_allocators/FrameBasedStackAllocator.cpp
-#    wowViewerLib/3rdparty/OffsetAllocator/offsetAllocator.cpp
-	src/database/CSqliteDB.cpp src/database/CSqliteDB.h
-)
-target_include_directories(TEST_LIGHT_BLENDING PUBLIC ${WoWViewerLib_INCLUDE_DIRS})
-target_include_directories(TEST_LIGHT_BLENDING PUBLIC ${PROJECT_SOURCE_DIR}/WoWViewerLib/3rdparty/mathfu/include)
-target_link_libraries(TEST_LIGHT_BLENDING TBB::tbb )
-target_link_libraries(TEST_LIGHT_BLENDING TBB::tbbmalloc )
-target_link_libraries(TEST_LIGHT_BLENDING SQLiteCpp sqlite3)
-target_compile_definitions(TEST_LIGHT_BLENDING PUBLIC -DTEST_APP_ALLOCATION)
