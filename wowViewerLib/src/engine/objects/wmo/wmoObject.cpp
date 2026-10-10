@@ -879,6 +879,7 @@ bool WmoObject::startTraversingWMOGroup(
         auto exteriorView = viewsHolder.getOrCreateExterior(frustumDataGlobal);
         bool result = false;
         for (int i = 0; i< groupsLen; i++) {
+            if (isGroupSkipped(i)) continue;
             if ((mainGeom->groups[i].flags.EXTERIOR) > 0 || (mainGeom->groups[i].flags.EXTERIOR_CULL) > 0 || mainGeom->groups[i].flags.ALWAYSDRAW || !m_api->getConfig()->usePortalCulling) { //exterior
                 if (this->groupObjects[i] != nullptr) {
                     bool drawDoodads, drawGroup;
@@ -970,6 +971,7 @@ bool WmoObject::startTraversingWMOGroup(
         for (int i = 0; i< mainGeom->groupsLen; i++) {
             //Interior groups lit from outside are open to the sky: Stormwind (107243) is 305 of them behind one EXTERIOR group
             //whose four portals are all walls, so from above the portal walk reached none of the city. They start the walk too.
+            if (isGroupSkipped(i)) continue;
             if ((mainGeom->groups[i].flags.EXTERIOR) > 0 || (mainGeom->groups[i].flags.EXTERIOR_LIT) > 0 || !m_api->getConfig()->usePortalCulling) { //exterior
                 if (this->groupObjects[i] != nullptr) {
                     bool drawDoodads, drawGroup;
@@ -993,7 +995,7 @@ bool WmoObject::startTraversingWMOGroup(
 
     //Add all ALWAYSRENDER to Exterior
     for (int i = 0; i< mainGeom->groupsLen; i++) {
-        if ((mainGeom->groups[i].flags.ALWAYSDRAW) > 0) { //exterior
+        if ((mainGeom->groups[i].flags.ALWAYSDRAW) > 0 && !isGroupSkipped(i)) { //exterior
             auto exteriorView = viewsHolder.getOrCreateExterior(frustumDataGlobal);
             exteriorView->wmoGroupArray.addToDraw(this->groupObjects[i]);
         }
@@ -1158,6 +1160,7 @@ void WmoObject::drainPortalTraversal(
             const C4Plane &plane = portalInfo->plane;
 
             if (nextGroup < 0 || nextGroup >= mainGeom->groupsLen || groupObjects[nextGroup] == nullptr) continue;
+            if (isGroupSkipped(nextGroup)) continue;
 
             //Skip portals into groups whose world box (incl. doodads) is outside the global
             //frustum: the portal lies on the group's boundary, so it cannot be visible either.
@@ -1332,6 +1335,9 @@ void WmoObject::drainPortalTraversal(
     }
 }
 
+bool WmoObject::isGroupSkipped(int groupId) {
+    return m_api->getConfig()->skipUnreachableWmoGroups && this->mainGeom->groups[groupId].flags.UNREACHABLE;
+}
 
 bool WmoObject::isGroupWmoInterior(int groupId) {
     const SMOGroupInfo *groupInfo = &this->mainGeom->groups[groupId];

@@ -64,6 +64,9 @@ public:
     bool renderBSP = false;
     bool renderPortals = false;
     bool renderAntiPortals = false;
+    // Leaves out WMO groups flagged UNREACHABLE. Stormwind's group 86 is one, a low-poly shell drawn always (ALWAYSDRAW) that
+    // hangs over the city up to 277 yards, where nothing of the real city reaches.
+    bool skipUnreachableWmoGroups = true;
     bool renderPortalsIgnoreDepth = false;
     bool usePortalCulling = true;
     bool discardInvisibleMeshes = true;

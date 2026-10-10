@@ -269,6 +269,8 @@ public:
     bool getGroupWmoThatCameraIsInside(mathfu::vec4 cameraVec4, WmoGroupResult &result, float &bottomBorder);
 
     bool isGroupWmoInterior(int groupId);
+    // True for a group the config leaves out: UNREACHABLE with skipUnreachableWmoGroups.
+    bool isGroupSkipped(int groupId);
     bool isGroupWmoExteriorLit(int groupId);
     bool isGroupWmoExtSkybox(int groupId);
 
