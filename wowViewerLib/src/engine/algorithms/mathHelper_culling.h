@@ -22,6 +22,29 @@ public:
     }
 };
 
+// Marks culled the visible objects whose bounding sphere spans less than minScreenPercent of the view's height,
+// seen from cameraPos with tanHalfFovY. An object around the camera stays.
+template<typename T>
+class ScreenSizeCulling {
+public:
+    static void cull(const mathfu::vec3 &cameraPos, float tanHalfFovY, float minScreenPercent,
+                     const size_t start, const size_t end,
+                     const framebased::vector<T> &objects,
+                     std::vector<uint32_t> &culling_res) {
+        if (minScreenPercent <= 0.0f || tanHalfFovY <= 0.0f) return;
+        for (size_t i = start; i < end; i++) {
+            if (culling_res[i]) continue;
+            const CAaBox &aabb = retrieveAABB(objects[i]);
+            mathfu::vec3 aabbMin = mathfu::vec3(aabb.min.x, aabb.min.y, aabb.min.z);
+            mathfu::vec3 aabbMax = mathfu::vec3(aabb.max.x, aabb.max.y, aabb.max.z);
+            float radius = (aabbMax - aabbMin).Length() * 0.5f;
+            float distance = ((aabbMin + aabbMax) * 0.5f - cameraPos).Length();
+            if (distance <= radius) continue;
+            if (100.0f * radius / (distance * tanHalfFovY) < minScreenPercent) culling_res[i] = 0xFFFFFFFF;
+        }
+    }
+};
+
 //Scalar twin of AabbArrayCullingSSE (see mathHelper_culling_sse.h). Kept semantically identical:
 //VISIBLE when the camera is inside the box or the box intersects at least one frustum.
 class AabbArrayCulling {

@@ -80,7 +80,7 @@ void GeneralView::collectLights(std::vector<LocalLight> &pointLights, std::vecto
 };
 
 
-void GeneralView::addM2FromGroups(const MathHelper::FrustumCullingData &frustumData, mathfu::vec4 &cameraPos) {
+void GeneralView::addM2FromGroups(const MathHelper::FrustumCullingData &frustumData, mathfu::vec4 &cameraPos, const Config *config) {
     for (auto &wmoGroup : wmoGroupArray.getToCheckM2()) {
         auto &doodads = wmoGroup->getDoodads();
         for (auto &m2object : doodads) {
@@ -90,6 +90,9 @@ void GeneralView::addM2FromGroups(const MathHelper::FrustumCullingData &frustumD
 
     auto &candidatesArr = this->m2List.getCandidates();
     auto candCullRes = std::vector<uint32_t>(candidatesArr.size(), 0xFFFFFFFF);
+    const float minScreenPercent = config->minM2ScreenPercent;
+    const float tanHalfFov = std::tan(toRadian(config->fov) * 0.5f);
+    const mathfu::vec3 cullCameraPos = cameraPos.xyz();
 
     oneapi::tbb::task_arena arena(oneapi::tbb::task_arena::automatic, 3);
     arena.execute([&] {
@@ -106,6 +109,8 @@ void GeneralView::addM2FromGroups(const MathHelper::FrustumCullingData &frustumD
                                                               r.begin(), r.end(), candidatesArr,
                                                               candCullRes);
 #endif
+            ScreenSizeCulling<M2ObjId>::cull(cullCameraPos, tanHalfFov, minScreenPercent,
+                                             r.begin(), r.end(), candidatesArr, candCullRes);
         }, tbb::auto_partitioner());
     });
 

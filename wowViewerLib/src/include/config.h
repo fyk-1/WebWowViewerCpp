@@ -126,6 +126,9 @@ public:
     // Scale of the scene against the window, 0.1 to 1.5, stretched or shrunk to the window by the final pass.
     // Object picking in the UI mode assumes 1.
     float renderScale = 1;
+    // Skips a model (M2) whose bounding sphere spans less of the view's height than this, in percent: small props
+    // drop out at a distance and large ones stay. 0 turns it off. Doodads inside WMOs are not affected.
+    float minM2ScreenPercent = 0;
 
     float fogDensityIncreaser = 0;
 
