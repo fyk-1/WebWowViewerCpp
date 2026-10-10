@@ -123,6 +123,9 @@ public:
     float preloadAhead = 1200;
     // Frames per second the main loop holds to at most. 0 or less leaves it uncapped.
     float frameRateCap = 0;
+    // Scale of the scene against the window, 0.1 to 1.5, stretched or shrunk to the window by the final pass.
+    // Object picking in the UI mode assumes 1.
+    float renderScale = 1;
 
     float fogDensityIncreaser = 0;
 

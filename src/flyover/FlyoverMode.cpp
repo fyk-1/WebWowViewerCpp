@@ -55,6 +55,10 @@ Frame rate: flyover sets frameRateCap to 30 the same way. The swapchain presents
 never waits for vsync, so an uncapped viewer renders as fast as the GPU allows; a camera at taxi speed
 reads smooth at 30. The normal UI mode stays uncapped.
 
+Render scale: flyover sets renderScale to 0.75, so the scene renders at 56 % of the window's pixels and the
+final pass stretches it. On the iGPU a 4K window took nearly the whole GPU where a smaller monitor took half,
+so the pixel count is the cost. The normal UI mode renders at 1.
+
 End of stdin queues quit, so a host that dies leaves no orphaned viewer. A route command for the same map
 whose point list matches the current route (count, and coordinate sum within 0.01) is a refresh: distance
 and camera stay, and speed, lookAhead, loop, mode and config apply. A differing point list restarts the
@@ -233,6 +237,7 @@ bool FlyoverMode::start(const std::string &routeFile) {
     // Before the route's config, so a file value still wins.
     m_api->getConfig()->farPlaneForCulling = 1000;
     m_api->getConfig()->frameRateCap = 30;
+    m_api->getConfig()->renderScale = 0.75f;
     applyRoute(route, true);
 
     std::thread(&FlyoverMode::readStdin, m_queue).detach();

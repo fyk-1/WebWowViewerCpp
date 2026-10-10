@@ -18,6 +18,7 @@
 #include <iostream>
 #include <map>
 #include <set>
+#include <algorithm>
 #include <mathfu/glsl_mappings.h>
 #include <groupPanel/groupPanel.h>
 #include <disablableButton/disablableButton.h>
@@ -1785,7 +1786,15 @@ HFrameScenario FrontendUI::createFrameScenario(int canvWidth, int canvHeight, do
             {0,     0},
             {static_cast<unsigned int>(canvWidth), static_cast<unsigned int>(canvHeight)}
         };
-        m_backgroundScene->setViewPortDimensions(dimension);
+        // The scene renders at renderScale of the window, and the final pass scales it to the swapchain.
+        // The ImGui layer keeps the full size.
+        float renderScale = std::clamp(m_api->getConfig()->renderScale, 0.1f, 1.5f);
+        ViewPortDimensions sceneDimension = {
+            {0, 0},
+            {std::max(1u, static_cast<unsigned int>(canvWidth * renderScale)),
+             std::max(1u, static_cast<unsigned int>(canvHeight * renderScale))}
+        };
+        m_backgroundScene->setViewPortDimensions(sceneDimension);
 
         uint32_t debugWidth = 0; uint32_t debugHeight = 0;
         if (m_debugRenderWindow) {

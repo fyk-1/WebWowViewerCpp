@@ -85,6 +85,7 @@ namespace {
     X(Float, farPlaneForCulling) \
     X(Float, preloadAhead) \
     X(Float, frameRateCap) \
+    X(Float, renderScale) \
     X(Float, fogDensityIncreaser) \
     X(Float, adtSpecMult) \
     X(Float, currentGlow) \
