@@ -487,6 +487,27 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
 
             if (adtHeight < cameraPos.z)
                 bottomBorder = adtHeight;
+
+            // The camera's altitude, measured from the terrain under it averaged with a ten-second time constant, so a
+            // hill or a ravine passing below does not make the fog or the cull pulse while a climb onto a plateau still
+            // catches up. A jump of the camera, such as a route opening another map, takes the new terrain at once.
+            // The altitude sets config's cameraAltitude and cameraGrounded, which leaves the ground above groundAltitude
+            // and comes back below it less 10 yards, so hovering at the line does not flip it every frame. Both are kept
+            // where no terrain is found under the camera.
+            if (adtHeight > -99999) {
+                const float jump = (cameraVec3 - m_altitudeCameraPos).Length();
+                if (!m_altitudeGroundSet || jump > 200.0f) {
+                    m_altitudeGround = adtHeight;
+                    m_altitudeGroundSet = true;
+                } else {
+                    m_altitudeGround += (adtHeight - m_altitudeGround) * (1.0f - std::exp(-float(frameInputParams.delta) / 10000.0f));
+                }
+                const float altitude = cameraPos.z - m_altitudeGround;
+                if (config->cameraGrounded && altitude > config->groundAltitude) config->cameraGrounded = false;
+                else if (!config->cameraGrounded && altitude < config->groundAltitude - 10.0f) config->cameraGrounded = true;
+                config->cameraAltitude = altitude;
+            }
+            m_altitudeCameraPos = cameraVec3;
         }
 
         WmoGroupResult resGroupResult;
@@ -903,8 +924,8 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
         auto results = std::vector<uint32_t>();
 
         auto &candidates = exteriorView->m2List.getCandidates();
-        // Models too small on screen are skipped like ones outside the frustum (minM2ScreenPercent).
-        const float minScreenPercent = m_api->getConfig()->minM2ScreenPercent;
+        // Models too small on screen are skipped like ones outside the frustum (minM2ScreenPercent, by altitude).
+        const float minScreenPercent = m_api->getConfig()->effectiveMinM2ScreenPercent();
         const float tanHalfFov = std::tan(toRadian(m_api->getConfig()->fov) * 0.5f);
         const mathfu::vec3 cullCameraPos = cameraPos.xyz();
         if (candidates.size() > 0) {

@@ -60,8 +60,8 @@ the scene and the cameras live. `look <dx> <dy>`, `move <w|a|s|d|q|e> <1|0>` and
 host that takes the input itself, the window behind the desktop icons getting none; look does nothing in path
 mode, and a move still held at a switch goes with the camera, since every switch to free mode starts a new one.
 
-Far plane: flyover sets farPlaneForCulling to 1000 at startup, before the route file's config is applied,
-so fog at full strength at 1000 yards has geometry behind it. The normal UI mode keeps 400.
+Far plane: flyover sets farPlaneForCulling to 1000 and farPlaneForCullingAir to 1500 at startup, before the route
+file's config is applied, so fog at full strength at 1000 yards has geometry behind it. The normal UI mode keeps 400.
 
 Frame rate: flyover sets frameRateCap to 30 the same way. The swapchain presents in mailbox mode, which
 never waits for vsync, so an uncapped viewer renders as fast as the GPU allows; a camera at taxi speed
@@ -367,6 +367,7 @@ bool FlyoverMode::start(const std::string &routeFile, const FlyoverInstall &inst
     m_api = m_frontendUI.getApi();
     // Before the route's config, so a file value still wins.
     m_api->getConfig()->farPlaneForCulling = 1000;
+    m_api->getConfig()->farPlaneForCullingAir = 1500;
     m_api->getConfig()->frameRateCap = 30;
     m_api->getConfig()->fsrUpscaling = true;
     m_api->getConfig()->renderScale = 0.59f;

@@ -121,6 +121,8 @@ public:
     float nearPlane = 1;
     float farPlane = 1000;
     float farPlaneForCulling = 400;
+    // The draw distance with the camera in the air; farPlaneForCulling is the one on the ground (cameraGrounded).
+    float farPlaneForCullingAir = 1500;
     // Yards ahead on a camera's route whose map tiles are loaded before they are seen. 0 or less turns it off.
     // Only a camera that knows its route answers it (the flyover path camera).
     float preloadAhead = 1200;
@@ -139,8 +141,25 @@ public:
     // Below 1 FSR costs less, and renderScale above it turns FSR off.
     float fsrOutputScale = 1;
     // Skips a model (M2) whose bounding sphere spans less of the view's height than this, in percent: small props
-    // drop out at a distance and large ones stay. 0 turns it off. Doodads inside WMOs are not affected.
-    float minM2ScreenPercent = 0;
+    // drop out at a distance and large ones stay. Doodads inside WMOs are not affected. Never below
+    // MinM2ScreenPercentFloor: with a long draw distance, culling nothing loads the CPU and GPU with every far prop.
+    static constexpr float MinM2ScreenPercentFloor = 1;
+    float minM2ScreenPercent = 1;
+    // The camera counts as on the ground up to groundAltitude yards above the terrain, and in the air above it.
+    // minM2ScreenPercent applies on the ground and minM2ScreenPercentAir in the air.
+    float groundAltitude = 30;
+    float minM2ScreenPercentAir = 2;
+    // Set by the map every frame from cameraAltitude and groundAltitude.
+    bool cameraGrounded = true;
+
+    float effectiveFarPlaneForCulling() const {
+        return cameraGrounded ? farPlaneForCulling : farPlaneForCullingAir;
+    }
+    float effectiveMinM2ScreenPercent() const {
+        const float ground = minM2ScreenPercent > MinM2ScreenPercentFloor ? minM2ScreenPercent : MinM2ScreenPercentFloor;
+        const float air = minM2ScreenPercentAir > MinM2ScreenPercentFloor ? minM2ScreenPercentAir : MinM2ScreenPercentFloor;
+        return cameraGrounded ? ground : air;
+    }
     // Which WoWee shader ports draw, as a bitmask: 1 water, 2 terrain, 4 WMO, 8 M2, 16 magma and slime. The rest of each
     // family keeps the retail shading. Reaches the shaders in the scene-wide block's uSceneSize_DisableLightBuffer.w.
     int woweeShaders = 17;
@@ -148,6 +167,8 @@ public:
     bool fsrResetRequested = false;
 
     float fogDensityIncreaser = 0;
+    // Set by the map every frame: the camera's height above the terrain under it, averaged over several seconds, in yards.
+    float cameraAltitude = 0;
 
     bool disableGlow = false;
 

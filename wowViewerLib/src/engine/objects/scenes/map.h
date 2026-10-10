@@ -54,6 +54,11 @@ protected:
     SceneMode m_sceneMode = SceneMode::smMap;
 
     float m_currentTime = 0;
+    // The averaged terrain height that makeFramePlan measures the camera's altitude from, and the camera position it
+    // last saw, to tell a jump from flight.
+    float m_altitudeGround = 0;
+    bool m_altitudeGroundSet = false;
+    mathfu::vec3 m_altitudeCameraPos = {0, 0, 0};
 
     bool m_lockedMap = false;
 

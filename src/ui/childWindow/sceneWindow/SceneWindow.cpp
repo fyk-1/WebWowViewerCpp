@@ -78,7 +78,7 @@ inline HMapSceneParams createMapSceneParams(const HApiContainer &apiContainer,
     result->scene = currentScene;
 
     float farPlaneRendering = apiContainer->getConfig()->farPlane;
-    float farPlaneCulling = apiContainer->getConfig()->farPlaneForCulling;
+    float farPlaneCulling = apiContainer->getConfig()->effectiveFarPlaneForCulling();
 
     float nearPlane = 1.0;
     float fovR = toRadian(fov);

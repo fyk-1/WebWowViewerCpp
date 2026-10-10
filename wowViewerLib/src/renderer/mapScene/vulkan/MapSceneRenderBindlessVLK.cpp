@@ -2128,7 +2128,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
             double a = perspective(2, 2);
             double b = perspective(2, 3);
             double nearPlane = 1.0;
-            double farPlane = m_config->farPlaneForCulling;
+            double farPlane = m_config->effectiveFarPlaneForCulling();
             // mathfu's Perspective puts f/(n-f) and 2nf/(n-f) in row 2, not the textbook (f+n)/(n-f) and 2nf/(n-f),
             // so these are n and f.
             if (std::fabs(a) > 1e-6 && std::fabs(1.0 + a) > 1e-9) {

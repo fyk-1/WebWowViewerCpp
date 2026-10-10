@@ -84,11 +84,12 @@ namespace {
     X(Float, fov) \
     X(Float, nearPlane) \
     X(Float, farPlane) \
-    X(Float, farPlaneForCulling) \
+    X(Float, farPlaneForCulling)     X(Float, farPlaneForCullingAir) \
     X(Float, preloadAhead) \
     X(Float, frameRateCap) \
     X(Float, renderScale) \
     X(Float, fsrSharpness)     X(Float, fsrOutputScale)     X(Float, minM2ScreenPercent) \
+    X(Float, groundAltitude)   X(Float, minM2ScreenPercentAir) \
     X(Int, woweeShaders) \
     X(Float, fogDensityIncreaser) \
     X(Float, adtSpecMult) \

@@ -90,7 +90,7 @@ void GeneralView::addM2FromGroups(const MathHelper::FrustumCullingData &frustumD
 
     auto &candidatesArr = this->m2List.getCandidates();
     auto candCullRes = std::vector<uint32_t>(candidatesArr.size(), 0xFFFFFFFF);
-    const float minScreenPercent = config->minM2ScreenPercent;
+    const float minScreenPercent = config->effectiveMinM2ScreenPercent();
     const float tanHalfFov = std::tan(toRadian(config->fov) * 0.5f);
     const mathfu::vec3 cullCameraPos = cameraPos.xyz();
 
