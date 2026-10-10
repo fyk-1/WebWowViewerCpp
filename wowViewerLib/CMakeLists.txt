@@ -652,6 +652,10 @@ if (LINK_VULKAN)
             src/renderer/mapScene/vulkan/liquidData/LiquidDataForwardVLK.h
             src/renderer/mapScene/vulkan/view/LiquidHiZVLK.h
             src/renderer/mapScene/vulkan/view/LiquidHiZVLK.cpp
+            src/renderer/mapScene/vulkan/view/MotionVectorsVLK.h
+            src/renderer/mapScene/vulkan/view/MotionVectorsVLK.cpp
+            src/renderer/mapScene/vulkan/view/FsrUpscalerVLK.h
+            src/renderer/mapScene/vulkan/view/FsrUpscalerVLK.cpp
     )
 
     message(VULKAN_SDK = $ENV{VULKAN_SDK})
@@ -833,6 +837,8 @@ endif()
 if (LINK_VULKAN)
     message("Include vulkan include dir ${Vulkan_INCLUDE_DIR}")
     target_include_directories(WoWViewerLib PUBLIC ${Vulkan_INCLUDE_DIR})
+    # AMD FidelityFX ffx API headers for the FSR upscaler. The DLL is loaded at run time, so nothing links.
+    target_include_directories(WoWViewerLib PRIVATE ${CMAKE_SOURCE_DIR}/3rdparty/FidelityFX-SDK/ffx-api/include)
     target_compile_definitions(WoWViewerLib PUBLIC -DLINK_VULKAN)
 #    target_link_libraries(WoWViewerLib ${Vulkan_LIBRARY})
     

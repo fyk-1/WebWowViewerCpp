@@ -439,6 +439,9 @@ protected:
 
     MeshCount lastMeshCount;
 
+    // Position in the FSR jitter sequence, advanced by every frame that is jittered
+    uint32_t m_fsrJitterIndex = 0;
+
     void createM2GlobalMaterialData();
     void createWMOGlobalMaterialData();
     void createADTGlobalMaterialData();

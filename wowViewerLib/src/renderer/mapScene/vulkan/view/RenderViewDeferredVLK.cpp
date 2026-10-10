@@ -36,6 +36,8 @@ RenderViewDeferredVLK::RenderViewDeferredVLK(const HGDeviceVLK &device,
     glowPass = std::make_unique<FFXGlowPassVLK>(m_device, uboBuffer, quadVAO);
     m_hiZOcclusionCulling = std::make_unique<HiZOcclusionCullingVLK>(m_device);
     m_liquidHiZ = std::make_unique<LiquidHiZVLK>(m_device);
+    m_motionVectors = std::make_unique<MotionVectorsVLK>(m_device);
+    m_fsr = std::make_unique<FsrUpscalerVLK>(m_device);
 
     for (auto &pointLightBuff : m_pointLightBuffers) {
         pointLightBuff = m_pointLightDataBuffer->getSubBuffer(100*sizeof(LocalLight));
@@ -214,8 +216,15 @@ void RenderViewDeferredVLK::createFrameBuffers() {
         }
     }
 
-    // Intermediate textures were recreated — FXAA materials referencing them must be rebuilt
+    // Intermediate textures were recreated — FXAA and present materials referencing them must be rebuilt
     m_fxaaMatsBuilt = false;
+    m_presentMatsBuilt = false;
+}
+
+std::shared_ptr<GRenderPassVLK> RenderViewDeferredVLK::getCompositeTargetPass() const {
+    if (m_fxaaEnabled || m_fsrActive) return m_fxaaInputRenderPass;
+
+    return !this->m_createOutputFBO ? m_device->getSwapChainRenderPass() : this->m_outputRenderPass;
 }
 
 static const PipelineTemplate s_lightBufferPipelineT = {
@@ -343,6 +352,37 @@ void RenderViewDeferredVLK::update(int width, int height, float glow,
     width = std::max<int>(1, width);
     height = std::max<int>(1, height);
 
+    // FSR renders this view at width x height and upscales it to its output size, a fraction of the swapchain's. Its context follows both
+    // sizes, so it is settled before the passes that depend on whether the composite goes to the intermediate.
+    {
+        // FSR only upscales, so a view larger than its output is scaled by the final pass instead.
+        auto displayExtent = FsrUpscalerVLK::outputExtent(m_device->getCurrentExtent(), m_fsrOutputScale);
+        const bool wantFsr = m_fsrWanted && !m_createOutputFBO &&
+                             (uint32_t) width <= displayExtent.width && (uint32_t) height <= displayExtent.height;
+        // A context is built only for sizes that held for two frames: the swapchain and the canvas resize on
+        // different frames, and each context compiles FSR's pipelines on the frame path.
+        const bool sizesSettled = width == m_fsrLastWidth && height == m_fsrLastHeight &&
+                                  displayExtent.width == m_fsrLastDisplayWidth && displayExtent.height == m_fsrLastDisplayHeight;
+        m_fsrLastWidth = width;
+        m_fsrLastHeight = height;
+        m_fsrLastDisplayWidth = displayExtent.width;
+        m_fsrLastDisplayHeight = displayExtent.height;
+        if (wantFsr && (sizesSettled || m_fsr->matchesSizes(width, height, displayExtent.width, displayExtent.height))) {
+            m_fsrActive = m_fsr->ensureContext(width, height, displayExtent.width, displayExtent.height);
+            if (!m_fsrActive && m_fsr->hasContext()) m_fsr->releaseContext();
+        } else if (wantFsr) {
+            m_fsrActive = false;
+        } else {
+            m_fsrActive = false;
+            if (m_fsr->hasContext()) m_fsr->releaseContext();
+        }
+        if (m_fsrActive) {
+            m_motionVectors->setup(width, height);
+        } else {
+            m_prevViewProjValid = false;
+        }
+    }
+
     if (width != m_width || height != m_height) {
         m_width = std::max<int>(1, width);
         m_height = std::max<int>(1, height);
@@ -376,9 +416,8 @@ void RenderViewDeferredVLK::update(int width, int height, float glow,
 
             glowPass->updateDimensions(m_width, m_height,
                                        inputColorTextures,
-                                       m_fxaaEnabled ? m_fxaaInputRenderPass :
-                                           (!this->m_createOutputFBO ? m_device->getSwapChainRenderPass() : this->m_outputRenderPass));
-            m_lastGlowTargetIsFxaa = m_fxaaEnabled;
+                                       getCompositeTargetPass());
+            m_lastGlowTargetIsIntermediate = m_fxaaEnabled || m_fsrActive;
         }
 
         m_hiZOcclusionCulling->setup(m_width, m_height);
@@ -390,9 +429,9 @@ void RenderViewDeferredVLK::update(int width, int height, float glow,
         this->createLightBufferMats();
     }
 
-    // FXAA toggled at runtime: rebuild the glow composite materials so they target
-    // the right pass (FXAA intermediate vs swapchain/output)
-    if (m_lastGlowTargetIsFxaa != m_fxaaEnabled) {
+    // FXAA or FSR toggled at runtime: rebuild the glow composite materials so they target
+    // the right pass (intermediate vs swapchain/output)
+    if (m_lastGlowTargetIsIntermediate != (m_fxaaEnabled || m_fsrActive)) {
         std::vector<std::shared_ptr<ISamplableTexture>> inputColorTextures;
         for (int i = 0; i < m_forwardFrameBuffers.size(); i++) {
             inputColorTextures.emplace_back(m_forwardFrameBuffers[i]->getAttachment(0));
@@ -400,14 +439,18 @@ void RenderViewDeferredVLK::update(int width, int height, float glow,
 
         glowPass->updateDimensions(m_width, m_height,
                                    inputColorTextures,
-                                   m_fxaaEnabled ? m_fxaaInputRenderPass :
-                                       (!this->m_createOutputFBO ? m_device->getSwapChainRenderPass() : this->m_outputRenderPass),
+                                   getCompositeTargetPass(),
                                    true);
-        m_lastGlowTargetIsFxaa = m_fxaaEnabled;
+        m_lastGlowTargetIsIntermediate = m_fxaaEnabled || m_fsrActive;
     }
     if (m_fxaaEnabled && !m_fxaaMatsBuilt) {
         createFxaaMats();
         m_fxaaMatsBuilt = true;
+    }
+    if (m_fsrActive && (!m_presentMatsBuilt || m_presentMatsContextGeneration != m_fsr->getContextGeneration())) {
+        createPresentMats();
+        m_presentMatsBuilt = true;
+        m_presentMatsContextGeneration = m_fsr->getContextGeneration();
     }
 
     updateLightBuffers(pointLights, spotLights, insideSpotLights);
@@ -482,9 +525,32 @@ HGSamplableTexture RenderViewDeferredVLK::getLiquidDepthTexture() {
 void RenderViewDeferredVLK::copyForwardColorToLiquidBackBuffer(CmdBufRecorder &cmdBuf) {
     auto frameNum = FrameContext::getCurrentProcessingFrameNumber() % IDevice::MAX_FRAMES_IN_FLIGHT;
 
+    blitForwardColor(cmdBuf, m_liquidBackBufferTextures[frameNum],
+                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+    // Update gBufferDataDS with the backbuffer copy for liquid shader sampling
+    m_gBufferDataDS->beginUpdate()
+        .texture(3, m_liquidBackBufferSamplable[frameNum]);
+}
+
+void RenderViewDeferredVLK::copyOpaqueColorForFsr(CmdBufRecorder &cmdBuf) {
+    if (!m_fsrActive) return;
+
+    auto frameNum = FrameContext::getCurrentProcessingFrameNumber() % IDevice::MAX_FRAMES_IN_FLIGHT;
+
+    // The upscaler reads the copy from a compute shader. The forward pass that follows still renders into the source.
+    blitForwardColor(cmdBuf, m_fsr->getOpaqueColorTexture(frameNum),
+                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+}
+
+// Blits forward color attachment 0 into dstTexVlk, which ends in SHADER_READ_ONLY_OPTIMAL and visible to dstStageMask.
+// The attachment is handed back in the layout the next forward pass expects.
+void RenderViewDeferredVLK::blitForwardColor(CmdBufRecorder &cmdBuf, const std::shared_ptr<GTextureVLK> &dstTexVlk,
+                                             VkPipelineStageFlags dstStageMask) {
+    auto frameNum = FrameContext::getCurrentProcessingFrameNumber() % IDevice::MAX_FRAMES_IN_FLIGHT;
+
     auto srcSamplable = m_forwardFrameBuffers[frameNum]->getAttachment(0);
     auto srcTexVlk = std::dynamic_pointer_cast<GTextureVLK>(srcSamplable->getTexture());
-    auto &dstTexVlk = m_liquidBackBufferTextures[frameNum];
 
     if (!srcTexVlk || !dstTexVlk) return;
 
@@ -552,13 +618,9 @@ void RenderViewDeferredVLK::copyForwardColorToLiquidBackBuffer(CmdBufRecorder &c
 
     cmdBuf.recordPipelineImageBarrier(
         VK_PIPELINE_STAGE_TRANSFER_BIT,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        dstStageMask,
         postBarriers
     );
-
-    // Update gBufferDataDS with the backbuffer copy for liquid shader sampling
-    m_gBufferDataDS->beginUpdate()
-        .texture(3, m_liquidBackBufferSamplable[frameNum]);
 }
 
 void RenderViewDeferredVLK::copyObjectIdPixelToBuffer(CmdBufRecorder &cmdBuf, int x, int y, VkBuffer dstBuffer) {
@@ -830,16 +892,97 @@ void RenderViewDeferredVLK::doPostFinalFxaa(CmdBufRecorder &bufCmd) {
 }
 
 void RenderViewDeferredVLK::drawFxaaQuad(CmdBufRecorder &cmdBuf, int frameNum) {
+    drawFullScreenQuad(cmdBuf, m_fxaaMats[frameNum]);
+}
+
+void RenderViewDeferredVLK::drawFullScreenQuad(CmdBufRecorder &cmdBuf, const std::shared_ptr<ISimpleMaterialVLK> &material) {
     auto vulkanBindings = std::dynamic_pointer_cast<GVertexBufferBindingsVLK>(m_quadVAO);
     cmdBuf.bindVertexBuffers(vulkanBindings->getVertexBuffers());
     cmdBuf.bindIndexBuffer(vulkanBindings->getIndexBuffer());
 
-    cmdBuf.bindPipeline(m_fxaaMats[frameNum]->getPipeline());
-    cmdBuf.bindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, m_fxaaMats[frameNum]->getDescriptorSets());
+    cmdBuf.bindPipeline(material->getPipeline());
+    cmdBuf.bindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, material->getDescriptorSets());
 
     cmdBuf.setViewPort(CmdBufRecorder::ViewportType::vp_usual);
     cmdBuf.setDefaultScissors();
     cmdBuf.drawIndexed(6, 1, 0, 0);
+}
+
+void RenderViewDeferredVLK::doMotionVectors(CmdBufRecorder &frameBufCmd, const mathfu::mat4 &viewProj,
+                                            float nearPlane, float farPlane, float farNdcZ, bool reset) {
+    if (!m_fsrActive) return;
+
+    auto frameNum = FrameContext::getCurrentProcessingFrameNumber() % IDevice::MAX_FRAMES_IN_FLIGHT;
+
+    MotionVectorsVLK::Params params;
+    params.viewProj = viewProj;
+    // With no history to reproject into, the camera is taken to have stood still.
+    params.prevViewProj = (m_prevViewProjValid && !reset) ? m_prevViewProj : viewProj;
+    params.nearPlane = nearPlane;
+    params.farPlane = farPlane;
+    params.farNdcZ = farNdcZ;
+
+    m_motionVectors->execute(frameBufCmd, m_gBufferFrameBuffers[frameNum], params);
+
+    m_prevViewProj = viewProj;
+    m_prevViewProjValid = true;
+}
+
+bool RenderViewDeferredVLK::doFsrUpscale(CmdBufRecorder &frameBufCmd, const FsrUpscalerVLK::DispatchParams &params) {
+    if (!m_fsrActive || !m_motionVectors->isReady()) return false;
+
+    auto frameNum = FrameContext::getCurrentProcessingFrameNumber() % IDevice::MAX_FRAMES_IN_FLIGHT;
+
+    auto compositeTexture = std::dynamic_pointer_cast<GTextureVLK>(m_fxaaInputFrameBuffers[frameNum]->getAttachment(0)->getTexture());
+    return m_fsr->dispatch(frameBufCmd,
+                           compositeTexture,
+                           m_motionVectors->getDepthTexture(frameNum),
+                           m_motionVectors->getMotionTexture(frameNum),
+                           params);
+}
+
+void RenderViewDeferredVLK::doPostFinalFsr(CmdBufRecorder &bufCmd, bool upscaled) {
+    VkZone(bufCmd, "Present FSR");
+    auto frameNum = FrameContext::getCurrentProcessingFrameNumber() % IDevice::MAX_FRAMES_IN_FLIGHT;
+
+    drawFullScreenQuad(bufCmd, upscaled ? m_presentFsrMats[frameNum] : m_presentIntermediateMats[frameNum]);
+}
+
+void RenderViewDeferredVLK::createPresentMats() {
+    static const PipelineTemplate s_presentPipelineT = []{
+        PipelineTemplate pipelineTemplate;
+        pipelineTemplate.element = DrawElementMode::TRIANGLES;
+        pipelineTemplate.depthWrite = false;
+        pipelineTemplate.depthCulling = false;
+        pipelineTemplate.backFaceCulling = false;
+        pipelineTemplate.blendMode = EGxBlendEnum::GxBlend_Opaque;
+        return pipelineTemplate;
+    }();
+
+    auto targetPass = m_device->getSwapChainRenderPass();
+
+    auto createMat = [&](const HGSamplableTexture &source) {
+        return MaterialBuilderVLK::fromShader(m_device, {"drawQuad", "fsrPresent"},
+                                              {"forwardRendering", "forwardRendering"})
+            .createPipeline(m_quadVAO, targetPass, s_presentPipelineT)
+            .createDescriptorSet(0, [this](std::shared_ptr<GDescriptorSet> &ds) {
+                ds->beginUpdate()
+                    .ubo(0, BufferChunkHelperVLK::cast(m_fxaaVsParams))
+                    .delayUpdate();
+            })
+            .createDescriptorSet(1, [source](std::shared_ptr<GDescriptorSet> &ds) {
+                ds->beginUpdate()
+                    .texture(0, source);
+            })
+            .toMaterial();
+    };
+
+    for (int i = 0; i < IDevice::MAX_FRAMES_IN_FLIGHT; i++) {
+        m_presentFsrMats[i] = createMat(m_fsr->getOutputSamplable(i));
+        // The intermediate is what a failed dispatch leaves to show, stretched to the window with linear filtering
+        m_presentIntermediateMats[i] = createMat(
+            m_device->createSampledTexture(m_fxaaInputFrameBuffers[i]->getAttachment(0)->getTexture(), false, false));
+    }
 }
 
 void RenderViewDeferredVLK::createFxaaMats() {

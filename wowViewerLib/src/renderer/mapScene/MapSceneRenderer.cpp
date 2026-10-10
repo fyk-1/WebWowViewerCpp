@@ -171,6 +171,14 @@ void MapSceneRenderer::updateSceneWideChunk(const std::shared_ptr<IBufferChunkVe
         blockPSVS.uInvLookAtMat = renderingMatrices->lookAtMat.Inverse();
         if (isVulkan) {
             auto perspMat = MathHelper::getVulkanMat4Fix() * renderingMatrices->perspectiveMat;
+            if (matAndSceneSize.jitterX != 0.0f || matAndSceneSize.jitterY != 0.0f) {
+                // The jitter as a shift of NDC, applied after the projection so the camera classes never see it.
+                // Culling takes its own unjittered matrix.
+                perspMat = mathfu::mat4::FromTranslationVector(mathfu::vec3(
+                    2.0f * matAndSceneSize.jitterX / (float) matAndSceneSize.width,
+                    2.0f * matAndSceneSize.jitterY / (float) matAndSceneSize.height,
+                    0.0f)) * perspMat;
+            }
             blockPSVS.uPMatrix = perspMat;
             blockPSVS.uInvPMatrix = perspMat.Inverse();
         } else {

@@ -123,12 +123,23 @@ public:
     float preloadAhead = 1200;
     // Frames per second the main loop holds to at most. 0 or less leaves it uncapped.
     float frameRateCap = 0;
-    // Scale of the scene against the window, 0.1 to 1.5, stretched or shrunk to the window by the final pass.
-    // Object picking in the UI mode assumes 1.
+    // Scale of the scene against the window, 0.05 to 1.5, stretched or shrunk to the window by the final pass.
+    // Object picking in the UI mode assumes 1. With fsrUpscaling on and the scale at most 1, FSR upscales it instead;
+    // AMD supports ratios down to 1/3, and below that the image degrades.
     float renderScale = 1;
+    // Upscales the scene to the window with AMD FSR 3.1 instead of stretching it. Needs the bindless renderer and
+    // amd_fidelityfx_vk.dll beside the executable; without either the scene is stretched as before.
+    bool fsrUpscaling = false;
+    // RCAS sharpening of the FSR output, 0 to 1.
+    float fsrSharpness = 0.3f;
+    // Size FSR upscales to, as a fraction of the window, 0.25 to 1; the last pass stretches its output to the window.
+    // Below 1 FSR costs less, and renderScale above it turns FSR off.
+    float fsrOutputScale = 1;
     // Skips a model (M2) whose bounding sphere spans less of the view's height than this, in percent: small props
     // drop out at a distance and large ones stay. 0 turns it off. Doodads inside WMOs are not affected.
     float minM2ScreenPercent = 0;
+    // Set by the host when the camera jumps, so the next FSR dispatch drops its history. The renderer clears it.
+    bool fsrResetRequested = false;
 
     float fogDensityIncreaser = 0;
 

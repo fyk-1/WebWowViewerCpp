@@ -12,6 +12,8 @@
 #include "VideoRecordingContextVLK.h"
 #include "HiZOcclusionCullingVLK.h"
 #include "LiquidHiZVLK.h"
+#include "MotionVectorsVLK.h"
+#include "FsrUpscalerVLK.h"
 
 class RenderViewDeferredVLK : public IRenderView {
 public:
@@ -58,6 +60,27 @@ public:
     void doComposite(CmdBufRecorder &frameBufCmd);
     // Draw FXAA (from the intermediate) into the currently active render pass (e.g. swapchain)
     void doPostFinalFxaa(CmdBufRecorder &bufCmd);
+
+    // Whether the next update() should upscale this view with FSR instead of stretching it. Only the view that
+    // draws onto the swapchain does; the setting is ignored by a view with an output framebuffer.
+    void setFsrEnabled(bool enabled) { m_fsrWanted = enabled; }
+    // Fraction of the swapchain FSR upscales to; the present pass stretches the rest of the way.
+    void setFsrOutputScale(float scale) { m_fsrOutputScale = scale; }
+    // Whether FSR runs for this view, as of the last update(). It is off when the DLL or the context is unavailable.
+    bool isFsrActive() const { return m_fsrActive; }
+
+    // Camera motion vectors and standard depth for FSR from the GBuffer depth. Call after the Hi-Z step, while the
+    // depth is still in DEPTH_STENCIL_ATTACHMENT_OPTIMAL, with this frame's unjittered view-projection. The first
+    // frame after a reset has no history and gets zero vectors.
+    void doMotionVectors(CmdBufRecorder &frameBufCmd, const mathfu::mat4 &viewProj,
+                         float nearPlane, float farPlane, float farNdcZ, bool reset);
+    // Copy forward color attachment 0, which at that point is the opaque scene, for the reactive mask
+    void copyOpaqueColorForFsr(CmdBufRecorder &frameBufCmd);
+    // Builds the reactive mask and upscales the composite into the display size output. Call after doComposite.
+    // False when the dispatch failed, and the caller then presents without it.
+    bool doFsrUpscale(CmdBufRecorder &frameBufCmd, const FsrUpscalerVLK::DispatchParams &params);
+    // Draw the FSR output, or after a failed dispatch the stretched composite, into the currently active render pass
+    void doPostFinalFsr(CmdBufRecorder &bufCmd, bool upscaled);
 
     // Run Hi-Z generation + occlusion culling between GBuffer and forward passes.
     // Call after GBuffer render pass ends, before doGBufferBarrier.
@@ -160,12 +183,38 @@ private:
     std::shared_ptr<IBufferChunk<mathfu::vec4_packed>> m_fxaaScreenSize;
     bool m_fxaaEnabled = false;
     bool m_fxaaMatsBuilt = false;
-    bool m_lastGlowTargetIsFxaa = false;
+    // Whether the glow composite targets the intermediate, for FXAA or for FSR, rather than the final target
+    bool m_lastGlowTargetIsIntermediate = false;
+
+    // FSR: motion vectors from the GBuffer depth, the upscaler, and the quads that draw its output (or, when its
+    // dispatch fails, the intermediate) onto the swapchain
+    std::unique_ptr<MotionVectorsVLK> m_motionVectors;
+    std::unique_ptr<FsrUpscalerVLK> m_fsr;
+    bool m_fsrWanted = false;
+    bool m_fsrActive = false;
+    float m_fsrOutputScale = 1;
+    // Last frame's render and swapchain sizes, so a context is made only for sizes that held
+    int m_fsrLastWidth = 0;
+    int m_fsrLastHeight = 0;
+    uint32_t m_fsrLastDisplayWidth = 0;
+    uint32_t m_fsrLastDisplayHeight = 0;
+    mathfu::mat4 m_prevViewProj = mathfu::mat4::Identity();
+    bool m_prevViewProjValid = false;
+    std::array<std::shared_ptr<ISimpleMaterialVLK>, IDevice::MAX_FRAMES_IN_FLIGHT> m_presentFsrMats;
+    std::array<std::shared_ptr<ISimpleMaterialVLK>, IDevice::MAX_FRAMES_IN_FLIGHT> m_presentIntermediateMats;
+    bool m_presentMatsBuilt = false;
+    uint32_t m_presentMatsContextGeneration = 0;
 
     void createFrameBuffers();
     void createLightBufferMats();
     void createFxaaMats();
+    void createPresentMats();
     void drawFxaaQuad(CmdBufRecorder &cmdBuf, int frameNum);
+    void drawFullScreenQuad(CmdBufRecorder &cmdBuf, const std::shared_ptr<ISimpleMaterialVLK> &material);
+    // The pass the glow composite renders into: the intermediate when FXAA or FSR follows it
+    std::shared_ptr<GRenderPassVLK> getCompositeTargetPass() const;
+    void blitForwardColor(CmdBufRecorder &cmdBuf, const std::shared_ptr<GTextureVLK> &dstTexture,
+                          VkPipelineStageFlags dstStageMask);
     std::vector<std::function<void ()>> onUpdates;
 
     void updateLightBuffers(const std::vector<LocalLight> &pointLights, const std::vector<SpotLight> &spotLights, const std::vector<SpotLight> &insideSpotLights);

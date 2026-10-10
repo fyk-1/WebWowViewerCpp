@@ -911,6 +911,23 @@ void GDeviceVLK::pickPhysicalDevice() {
 }
 
 
+/*
+robots@Impl: Device features of the FSR upscaler.
+
+The FidelityFX Vulkan backend picks its shader permutations from what the physical device supports, not from
+what the device was created with: storage images of unknown format when the shaders write them (FSR declares
+its outputs without a format), the 16-bit float permutation when shaderFloat16 is supported, and the wave size
+range from VK_EXT_subgroup_size_control, with its full-subgroups feature. Every one is enabled where supported,
+so what it picks is also what the device runs. The motion vector pass writes RG16F and the reactive mask is R8,
+which storage images only take with the extended formats; FsrUpscalerVLK checks both formats before its first
+context. FSR is optional, so none of them is required, and the 16-bit and subgroup ones join the feature chain
+only when their extension is there.
+
+The backend also calls vkGetBufferMemoryRequirements2KHR, fetched by name through vkGetDeviceProcAddr. That
+returns null unless VK_KHR_get_memory_requirements2 is enabled, even on a Vulkan 1.1 device where the core
+function exists, and the backend calls it unchecked. So that extension and VK_KHR_dedicated_allocation, which it
+also names, are enabled wherever available.
+*/
 void GDeviceVLK::createLogicalDevice() {
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.transferFamily.value()};
@@ -990,6 +1007,11 @@ void GDeviceVLK::createLogicalDevice() {
     // with this feature (VUID-VkDrawIndexedIndirectCommand-firstInstance-00554).
     deviceFeatures.drawIndirectFirstInstance = supportedFeatures.drawIndirectFirstInstance;
 
+    deviceFeatures.shaderStorageImageExtendedFormats = supportedFeatures.shaderStorageImageExtendedFormats;
+    deviceFeatures.shaderInt16 = supportedFeatures.shaderInt16;
+    deviceFeatures.shaderStorageImageReadWithoutFormat = supportedFeatures.shaderStorageImageReadWithoutFormat;
+    deviceFeatures.shaderStorageImageWriteWithoutFormat = supportedFeatures.shaderStorageImageWriteWithoutFormat;
+
     // Per-attachment blend state is required by the object-id selection attachment
     // (color attachment is blended, object-id attachment is not)
     m_supportsIndependentBlend = supportedFeatures.independentBlend == VK_TRUE;
@@ -1032,7 +1054,48 @@ void GDeviceVLK::createLogicalDevice() {
     if (availableDeviceExtensions.find(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME) != availableDeviceExtensions.end()) {
         enabledDeviceExtensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
     }
-    
+
+    // The FSR features that need an extension (see the comment above this function). Each is queried first.
+    VkPhysicalDeviceShaderFloat16Int8Features fsrFloat16Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES, nullptr};
+    VkPhysicalDevice16BitStorageFeatures fsr16BitStorageFeatures = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES, nullptr};
+    VkPhysicalDeviceSubgroupSizeControlFeatures fsrSubgroupSizeFeatures = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES, nullptr};
+    bool fsrFloat16 = false;
+    bool fsr16BitStorage = false;
+    bool fsrSubgroupSize = false;
+    if (hasDeviceFeatures2) {
+        VkPhysicalDeviceShaderFloat16Int8Features queryFloat16 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES, nullptr};
+        VkPhysicalDevice16BitStorageFeatures query16BitStorage = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES, &queryFloat16};
+        VkPhysicalDeviceSubgroupSizeControlFeatures querySubgroupSize = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES, &query16BitStorage};
+        VkPhysicalDeviceFeatures2 queryFeatures2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &querySubgroupSize};
+        vkGetPhysicalDeviceFeatures2(physicalDevice, &queryFeatures2);
+
+        auto addIfAvailable = [&](const char *extensionName) {
+            if (availableDeviceExtensions.find(extensionName) == availableDeviceExtensions.end()) return false;
+            enabledDeviceExtensions.push_back(extensionName);
+            return true;
+        };
+
+        if (queryFloat16.shaderFloat16 && addIfAvailable(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME)) {
+            fsrFloat16Features.shaderFloat16 = VK_TRUE;
+            fsrFloat16 = true;
+        }
+        if ((query16BitStorage.storageBuffer16BitAccess || query16BitStorage.uniformAndStorageBuffer16BitAccess) &&
+            addIfAvailable(VK_KHR_16BIT_STORAGE_EXTENSION_NAME)) {
+            fsr16BitStorageFeatures.storageBuffer16BitAccess = query16BitStorage.storageBuffer16BitAccess;
+            fsr16BitStorageFeatures.uniformAndStorageBuffer16BitAccess = query16BitStorage.uniformAndStorageBuffer16BitAccess;
+            fsr16BitStorage = true;
+        }
+        if (querySubgroupSize.subgroupSizeControl && addIfAvailable(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME)) {
+            fsrSubgroupSizeFeatures.subgroupSizeControl = VK_TRUE;
+            fsrSubgroupSizeFeatures.computeFullSubgroups = querySubgroupSize.computeFullSubgroups;
+            fsrSubgroupSize = true;
+        }
+    }
+    for (const char *extensionName : {VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME, VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME}) {
+        if (availableDeviceExtensions.find(extensionName) != availableDeviceExtensions.end())
+            enabledDeviceExtensions.push_back(extensionName);
+    }
+
     createInfo.enabledExtensionCount = enabledDeviceExtensions.size();
     createInfo.ppEnabledExtensionNames = enabledDeviceExtensions.data();
 
@@ -1063,6 +1126,18 @@ void GDeviceVLK::createLogicalDevice() {
     if (hasDeviceFeatures2 && ext_feature.shaderDrawParameters == VK_TRUE) {
         ext_feature.pNext = featuresChain;
         featuresChain = &ext_feature;
+    }
+    if (fsrFloat16) {
+        fsrFloat16Features.pNext = featuresChain;
+        featuresChain = &fsrFloat16Features;
+    }
+    if (fsr16BitStorage) {
+        fsr16BitStorageFeatures.pNext = featuresChain;
+        featuresChain = &fsr16BitStorageFeatures;
+    }
+    if (fsrSubgroupSize) {
+        fsrSubgroupSizeFeatures.pNext = featuresChain;
+        featuresChain = &fsrSubgroupSizeFeatures;
     }
 
     if ( bindless_supported ) {

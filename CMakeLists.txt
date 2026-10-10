@@ -443,6 +443,13 @@ INSTALL(FILES ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS} DESTINATION bin COMPONENT Lib
 if(WIN32)
 	# zlib's own install rules are skipped by EXCLUDE_FROM_ALL.
 	install(FILES "$<TARGET_FILE:zlib>" DESTINATION bin COMPONENT libraries)
+	# The signed FSR 3.1 DLL the upscaler loads by name; without it beside the executable the scene is stretched instead.
+	install(FILES "${PROJECT_SOURCE_DIR}/3rdparty/FidelityFX-SDK/PrebuiltSignedDLL/amd_fidelityfx_vk.dll" DESTINATION bin COMPONENT libraries)
+	# Also beside the built executable, so a run from the build tree gets FSR too.
+	add_custom_command(TARGET WowStudio POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+			"${PROJECT_SOURCE_DIR}/3rdparty/FidelityFX-SDK/PrebuiltSignedDLL/amd_fidelityfx_vk.dll"
+			"$<TARGET_FILE_DIR:WowStudio>")
 endif()
 
 if( MINGW )

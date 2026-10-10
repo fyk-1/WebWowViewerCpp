@@ -2027,6 +2027,29 @@ public:
     }
 };
 
+namespace {
+    // What the draw stage needs of this frame's FSR setup, decided in the update stage
+    struct FsrFrame {
+        bool enabled = false;
+        // NDC depth of the far plane under the unjittered projection
+        float farNdcZ = 1.0f;
+        FsrUpscalerVLK::DispatchParams dispatch = {};
+    };
+}
+
+/*
+robots@Impl: FSR in the update and the draw stage.
+
+Only the first render target is jittered and upscaled, the one the default view draws to and that cullViewProj
+comes from. Its jitter is the next point of the FidelityFX DLL's sequence for the ratio of render width to
+display width. The query needs no context, so the jitter is decided in the update stage, and the draw stage
+uses it only when the view found FSR usable (isFsrActive). Near, far and field of view are taken back out of the
+projection, since the camera classes built it from whatever the scene window passed them.
+
+The draw stage runs FSR in this order: motion vectors right after the Hi-Z step, while the GBuffer depth is
+sampleable; a copy of the forward color after the first forward pass, which is the opaque scene; then, after the
+glow, the composite, the upscale, and a fullscreen draw of its output onto the swapchain in place of FXAA.
+*/
 std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::shared_ptr<FrameInputParams<MapSceneParams>> &frameInputParams,
                                                                    const std::shared_ptr<MapRenderPlan> &framePlan) {
     TracyMessageStr(("Update stage frame = " + std::to_string(FrameContext::getCurrentProcessingFrameNumber())));
@@ -2080,6 +2103,56 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
         matAndSceneSize.renderingMat = rt.cameraMatricesForRendering;
         matAndSceneSize.width = rt.viewPortDimensions.maxs[0];
         matAndSceneSize.height = rt.viewPortDimensions.maxs[1];
+    }
+
+    FsrFrame fsrFrame;
+    if (m_config->fsrUpscaling && !renderingMatricessAndSizes.empty() && FsrUpscalerVLK::isAvailable()) {
+        auto firstView = std::dynamic_pointer_cast<RendererViewClass>(frameInputParams->frameParameters->renderTargets[0].target);
+        auto &mainTarget = renderingMatricessAndSizes[0];
+
+        float jitterX = 0.0f;
+        float jitterY = 0.0f;
+        bool jittered = false;
+        // FSR only upscales; RenderViewDeferredVLK scales a view larger than FSR's output without it.
+        auto displayExtent = FsrUpscalerVLK::outputExtent(m_device->getCurrentExtent(), m_config->fsrOutputScale);
+        if ((firstView == nullptr || firstView == defaultView) &&
+            mainTarget.width <= displayExtent.width && mainTarget.height <= displayExtent.height) {
+            int32_t phaseCount = FsrUpscalerVLK::getJitterPhaseCount(mainTarget.width, displayExtent.width);
+            if (phaseCount > 0) {
+                jittered = FsrUpscalerVLK::getJitterOffset((int32_t) (m_fsrJitterIndex++ % (uint32_t) phaseCount),
+                                                           phaseCount, jitterX, jitterY);
+            }
+        }
+        if (jittered) {
+            const auto &perspective = mainTarget.renderingMat->perspectiveMat;
+            double a = perspective(2, 2);
+            double b = perspective(2, 3);
+            double nearPlane = 1.0;
+            double farPlane = m_config->farPlaneForCulling;
+            // mathfu's Perspective puts f/(n-f) and 2nf/(n-f) in row 2, not the textbook (f+n)/(n-f) and 2nf/(n-f),
+            // so these are n and f.
+            if (std::fabs(a) > 1e-6 && std::fabs(1.0 + a) > 1e-9) {
+                nearPlane = b / (2.0 * a);
+                farPlane = a * nearPlane / (1.0 + a);
+            }
+
+            mainTarget.jitterX = jitterX;
+            mainTarget.jitterY = jitterY;
+
+            fsrFrame.enabled = true;
+            fsrFrame.dispatch.jitterX = jitterX;
+            fsrFrame.dispatch.jitterY = jitterY;
+            fsrFrame.dispatch.frameTimeMs = (float) frameInputParams->delta;
+            fsrFrame.dispatch.cameraNear = (float) nearPlane;
+            fsrFrame.dispatch.cameraFar = (float) farPlane;
+            fsrFrame.dispatch.cameraFovY = 2.0f * std::atan(1.0f / perspective(1, 1));
+            fsrFrame.dispatch.sharpness = m_config->fsrSharpness;
+            fsrFrame.dispatch.reset = m_config->fsrResetRequested;
+            m_config->fsrResetRequested = false;
+
+            mathfu::vec4 farPoint = MathHelper::getVulkanMat4Fix() * perspective * mathfu::vec4(0.0f, 0.0f, -(float) farPlane, 1.0f);
+            fsrFrame.farNdcZ = farPoint.z / farPoint.w;
+        }
     }
 
     if (stepBufferUpdates) {
@@ -2174,6 +2247,8 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                     if (!updatingTarget) updatingTarget = l_this->defaultView;
 
                     updatingTarget->setFxaaEnabled(l_this->m_config->enableFXAA);
+                    updatingTarget->setFsrEnabled(l_this->m_config->fsrUpscaling && updatingTarget == l_this->defaultView);
+                    updatingTarget->setFsrOutputScale(l_this->m_config->fsrOutputScale);
                     updatingTarget->update(
                         renderTarget.viewPortDimensions.maxs[0],
                         renderTarget.viewPortDimensions.maxs[1],
@@ -2246,6 +2321,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
         l_this,
         frameInputParams,
         cullViewProj,
+        fsrFrame,
         gpuAnimDispatchCount,
         gpuParticleEmitterCount,
         gpuParticleDeltaSeconds,
@@ -2283,6 +2359,10 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                                    std::dynamic_pointer_cast<RendererViewClass>(renderTarget.target);
 
                 currentView->updateExternalDSes();
+
+                // FSR works on the first target, which is the default view's, and only when the view found it usable.
+                const bool fsrForThisView = fsrFrame.enabled && currentTargetIndex == 0 &&
+                                            currentView == l_this->defaultView && currentView->isFsrActive();
 
                 // Record the liquid transparent draws once per target; they are executed
                 // twice below (below-liquid and above-liquid passes), differing only in
@@ -2322,6 +2402,16 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                                                             l_this->m_gpuDraws.visibilityBuffer(),
                                                             gpuFrameDraws->totalCullCount);
                         l_this->m_gpuDraws.recordOcclusionRecull(frameBufCmd, *gpuFrameDraws);
+                    }
+
+                    // The GBuffer depth is still sampleable here, and the forward passes below don't touch it
+                    // before the upscaler needs the vectors made from it.
+                    if (fsrForThisView) {
+                        auto debugHelper = frameBufCmd.beginDebugLabel("FSR Motion Vectors", {0, 0, 0.5f});
+                        VkZone(frameBufCmd, "FSR Motion Vectors");
+                        currentView->doMotionVectors(frameBufCmd, cullViewProj,
+                                                     fsrFrame.dispatch.cameraNear, fsrFrame.dispatch.cameraFar,
+                                                     fsrFrame.farNdcZ, fsrFrame.dispatch.reset);
                     }
                     currentView->doGBufferBarrier(frameBufCmd);
 
@@ -2392,6 +2482,12 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                             }
                         }
                     } // END Forward Pass #1
+
+                    // The opaque scene, before liquids and transparents, for the upscaler's reactive mask
+                    if (fsrForThisView) {
+                        VkZone(frameBufCmd, "Copy Opaque Color For FSR");
+                        currentView->copyOpaqueColorForFsr(frameBufCmd);
+                    }
 
                     // =============================================
                     // Forward Pass #2: Below-liquid transparent
@@ -2512,7 +2608,17 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                 {
                     currentView->doPostGlow(frameBufCmd);
                     if (currentView == l_this->defaultView) {
-                        if (l_this->m_config->enableFXAA) {
+                        if (currentView->isFsrActive()) {
+                            // FXAA is skipped; the upscaler does the anti-aliasing
+                            currentView->doComposite(frameBufCmd);
+                            bool upscaled = false;
+                            if (fsrForThisView) {
+                                auto debugHelper = frameBufCmd.beginDebugLabel("FSR Upscale", {0, 0, 0.5f});
+                                VkZone(frameBufCmd, "FSR Upscale");
+                                upscaled = currentView->doFsrUpscale(frameBufCmd, fsrFrame.dispatch);
+                            }
+                            currentView->doPostFinalFsr(swapChainCmd, upscaled);
+                        } else if (l_this->m_config->enableFXAA) {
                             currentView->doComposite(frameBufCmd);
                             currentView->doPostFinalFxaa(swapChainCmd);
                         } else {

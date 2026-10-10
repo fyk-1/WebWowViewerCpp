@@ -100,6 +100,9 @@ struct RenderingMatAndSceneSize {
     HCameraMatrices renderingMat;
     int width;
     int height;
+    // Subpixel jitter of the projection in pixels of width x height, for temporal upscaling. Zero leaves it alone.
+    float jitterX = 0.0f;
+    float jitterY = 0.0f;
 };
 
 class MapSceneRenderer : public IRenderer, public IMapSceneBufferCreate, public IRendererParameters<MapSceneParams, MapRenderPlan>  {

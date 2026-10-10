@@ -1788,7 +1788,8 @@ HFrameScenario FrontendUI::createFrameScenario(int canvWidth, int canvHeight, do
         };
         // The scene renders at renderScale of the window, and the final pass scales it to the swapchain.
         // The ImGui layer keeps the full size.
-        float renderScale = std::clamp(m_api->getConfig()->renderScale, 0.1f, 1.5f);
+        // With FSR on and the scale at most 1 it is the FSR render to display ratio; above 1 the scene is shrunk instead.
+        float renderScale = std::clamp(m_api->getConfig()->renderScale, 0.05f, 1.5f);
         ViewPortDimensions sceneDimension = {
             {0, 0},
             {std::max(1u, static_cast<unsigned int>(canvWidth * renderScale)),

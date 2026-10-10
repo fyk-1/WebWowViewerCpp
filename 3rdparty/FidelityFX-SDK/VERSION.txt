@@ -1,0 +1,2 @@
+c6efa6bf7f2027b3ec94f28578bb5965eabb9e55
+tag v1.1.4 (FidelityFX SDK 1.1.4, FSR 3.1.4); trimmed to ffx-api/include and PrebuiltSignedDLL
