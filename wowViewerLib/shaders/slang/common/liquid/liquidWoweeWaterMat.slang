@@ -110,15 +110,18 @@ vec4 calcWoweeWaterMat(in LiquidInstanceData inst, in WaterData data, in SceneWi
     // WMO water and Slow Water get WoWee's canal profile: a deeper body colour with a floor, more shimmer.
     bool canal = liquidType == 5 || liquidType == 13 || liquidType == 17;
 
-    vec3 waterColor = isOcean ? vec3(0.04, 0.16, 0.38) : vec3(0.10, 0.28, 0.55);
+    // The body colours are the zone's: LightData's river or ocean colours, near and far, which the renderer blends
+    // like every other light value. WoWee's own blues stand in only where the light data gives none.
+    vec3 waterColor = isOcean ? scene.closeOceanColor_shallowAlpha.rgb : scene.closeRiverColor_shallowAlpha.rgb;
+    vec3 farColor = isOcean ? scene.farOceanColor_deepAlpha.rgb : scene.farRiverColor_deepAlpha.rgb;
+    if (dot(waterColor + farColor, vec3(1.0)) < 0.001) {
+        waterColor = isOcean ? vec3(0.04, 0.16, 0.38) : vec3(0.10, 0.28, 0.55);
+        farColor = waterColor * vec3(0.3, 0.5, 0.7);
+    }
     float waterAlpha = isOcean ? 0.72 : 0.48;
     float shimmerStrength = canal ? 0.95 : 0.50;
     float alphaScale = canal ? 1.15 : 1.00;
-    float bodyFloor = 0.0;
-    if (canal) {
-        waterColor = vec3(0.08, 0.30, 0.40);
-        bodyFloor = 0.45;
-    }
+    float bodyFloor = canal ? 0.45 : 0.0;
     bool terrainWater = !canal;
 
     vec3 ldir = normalize((scene.uInvLookAtMat * vec4(-scene.extLight.uExteriorDirectColorDir.xyz, 0.0)).xyz);
@@ -151,15 +154,18 @@ vec4 calcWoweeWaterMat(in LiquidInstanceData inst, in WaterData data, in SceneWi
     float shoreDepth = max(ww_sceneDepth(screenUV, scene) - waterLinDepth, 0.0) * max(verticalFactor, 0.05);
 
     // Absorption and body colour
-    vec3 absorptionCoeff = isOcean ? vec3(0.35, 0.06, 0.04) : vec3(0.46, 0.09, 0.06);
+    // The water absorbs most the channels its colour lacks, so the refracted floor tints toward the body colour; for
+    // WoWee's blue this lands close to its own fixed coefficients.
+    vec3 tint = waterColor / max(max(waterColor.r, waterColor.g), max(waterColor.b, 0.001));
+    vec3 absorptionCoeff = (1.0 - tint) * 0.5 + 0.04;
     vec3 absorbed = exp(-absorptionCoeff * verticalDepth);
 
-    vec3 underwaterFogColor = waterColor * 0.5 + vec3(0.04, 0.10, 0.20);
+    vec3 underwaterFogColor = mix(waterColor, farColor, 0.5);
     float underwaterFogFade = 1.0 - exp(-verticalDepth * 0.35);
     vec3 foggedScene = mix(sceneRefract, underwaterFogColor, underwaterFogFade);
 
     vec3 shallowColor = waterColor * 1.2;
-    vec3 deepColor = waterColor * vec3(0.3, 0.5, 0.7);
+    vec3 deepColor = farColor;
     float depthFade = max(1.0 - exp(-verticalDepth * 0.15), bodyFloor);
     vec3 waterBody = mix(shallowColor, deepColor, depthFade);
 
