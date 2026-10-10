@@ -631,6 +631,7 @@ void RenderViewDeferredVLK::doGBufferBarrier(CmdBufRecorder &frameBufCmd) {
 }
 void RenderViewDeferredVLK::doLightPass(CmdBufRecorder &frameBufCmd) {
     ZoneScopedN("Light Pass");
+    VkZone(frameBufCmd, "Light Pass");
     auto debugHelper = frameBufCmd.beginDebugLabel("Light Pass", {0, 0, 0.5f});
 
 
@@ -767,6 +768,7 @@ void RenderViewDeferredVLK::addColorAttachmentToShaderReadBarrier(CmdBufRecorder
     addAttachmentToShaderReadBarrier(cmdBuf, texture, false);
 }
 void RenderViewDeferredVLK::doPostGlow(CmdBufRecorder &frameBufCmd) {
+    VkZone(frameBufCmd, "Glow");
     auto frameNum = FrameContext::getCurrentProcessingFrameNumber() % IDevice::MAX_FRAMES_IN_FLIGHT;
 
     // Add barrier for the forward framebuffer before glow pass reads it
@@ -803,12 +805,14 @@ void RenderViewDeferredVLK::doOutputPass(CmdBufRecorder &frameBufCmd) {
 
 
 void RenderViewDeferredVLK::doPostFinal(CmdBufRecorder &bufCmd) {
+    VkZone(bufCmd, "Present");
     auto frameNum = FrameContext::getCurrentProcessingFrameNumber() % IDevice::MAX_FRAMES_IN_FLIGHT;
     
     glowPass->doFinalDraw(bufCmd);
 }
 
 void RenderViewDeferredVLK::doComposite(CmdBufRecorder &frameBufCmd) {
+    VkZone(frameBufCmd, "Composite");
     auto frameNum = FrameContext::getCurrentProcessingFrameNumber() % IDevice::MAX_FRAMES_IN_FLIGHT;
 
     // Composite forward color + glow into the FXAA intermediate
@@ -819,6 +823,7 @@ void RenderViewDeferredVLK::doComposite(CmdBufRecorder &frameBufCmd) {
 }
 
 void RenderViewDeferredVLK::doPostFinalFxaa(CmdBufRecorder &bufCmd) {
+    VkZone(bufCmd, "Present FXAA");
     auto frameNum = FrameContext::getCurrentProcessingFrameNumber() % IDevice::MAX_FRAMES_IN_FLIGHT;
 
     drawFxaaQuad(bufCmd, frameNum);

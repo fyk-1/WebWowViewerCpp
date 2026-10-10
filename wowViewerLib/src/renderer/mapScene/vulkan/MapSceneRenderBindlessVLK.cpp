@@ -2293,6 +2293,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
 
                     {
                         auto debugHelper = frameBufCmd.beginDebugLabel("GBuffer pass", {0, 0, 0.5f});
+                        VkZone(frameBufCmd, "GBuffer Pass");
                         auto passHelper = currentView->beginGBufferPass(frameBufCmd, false,
                                                                         frameInputParams->frameParameters->clearColor);
                         frameBufCmd.setGBufferMode(true);
@@ -2354,6 +2355,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                     // =============================================
                     {
                         auto debugHelper = frameBufCmd.beginDebugLabel("Forward Pass", {0, 0, 0.5f});
+                        VkZone(frameBufCmd, "Forward Pass");
                         auto passHelper = currentView->beginForwardPass(frameBufCmd, false, false,
                                                                         frameInputParams->frameParameters->clearColor);
 
@@ -2370,7 +2372,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                         }
                         {
                             auto debugHelper = frameBufCmd.beginDebugLabel("Decals Pass", {0, 0, 0.5f});
-
+                            VkZone(frameBufCmd, "Decals");
                             l_opaqueMeshes->renderProjective(frameBufCmd, CmdBufRecorder::ViewportType::vp_usual);
                         }
 
@@ -2381,6 +2383,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
 
                         {
                             //Sky meshes
+                            VkZone(frameBufCmd, "Sky");
                             for (int i = 0; i < skyMeshes->size(); i++) {
                                 auto const &mesh = skyMeshes->at(i);
 
@@ -2395,6 +2398,9 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                     // =============================================
                     {
                         auto debugHelper = frameBufCmd.beginDebugLabel("Below Liquid Pass", {0, 0, 0.5f});
+                        // Declared before the pass helper, so the zone closes after the pass ends: the pass runs a
+                        // secondary buffer, and no timestamp may be written inside it on the primary.
+                        VkZone(frameBufCmd, "Below Liquid Transparent");
                         // Set render mode to "below liquid" (0)
                         uint32_t modeBelow = 0;
                         renderModeWriteBarrier(frameBufCmd.getNativeCmdBuffer());
@@ -2437,13 +2443,17 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                     // =============================================
                     // Restore indirect buffer + re-cull for above-liquid
                     // =============================================
-                    l_this->m_gpuDraws.recordRestoreAndRecullAbove(frameBufCmd, *gpuFrameDraws);
+                    {
+                        VkZone(frameBufCmd, "Recull Above Liquid");
+                        l_this->m_gpuDraws.recordRestoreAndRecullAbove(frameBufCmd, *gpuFrameDraws);
+                    }
 
                     // =============================================
                     // Forward Pass #3: Above-liquid transparent
                     // =============================================
                     {
                         auto debugHelper = frameBufCmd.beginDebugLabel("Above liquid pass", {0, 0, 0.5f});
+                        VkZone(frameBufCmd, "Above Liquid Transparent");
                         // Set render mode to "above liquid" (1)
                         uint32_t modeAbove = 1;
                         renderModeWriteBarrier(frameBufCmd.getNativeCmdBuffer());

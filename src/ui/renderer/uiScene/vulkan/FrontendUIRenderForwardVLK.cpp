@@ -162,6 +162,7 @@ std::unique_ptr<IRenderFunction> FrontendUIRenderForwardVLK::update(
         std::move([meshes, l_this](CmdBufRecorder &frameBufCmd, CmdBufRecorder &swapChainCmd) {
                 TracyMessageStr(("Render stage frame = " + std::to_string(FrameContext::getCurrentProcessingFrameNumber())));
                 ZoneScopedN("Render UI");
+                VkZone(swapChainCmd, "Render UI");
                 // ----------------------
                 // Draw meshes
                 // ----------------------
