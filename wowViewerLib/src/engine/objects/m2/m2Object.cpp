@@ -17,17 +17,6 @@
 
 //Shader stuff
 enum class M2PixelShader : int {
-    //Wotlk deprecated shaders
-    Combiners_Decal = -1,
-    Combiners_Add = -2,
-    Combiners_Mod2x = -3,
-    Combiners_Fade = -4,
-    Combiners_Opaque_Add = -5,
-    Combiners_Opaque_AddNA = -6,
-    Combiners_Add_Mod = -7,
-    Combiners_Mod2x_Mod2x = -8,
-
-    //Legion modern shaders
     Combiners_Opaque = 0,
     Combiners_Mod = 1,
     Combiners_Opaque_Mod = 2,
@@ -285,186 +274,6 @@ int getPixelShaderId(int textureCount, uint16_t shaderId) {
     return result;
 }
 
-std::unordered_map<std::string, int> pixelShaderTable = {
-        {"Combiners_Opaque",                    +M2PixelShader::Combiners_Opaque},
-        {"Combiners_Decal" ,                    +M2PixelShader::Combiners_Decal},
-        {"Combiners_Add" ,                      +M2PixelShader::Combiners_Add},
-        {"Combiners_Mod2x" ,                    +M2PixelShader::Combiners_Mod2x},
-        {"Combiners_Fade" ,                     +M2PixelShader::Combiners_Fade},
-        {"Combiners_Mod" ,                      +M2PixelShader::Combiners_Mod},
-        {"Combiners_Opaque_Opaque" ,            +M2PixelShader::Combiners_Opaque_Opaque},
-        {"Combiners_Opaque_Add" ,               +M2PixelShader::Combiners_Opaque_Add},
-        {"Combiners_Opaque_Mod2x" ,             +M2PixelShader::Combiners_Opaque_Mod2x},
-        {"Combiners_Opaque_Mod2xNA" ,           +M2PixelShader::Combiners_Opaque_Mod2xNA},
-        {"Combiners_Opaque_AddNA" ,             +M2PixelShader::Combiners_Opaque_AddNA},
-        {"Combiners_Opaque_Mod" ,               +M2PixelShader::Combiners_Opaque_Mod},
-        {"Combiners_Mod_Opaque" ,               +M2PixelShader::Combiners_Mod_Opaque},
-        {"Combiners_Mod_Add" ,                  +M2PixelShader::Combiners_Mod_Add},
-        {"Combiners_Mod_Mod2x" ,                +M2PixelShader::Combiners_Mod_Mod2x},
-        {"Combiners_Mod_Mod2xNA" ,              +M2PixelShader::Combiners_Mod_Mod2xNA},
-        {"Combiners_Mod_AddNA" ,                +M2PixelShader::Combiners_Mod_AddNA},
-        {"Combiners_Mod_Mod" ,                  +M2PixelShader::Combiners_Mod_Mod},
-        {"Combiners_Add_Mod" ,                  +M2PixelShader::Combiners_Add_Mod},
-        {"Combiners_Mod2x_Mod2x" ,              +M2PixelShader::Combiners_Mod2x_Mod2x},
-        {"Combiners_Opaque_Mod2xNA_Alpha" ,     +M2PixelShader::Combiners_Opaque_Mod2xNA_Alpha},
-        {"Combiners_Opaque_AddAlpha" ,          +M2PixelShader::Combiners_Opaque_AddAlpha},
-        {"Combiners_Opaque_AddAlpha_Alpha" ,    +M2PixelShader::Combiners_Opaque_AddAlpha_Alpha},
-};
-
-int getTabledShaderNames(uint16_t shaderId, uint16_t op_count, uint16_t tex_unit_number2,
-    std::string &vertexShaderName, std::string &pixelShaderName
-){
-    uint16_t v4 = (shaderId >> 4) & 7;
-    uint16_t v5 = shaderId & 7;
-    uint16_t v6 = (shaderId >> 4) & 8;
-    uint16_t v7 = shaderId & 8;
-
-    if ( op_count == 1 ) {
-        if ( v6 )
-        {
-            vertexShaderName = "Diffuse_Env";
-        }
-        else
-        {
-            vertexShaderName = "Diffuse_T2";
-            if ( tex_unit_number2 )
-                vertexShaderName = "Diffuse_T1";
-        }
-        switch ( v4 )
-        {
-
-            case 0:
-                pixelShaderName = "Combiners_Opaque";
-                break;
-            case 2:
-                pixelShaderName = "Combiners_Decal";
-                break;
-            case 3:
-                pixelShaderName = "Combiners_Add";
-                break;
-            case 4:
-                pixelShaderName = "Combiners_Mod2x";
-                break;
-            case 5:
-                pixelShaderName = "Combiners_Fade";
-                break;
-            default:
-                pixelShaderName = "Combiners_Mod";
-                break;
-        }
-    } else {
-        if ( v6 )
-        {
-            vertexShaderName = "Diffuse_Env_T2";
-            if ( v7 )
-                vertexShaderName = "Diffuse_Env_Env";
-        }
-        else if ( shaderId & 8 )
-        {
-            vertexShaderName = "Diffuse_T1_Env";
-        }
-        else
-        {
-            vertexShaderName = "Diffuse_T1_T2";
-        }
-        if ( !v4 )
-        {
-            switch ( v5 )
-            {
-                case 0:
-                    pixelShaderName = "Combiners_Opaque_Opaque";
-                    break;
-                case 3:
-                    pixelShaderName = "Combiners_Opaque_Add";
-                    break;
-                case 4:
-                    pixelShaderName = "Combiners_Opaque_Mod2x";
-                    break;
-                case 6:
-                    pixelShaderName = "Combiners_Opaque_Mod2xNA";
-                    break;
-                case 7:
-                    pixelShaderName = "Combiners_Opaque_AddNA";
-                    break;
-                default:
-                    pixelShaderName = "Combiners_Opaque_Mod";
-                    break;
-            }
-        } else if ( v4 == 1 ) {
-            switch ( v5 )
-            {
-                case 0:
-                    pixelShaderName = "Combiners_Mod_Opaque";
-                    break;
-                case 3:
-                    pixelShaderName = "Combiners_Mod_Add";
-                    break;
-                case 4:
-                    pixelShaderName = "Combiners_Mod_Mod2x";
-                    break;
-                case 6:
-                    pixelShaderName = "Combiners_Mod_Mod2xNA";
-                    break;
-                case 7:
-                    pixelShaderName = "Combiners_Mod_AddNA";
-                    break;
-                default:
-                    pixelShaderName = "Combiners_Mod_Mod";
-                    break;
-
-            }
-        } else if ( v4 == 3 ) {
-            if ( v5 == 1 )
-            {
-                pixelShaderName = "Combiners_Add_Mod";
-            }
-            return 0;
-        } else if ( v4 != 4 ) {
-            return 0;
-        } else if ( v5 == 1 ) {
-            pixelShaderName = "Combiners_Mod_Mod2x";
-        } else {
-            if ( v5 != 4 )
-                return 0;
-            pixelShaderName = "Combiners_Mod2x_Mod2x";
-        }
-    }
-
-    return 1;
-}
-
-int getShaderNames(M2Batch *m2Batch, std::string &vertexShader, std::string &pixelShader) {
-        uint16_t shaderId = m2Batch->shader_id;
-
-        if ( !(shaderId & 0x8000) ) {
-            int result = getTabledShaderNames(shaderId, m2Batch->textureCount, m2Batch->textureCoordComboIndex, vertexShader, pixelShader);
-//            if ( !result )
-//                getTabledShaderNames(shaderId, m2Batch->textureCount, 0x11, m2Batch->textureCoordComboIndex, vertexShader, pixelShader);
-            return 1;
-        }
-        switch ( shaderId & 0x7FFF ) {
-            case 0:
-                return 0;
-            case 1:
-                pixelShader = "Combiners_Opaque_Mod2xNA_Alpha";
-                vertexShader = "Diffuse_T1_Env";
-            break;
-            case 2:
-                pixelShader = "Combiners_Opaque_AddAlpha";
-                vertexShader= "Diffuse_T1_Env";
-            break;
-            case 3:
-                pixelShader  = "Combiners_Opaque_AddAlpha_Alpha";
-                vertexShader = "Diffuse_T1_Env";
-            break;
-            default:
-                break;
-        }
-
-    return 1;
-}
-
-
 void M2Object::createAABB() {
     const M2Data *m2Data = m_m2Geom->getM2Data();
 
@@ -665,34 +474,79 @@ void M2Object::createPlacementMatrix (mathfu::vec3 pos, float f, mathfu::vec3 sc
     m_scale = placementMatrix.GetColumn(0).Length();
 }
 
-void M2Object::updatePlacementMatrixFromParentAttachment(M2Object *parent, int attachment, float scale) {
-    if (!parent->status->m_loaded) return;
-    auto &m2Geom = parent->m_m2Geom;
-    if (m2Geom->m_m2Data->attachment_lookup_table.size == 0) return;
-    if (m2Geom->m_m2Data->attachments.size == 0) return;
+void M2Object::attach(const std::shared_ptr<M2Object> &child, int id) {
+    child->m_isAttachment = true;
 
-    int attIndex = *m2Geom->m_m2Data->attachment_lookup_table[2];
-    M2Attachment *attachInfo = m2Geom->m_m2Data->attachments[attIndex];
+    //The child starts where this model stands, so that the box it gets as it loads is not at the origin of the world
+    child->m_placementMatrix = m_placementMatrix;
+    child->m_placementInvertMatrix = m_placementInvertMatrix;
+    child->m_placementMatrixChanged = true;
+    child->calcWorldPosition();
 
-    if (attachInfo == nullptr) return;
+    m_attached.push_back({child, id});
+    status->m_hasAttachments = true;
+}
 
-    int boneId = attachInfo->bone;
-    mathfu::mat4 &parentBoneTransMat = parent->bonesMatrices[boneId];
+/*
+robots@Impl: Models hung on attachment points.
 
+A character model keeps its attachment points in its skeleton file, so they are read from the bone master data, which holds
+the model's own table where it has no skeleton. An attachment id indexes the lookup table, whose entry is 0xFFFF where the model
+has no such point. The point's position is in the model's bind pose, so the bone's pose this frame, applied to it, gives where the
+point is and which way the bone turns it. On the GPU animation path the bones come from the compute pass and the CPU
+evaluates a subset only, which holds the attachment bones (buildCpuBoneSubset).
 
-    mathfu::mat4 placementMatrix = mathfu::mat4::Identity();
-    placementMatrix = parent->m_placementMatrix *
-        parentBoneTransMat *
-        mathfu::mat4::FromTranslationVector(mathfu::vec3(attachInfo->position));
+The models hung on a body are not updated by the render plan's update loop, which runs the models in parallel and would read a
+bone before it is written. Each is updated by the body, at the end of the body's own update, and is added to the draw lists by
+the lists' addToDraw whenever the body is. A model that is not loaded is skipped in the update and, in addToDraw, not drawn.
+*/
+bool M2Object::getAttachmentMatrix(int id, mathfu::mat4 &matrix) const {
+    auto const *skelData = m_boneMasterData->getSkelData();
+    auto const *lookup = skelData->m_attachment_lookup_table;
+    auto const *attachments = skelData->m_attachments;
+    if (id < 0 || id >= lookup->size) return false;
 
-    mathfu::mat4 placementInvertMatrix = placementMatrix.Inverse();
+    uint16_t index = *lookup->getElement(id);
+    if (index >= attachments->size) return false;
 
-    m_placementInvertMatrix = placementInvertMatrix;
-    m_placementMatrix = placementMatrix;
-    m_placementMatrixChanged = true;
+    auto const *info = attachments->getElement(index);
+    if (info->bone >= bonesMatrices.size()) return false;
 
-    m_localUpVector = (placementInvertMatrix * mathfu::vec4(0,0,1,0)).xyz().Normalized();
-    m_localRightVector = (placementInvertMatrix * mathfu::vec4(1,0,0,0)).xyz().Normalized();
+    matrix = m_placementMatrix *
+        bonesMatrices[info->bone] *
+        mathfu::mat4::FromTranslationVector(mathfu::vec3(info->position));
+    return true;
+}
+
+void M2Object::updateAttachment(Attachment &attached, double deltaTime, mathfu::vec3 &cameraPos, mathfu::mat4 &viewMat) {
+    M2Object &child = *attached.m2;
+    if (!child.status->m_loaded) return;
+
+    mathfu::mat4 placementMatrix;
+    if (!getAttachmentMatrix(attached.id, placementMatrix)) {
+        attached.missing = true;
+        return;
+    }
+
+    child.m_placementMatrix = placementMatrix;
+    child.m_placementInvertMatrix = placementMatrix.Inverse();
+    child.m_placementMatrixChanged = true;
+    child.m_localUpVector = (child.m_placementInvertMatrix * mathfu::vec4(0,0,1,0)).xyz().Normalized();
+    child.m_localRightVector = (child.m_placementInvertMatrix * mathfu::vec4(1,0,0,0)).xyz().Normalized();
+    child.m_scale = placementMatrix.GetColumn(0).Length();
+    child.calcWorldPosition();
+    child.createAABB();
+
+    //A body in a cave takes the cave's light, and so does what it wears
+    if (m_interiorExteriorBlend < 1.0f || child.m_interiorExteriorBlend < 1.0f) {
+        child.setInteriorExteriorBlend(m_interiorExteriorBlend);
+        child.setAmbientColorOverride(m_interiorAmbientColor, m_interiorAmbientHorizontColor, m_interiorAmbientGroundColor);
+        child.setInteriorDirectColor(m_interiorDirectColor);
+        if (m_setInteriorSunDir) child.setSunDirOverride(m_interiorSunDir);
+    }
+    if (child.m_alpha != m_alpha) child.setAlpha(m_alpha);
+
+    child.updateModel(deltaTime, cameraPos, viewMat);
 }
 
 
@@ -1021,9 +875,10 @@ void M2Object::buildCpuBoneSubset() {
         if (bone >= 0) boneSet.insert(bone);
     }
 
-    // Attachment points (updatePlacementMatrixFromParentAttachment reads the parent's bone)
-    for (int i = 0; i < m2Data->attachments.size; i++) {
-        boneSet.insert((int)m2Data->attachments.getElement(i)->bone);
+    // Attachment points (getAttachmentMatrix reads the bone each one hangs a model on)
+    auto const *attachments = m_boneMasterData->getSkelData()->m_attachments;
+    for (int i = 0; i < attachments->size; i++) {
+        boneSet.insert((int)attachments->getElement(i)->bone);
     }
 
     // While particle/ribbon sims run on CPU (or as a fallback), their transforms
@@ -1156,8 +1011,14 @@ void M2Object::syncGpuAnimTrackData() {
     //           << "): streamed track data, loaded sequences: " << loaded << std::endl;
 }
 
-//deltaTime = miliseconds
 void M2Object::update(double deltaTime, mathfu::vec3 &cameraPos, mathfu::mat4 &viewMat) {
+    if (m_isAttachment) return;
+
+    updateModel(deltaTime, cameraPos, viewMat);
+}
+
+//deltaTime = miliseconds
+void M2Object::updateModel(double deltaTime, mathfu::vec3 &cameraPos, mathfu::mat4 &viewMat) {
     if (!this->status->m_loaded) return;
 
     m_postLoadEvents.clear();
@@ -1303,6 +1164,10 @@ void M2Object::update(double deltaTime, mathfu::vec3 &cameraPos, mathfu::mat4 &v
 
         float finalTransparency = M2MeshBufferUpdater::calcFinalTransparency(*this, currentM2BatchIndex, skinData);
         m_finalTransparencies[i] = finalTransparency;
+    }
+
+    for (auto &attached : m_attached) {
+        updateAttachment(attached, deltaTime, cameraPos, viewMat);
     }
 }
 
@@ -1569,21 +1434,8 @@ bool M2Object::prepearMaterial(M2MaterialTemplate &materialTemplate, int batchIn
 
     auto textureCount = m2Batch->textureCount;
 
-    if (m_api->getConfig()->useWotlkLogic) {
-        std::string vertexShader;
-        std::string pixelShader;
-        getShaderNames(m2Batch, vertexShader, pixelShader);
-        //TODO: this is hack!!!
-        if (pixelShader.empty()) {
-            materialTemplate.pixelShader = 0;
-        } else {
-            materialTemplate.pixelShader = pixelShaderTable.at(pixelShader);
-        }
-    } else {
-        //Legion logic
-        materialTemplate.pixelShader = getPixelShaderId(m2Batch->textureCount, m2Batch->shader_id);
-        materialTemplate.vertexShader = getVertexShaderId(m2Batch->textureCount, m2Batch->shader_id);
-    }
+    materialTemplate.pixelShader = getPixelShaderId(m2Batch->textureCount, m2Batch->shader_id);
+    materialTemplate.vertexShader = getVertexShaderId(m2Batch->textureCount, m2Batch->shader_id);
 
     //Hack for Midnight, which has wrongly constructed assets
     if (m_modelFileId > 5000000 && textureCount == 1) {
@@ -1596,6 +1448,7 @@ bool M2Object::prepearMaterial(M2MaterialTemplate &materialTemplate, int batchIn
     for (int j = 0; j < std::min<int>(textureCount, 4); j++) {
         auto m2TextureIndex = *m2File->texture_lookup_table[m2Batch->textureComboIndex + j];
         materialTemplate.textures[j] = getTexture(m2TextureIndex);
+        if (m_hideUnfilledBatches && j == 0 && materialTemplate.textures[0] == nullptr) return false;
     }
 //materialTemplate.textures[0]->getTexture()->
     materialTemplate.batchIndex = batchIndex;
@@ -1835,6 +1688,9 @@ void M2Object::createMeshes(const HMapSceneBufferCreate &sceneRenderer) {
             }
 
             if (isProjectiveTexture(m2Batch, m2Version)) {
+                if (m_projectiveMaterialArray[batchIndex] == nullptr)
+                    continue;
+
                 auto mesh = createProjectiveMesh(sceneRenderer, m_projectiveMaterialArray[batchIndex], skinSection, m2Batch);
                 this->m_meshProjectiveArray.emplace_back(mesh, batchIndex);
 
@@ -1866,6 +1722,8 @@ void M2Object::createMeshes(const HMapSceneBufferCreate &sceneRenderer) {
             int batchIndex = batchesRequiringDynamicVao[j];
             auto m2Batch = skinProfile->batches[batchIndex];
             auto skinSection = skinProfile->skinSections[m2Batch->skinSectionIndex];
+            if (m_materialArray[batchIndex] == nullptr)
+                continue;
 
             std::array<HGVertexBufferDynamic, IDevice::MAX_FRAMES_IN_FLIGHT> dynVBOs;
             auto dynVaos = m_m2Geom->createDynamicVao(sceneRenderer, dynVBOs, m_skinGeom.get(), skinSection);

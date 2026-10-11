@@ -38,6 +38,8 @@ struct M2LoadedStatus {
     bool m_loaded = false;
     bool m_geomLoaded = false;
     bool m_hasAABB = false;
+    // Set on a model that others hang on (M2Object::attach), so that drawing it draws them.
+    bool m_hasAttachments = false;
     // Half the diagonal of the model's static bounding box in the world, 0 until it loads. The culling box follows
     // the playing animation's bounds, which can cover a small part of the model (a lamp's flame, not its post), so the
     // small-model cull measures with whichever is larger.
@@ -59,6 +61,14 @@ public:
     ~M2Object() {
 //        std::cout << "M2Object destroyed" << std::endl;
     }
+
+    // A model hung on one of this model's attachment points, which the M2 numbers (0 shield, 1 and 2 the hands, 5 and 6 the shoulders,
+    // 11 the helm). `missing` is set once the model turns out to lack the point, and the model is then left undrawn.
+    struct Attachment {
+        std::shared_ptr<M2Object> m2;
+        int id = 0;
+        bool missing = false;
+    };
 
     friend class M2MeshBufferUpdater;
 private:
@@ -143,6 +153,7 @@ private:
 
     std::vector<uint8_t> m_meshIds;
     std::vector<HBlpTexture> m_replaceTextures;
+    bool m_hideUnfilledBatches = false;
     bool particleColorReplacementIsSet = false;
     std::array<std::array<mathfu::vec4, 3>, 3> m_particleColorReplacement;
 
@@ -232,6 +243,14 @@ private:
     // attachment points (their matrices are read by CPU-side code).
     void buildCpuBoneSubset();
 
+    void updateModel(double deltaTime, mathfu::vec3 &cameraPos, mathfu::mat4 &viewMat);
+    // Places an attached model on its attachment point as of this model's bones, takes this model's lighting and alpha, and updates it.
+    void updateAttachment(Attachment &attached, double deltaTime, mathfu::vec3 &cameraPos, mathfu::mat4 &viewMat);
+    // This model's placement, then the pose of the attachment's bone, then the attachment's position. False for a point the model lacks.
+    bool getAttachmentMatrix(int id, mathfu::mat4 &matrix) const;
+    std::vector<Attachment> m_attached;
+    bool m_isAttachment = false;
+
     // Raw (unsorted) enumeration of visible static and dynamic-VAO meshes.
     void forEachVisibleMesh(const std::function<void(const HGM2Mesh &mesh)> &visitor);
 
@@ -286,6 +305,9 @@ public:
     void setLoadParams(int skinNum, std::vector<uint8_t> meshIds,
                        std::vector<HBlpTexture> replaceTextures);
 
+    // Left out of the draw instead of drawn black: a batch whose first texture slot no replacement and no file of the model fills.
+    // Takes effect for the materials made after it, so it is set before the model loads.
+    void hideUnfilledBatches() { m_hideUnfilledBatches = true; }
     void setReplaceTextures(const HMapSceneBufferCreate &sceneRenderer, const std::vector<HBlpTexture> &replaceTextures);
     void setMeshIds(const HMapSceneBufferCreate &sceneRenderer, const std::vector<uint8_t> &meshIds);
     void setReplaceParticleColors(std::array<std::array<mathfu::vec4, 3>, 3> &particleColorReplacement);
@@ -316,7 +338,11 @@ public:
     void createPlacementMatrix(mathfu::vec3 pos, float f, mathfu::vec3 scaleVec,
                                mathfu::Matrix<float, 4, 4> *rotationMatrix);
 
-    void updatePlacementMatrixFromParentAttachment(M2Object *parent, int attachment, float scale);
+    // Hangs `child` on the attachment point `id`. The child is owned by this model and goes with it. From then on it follows the
+    // attachment's bone as of this model's update, which also updates it, and it is loaded, culled and drawn with this model, never
+    // alone. Call it once this model has its load params and its placement, since the child starts where this model stands.
+    void attach(const std::shared_ptr<M2Object> &child, int id);
+    const std::vector<Attachment> &getAttachments() const { return m_attached; }
 
     void calcWorldPosition(){
         m_worldPosition = (m_placementMatrix * mathfu::vec4(0,0,0,1)).xyz();
@@ -369,6 +395,7 @@ public:
 
     void dumpBoneAnimations();
 
+    // A model hung on another is updated by it, so this does nothing for one.
     void update(double deltaTime, mathfu::vec3 &cameraPos, mathfu::mat4 &viewMat);
     void collectLights(std::vector<LocalLight> &pointLights);
     void fitParticleAndRibbonBuffersToSize(const HMapSceneBufferCreate &sceneRenderer);
@@ -514,6 +541,14 @@ private:
         return;
     }
 
+    // The models hung on a drawn one are drawn with it. They are added only once the one they hang on is loaded, since they
+    // take their place from its bones, and never when the point they hang on is missing.
+    void addAttachedToDraw(M2Object *parent) {
+        for (auto const &attached : parent->getAttachments()) {
+            if (!attached.missing) addToDraw(attached.m2.get());
+        }
+    }
+
 public:
     M2ObjectListContainer() {
         candidates.reserve(100000);
@@ -569,6 +604,7 @@ public:
         if (toDraw->getGetIsLoaded()) {
             drawn.push_back(toDraw->getObjectId());
             drawnCanHaveDuplicates = true;
+            addAttachedToDraw(toDraw.get());
         } else if (!toDraw->isMainDataLoaded()) {
             toLoadMain.push_back(toDraw->getObjectId());
             toLoadMainCanHaveDuplicates = true;
@@ -587,6 +623,7 @@ public:
         if (status->m_loaded) {
             drawn.push_back(toDrawId);
             drawnCanHaveDuplicates = true;
+            if (status->m_hasAttachments) addAttachedToDraw(m2Factory->getObjectById<0>(toDrawId));
         } else {
             auto toDraw = m2Factory->getObjectById<0>(toDrawId);
 
@@ -620,6 +657,7 @@ public:
         if (toDraw->getGetIsLoaded()) {
             drawn.push_back(toDraw->getObjectId());
             drawnCanHaveDuplicates = true;
+            addAttachedToDraw(toDraw);
         } else if (!toDraw->isMainDataLoaded()) {
             toLoadMain.push_back(toDraw->getObjectId());
             toLoadMainCanHaveDuplicates = true;
