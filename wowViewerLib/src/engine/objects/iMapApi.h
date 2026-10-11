@@ -22,6 +22,7 @@ public:
 
     virtual animTime_t getCurrentSceneTime() = 0;
     virtual mathfu::vec3 getGlobalOffset() = 0;
+    virtual int getMapId() = 0;
 };
 
 

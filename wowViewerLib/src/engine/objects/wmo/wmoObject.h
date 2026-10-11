@@ -5,6 +5,7 @@
 #ifndef WEBWOWVIEWERCPP_WMOOBJECT_H
 #define WEBWOWVIEWERCPP_WMOOBJECT_H
 #include <bitset>
+#include <mutex>
 
 struct WmoGroupResult;
 class WmoGroupObject;
@@ -25,6 +26,7 @@ class WmoGroupObject;
 #include "../../../include/database/dbStructs.h"
 #include "../SceneObjectWithID.h"
 #include "../lights/CEngineLight.h"
+#include "../worldObject/PlacedCreature.h"
 
 enum class WMOObjId : uintptr_t;
 constexpr WMOObjId emptyWMO = static_cast<const WMOObjId>(0xFFFFFFF);
@@ -131,6 +133,23 @@ private:
 
     HGMesh transformedAntiPortals;
 
+    //Creatures a tile or the map offered, waiting for the groups they may stand in to load
+    struct PendingCreature {
+        std::weak_ptr<PlacedCreature> creature;
+        mathfu::vec3 position;
+        //Groups holding the position whose geometry is not loaded yet, as of the last time the creature was looked at
+        std::vector<int> unloadedGroups;
+    };
+    std::mutex m_creatureMutex;
+    std::vector<PendingCreature> m_pendingCreatures;
+    std::atomic<bool> m_creaturesToHome{false};
+    void homeCreatures();
+    void declineCreatures();
+    void applyInteriorLightingToCreature(M2Object &creature, int groupIndex, const mathfu::vec3 &position);
+    int findNearestDoodadDef(int groupIndex, const mathfu::vec3 &position);
+    bool isDoodadInActiveSets(int index);
+    float getDoodadMddiVal(int index);
+
     //Ambient, GroundAmbient, HorizontalAmbient
     std::array<mathfu::vec3, 3> m_ambientColors;
 
@@ -236,6 +255,15 @@ public:
     //Used when the whole WMO was culled at the WMO bbox level: mirrors the load-trigger
     //side effects startTraversingWMOGroup has for such groups.
     void triggerExteriorGroupLoads(WMOGroupListContainer &wmoGroupArray);
+
+    //A creature standing at the position, which may be inside one of this WMO's interior groups. The WMO decides once the
+    //groups holding the position are loaded (homeCreatures): in an interior group it hands the creature to the group, where
+    //it draws with the group's doodads, and otherwise it declines.
+    void offerCreature(const std::shared_ptr<PlacedCreature> &creature, const mathfu::vec3 &position);
+    //Queues the groups the offered creatures wait for, so they load though no view reaches them
+    void queueCreatureGroupLoads(WMOGroupListContainer &wmoGroupArray);
+    //Answers the offered creatures if the WMO is loaded and an offer or a group load came since the last answer
+    void homeCreaturesIfChanged();
 
 public:
     //Portal culling

@@ -484,6 +484,8 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
         {
             float adtHeight = -99999;
             getPossibleHeight(cameraPos, adtHeight);
+            mapRenderPlan->hasGroundHeight = adtHeight > -99999;
+            mapRenderPlan->groundHeight = adtHeight;
 
             if (adtHeight < cameraPos.z)
                 bottomBorder = adtHeight;
@@ -597,6 +599,7 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
     auto currentWmoGroup = mapRenderPlan->m_currentWmoGroup;
 
     if ((lcurrentWMO != nullptr) && (!mapRenderPlan->m_currentInteriorGroups.empty()) && (lcurrentWMO->isLoaded())) {
+        lcurrentWMO->queueCreatureGroupLoads(mapRenderPlan->wmoGroupArray);
         if (lcurrentWMO->startTraversingWMOGroup(
             cameraPos,
             frustumData,
@@ -718,6 +721,7 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
             interiorView->collectLights(mapRenderPlan->pointLights, mapRenderPlan->spotLights, newWmoLights);
         }
     }
+
 
     {
         ZoneScopedN("process new lights");
@@ -894,6 +898,8 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
         auto wmoCandidate = wmoFactory->getObjectById<0>(wmoId);
         if (wmoCandidate!= nullptr && !wmoCandidate->isLoaded()) continue;
 
+        wmoCandidate->queueCreatureGroupLoads(mapRenderPlan->wmoGroupArray);
+
         if (wmoCullResults[wmoCandInd] != 0) {
             //WMO bbox is outside the frustum. WMOs with unconditional per-group handling still
             //need the full traversal; for the rest only the load triggers of not-yet-loaded
@@ -1023,7 +1029,52 @@ void Map::getCandidatesEntities(const MathHelper::FrustumCullingData &frustumDat
 
         } else if (wmoMap) {
             wmoCandidates.addCand(wmoMap);
+            collectMapCreatures(m2ObjectsCandidates);
         }
+    }
+}
+
+/*
+robots@Impl: Creatures and game objects of a map with no tiles.
+
+A map whose WDT is one global WMO (a dungeon or raid such as Ragefire Chasm) has no ADT to carry its creatures, so the map
+reads every CreatureSpawn row of its id the first time its exterior is collected, and builds each as AdtObject does for a tile
+(WorldObjectManager::createCreature), offering all to the global WMO. The GameObjectSpawn rows of the id go the same way
+(WorldObjectManager::createGameObjectSpawn). The ones it leaves outside join the exterior candidates of each frame, which the map's
+per-object culling treats as any M2, and go when the map does.
+*/
+void Map::collectMapCreatures(M2ObjectListContainer &m2ObjectsCandidates) {
+    if (!m_mapCreaturesLoaded) {
+        m_mapCreaturesLoaded = true;
+        if (m_api->databaseHandler == nullptr) return;
+
+        std::vector<CreatureSpawnRecord> spawns;
+        m_api->databaseHandler->getCreatureSpawnsForMap(m_mapId, spawns);
+        for (auto &spawn : spawns) {
+            auto creature = WorldObjectManager::createCreature(m_api, spawn);
+            if (creature == nullptr) continue;
+
+            WorldObjectManager::homeCreature(creature, spawn.Pos, {wmoMap}, false);
+            m_mapCreatures.push_back(creature);
+        }
+        const size_t creatures = m_mapCreatures.size();
+
+        std::vector<GameObjectSpawnRecord> gameObjects;
+        m_api->databaseHandler->getGameObjectSpawnsForMap(m_mapId, gameObjects);
+        for (auto &spawn : gameObjects) {
+            auto gameObject = WorldObjectManager::createGameObjectSpawn(m_api, spawn);
+            if (gameObject == nullptr) continue;
+
+            WorldObjectManager::homeCreature(gameObject, spawn.Pos, {wmoMap}, false);
+            m_mapCreatures.push_back(gameObject);
+        }
+        std::cerr << "flyover creatures map " << m_mapId << ": " << creatures << " placed, game objects "
+                  << m_mapCreatures.size() - creatures << " placed" << std::endl;
+    }
+
+    for (auto const &creature : m_mapCreatures) {
+        if (creature->home == CreatureHome::Exterior && creature->shown(*m_api->getConfig()))
+            m2ObjectsCandidates.addCandidate(creature->id);
     }
 }
 
@@ -1284,6 +1335,16 @@ void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRende
                 wmoGroupObject->doPostLoad(sceneRenderer, m_liquidMaterialManager);
                 wmoGroupsProcessedThisFrame++;
                 if (wmoGroupsProcessedThisFrame > MAX_LOAD_WMOGROUP_PER_FRAME) break;
+            }
+        }
+    }
+
+    {
+        ZoneScopedN("Home creatures");
+        for (auto wmoId: renderPlan->wmoArray.getCandidates()) {
+            auto wmoObject = wmoFactory->getObjectById<0>(wmoId);
+            if (wmoObject != nullptr) {
+                wmoObject->homeCreaturesIfChanged();
             }
         }
     }

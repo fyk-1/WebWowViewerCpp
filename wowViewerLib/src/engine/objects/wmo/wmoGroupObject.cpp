@@ -38,14 +38,37 @@ bool WmoGroupObject::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, cons
         this->postLoad(sceneRenderer, liquidMaterialManager);
         this->m_loaded = true;
         this->m_loading = false;
+        m_wmoApi->postWmoGroupObjectLoad(m_groupNumber, 0);
         return true;
     }
 
     return false;
 }
 
+void WmoGroupObject::adoptCreature(const std::shared_ptr<PlacedCreature> &creature) {
+    std::lock_guard<std::mutex> lock(m_creatureMutex);
+    m_creatures.push_back(creature);
+}
+
+void WmoGroupObject::addCreatureCandidates(M2ObjectListContainer &m2Candidates, const Config &config) {
+    std::lock_guard<std::mutex> lock(m_creatureMutex);
+    for (auto const &weakCreature : m_creatures) {
+        auto creature = weakCreature.lock();
+        if (creature && creature->shown(config))
+            m2Candidates.addCandidate(creature->id);
+    }
+}
+
 void WmoGroupObject::update() {
     if (!this->m_loaded) return;
+
+    {
+        //Creatures whose owner is gone
+        std::lock_guard<std::mutex> lock(m_creatureMutex);
+        m_creatures.erase(std::remove_if(m_creatures.begin(), m_creatures.end(),
+                                         [](auto const &creature) { return creature.expired(); }),
+                          m_creatures.end());
+    }
 
     if (m_recalcBoundries) {
         m_wmoApi->recalcGroupBorders(m_groupNumber);
@@ -548,7 +571,7 @@ void WmoGroupObject::getBottomVertexesFromBspResult(
                         colorUnderneath =
                             bary[0] * ImVectorToVec4(colorArr[vertexInd1]) +
                             bary[1] * ImVectorToVec4(colorArr[vertexInd2]) +
-                            bary[3] * ImVectorToVec4(colorArr[vertexInd3]);
+                            bary[2] * ImVectorToVec4(colorArr[vertexInd3]);
                     }
                 }
 

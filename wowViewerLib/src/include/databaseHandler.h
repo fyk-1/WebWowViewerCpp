@@ -31,6 +31,16 @@ public:
     virtual void getGameObjectsForMap(int mapId, std::vector<GameObjectRecord> &gameObjects) = 0;
     virtual bool getGameObjectDisplayInfo(int displayId, GameObjectDisplayInfoRecord &result) = 0;
 
+    // The creature spawns of one ADT tile, row and column as the map indexes it (row from the world x, column from the world y).
+    // A database without the CreatureSpawn table answers none.
+    virtual void getCreatureSpawnsForTile(int mapId, int tileRow, int tileCol, std::vector<CreatureSpawnRecord> &spawns) {}
+    // Every creature spawn of a map, for a map with no tiles to carry them.
+    virtual void getCreatureSpawnsForMap(int mapId, std::vector<CreatureSpawnRecord> &spawns) {}
+    // The game object spawns of one ADT tile or of a whole map, indexed as the creature spawns are. A database without the
+    // GameObjectSpawn table answers none.
+    virtual void getGameObjectSpawnsForTile(int mapId, int tileRow, int tileCol, std::vector<GameObjectSpawnRecord> &spawns) {}
+    virtual void getGameObjectSpawnsForMap(int mapId, std::vector<GameObjectSpawnRecord> &spawns) {}
+
     // All SkySceneXPlayerCondition rows (skySceneID -> playerConditionID assignments).
     // Implementations are expected to cache: this is queried per loaded sky scene.
     virtual void getSkySceneXPlayerConditions(std::vector<SkySceneXPlayerConditionRecord> &result) = 0;

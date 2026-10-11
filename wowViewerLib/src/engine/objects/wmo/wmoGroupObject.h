@@ -5,6 +5,8 @@
 #ifndef WEBWOWVIEWERCPP_WMOGROUPOBJECT_H
 #define WEBWOWVIEWERCPP_WMOGROUPOBJECT_H
 
+#include <mutex>
+
 class WmoGroupObject;
 class WMOGroupListContainer;
 class LiquidMaterialManager;
@@ -12,6 +14,7 @@ class LiquidMaterialManager;
 #include "../../persistance/header/wmoFileHeader.h"
 #include "../iWmoApi.h"
 #include "../m2/m2Object.h"
+#include "../worldObject/PlacedCreature.h"
 #include "../liquid/LiquidInstance.h"
 #include "../../../gapi/interface/meshes/IMesh.h"
 #include "../../../engine/custom_allocators/FrameBasedStackAllocator.h"
@@ -48,6 +51,13 @@ public:
     const std::vector <std::shared_ptr<M2Object>> &getDoodads() const {
         return m_doodads;
     };
+
+    //Takes a creature that stands in this group, as one of its doodads (WmoObject::homeCreatures)
+    void adoptCreature(const std::shared_ptr<PlacedCreature> &creature);
+    //Adds the creatures and game objects of the group the config shows to the candidates of a view that draws the group's doodads
+    void addCreatureCandidates(M2ObjectListContainer &m2Candidates, const Config &config);
+    //The vertex color of the floor under a point in the WMO's space, from the group's MOCV; false when the group has no
+    //vertex colors or no floor lies under the point
 
     void setWmoApi(IWmoApi *api);
     IWmoApi *getWmoApi() { return m_wmoApi; };
@@ -96,6 +106,9 @@ private:
     const SMOGroupInfo *m_main_groupInfo;
 
     std::vector <std::shared_ptr<M2Object>> m_doodads = {};
+    //Weak, since the tile or map that placed a creature owns it. Taken in the load thread and read in the cull thread.
+    std::mutex m_creatureMutex;
+    std::vector<std::weak_ptr<PlacedCreature>> m_creatures = {};
     std::vector<CPointLight> m_pointLights = {};
     std::vector<CSpotLight> m_spotLights = {};
     std::vector<std::shared_ptr<CEngineLight>> m_wmoNewLights = {};

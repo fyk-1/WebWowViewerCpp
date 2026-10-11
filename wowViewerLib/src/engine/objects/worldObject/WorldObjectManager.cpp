@@ -3,6 +3,8 @@
 //
 
 #include "WorldObjectManager.h"
+#include "../wmo/wmoObject.h"
+
 
 WorldObjectManager::WorldObjectManager(HApiContainer api, int mapId) : m_api(api), m_mapId(mapId) {
     loadGameObjects();
@@ -13,6 +15,105 @@ WorldObjectManager::WorldObjectManager(HApiContainer api, int mapId) : m_api(api
         allObjects.push_back(gameObject.get());
     }
     m_bvh.build(allObjects);
+}
+
+std::shared_ptr<PlacedCreature> WorldObjectManager::createCreature(HApiContainer api, const CreatureSpawnRecord &spawn) {
+    if (spawn.ModelFileDataID <= 0) return nullptr;
+
+    auto textureCache = api->cacheStorage->getTextureCache();
+    std::vector<HBlpTexture> replaceTextures(14, nullptr);
+    for (int i = 0; i < 3; i++) {
+        if (spawn.Textures[i] > 0) replaceTextures[11 + i] = textureCache->getFileId(spawn.Textures[i]);
+    }
+    auto fill = [&](int type, int fileId) { if (fileId > 0) replaceTextures[type] = textureCache->getFileId(fileId); };
+    fill(1, spawn.BodyTexture);
+    fill(2, spawn.CapeTexture);
+    fill(6, spawn.HairTexture);
+    fill(8, spawn.SkinExtraTexture);
+
+    auto m2Object = m2Factory->createObject(api);
+    m2Object->setLoadParams(0, spawn.MeshIds, replaceTextures);
+    m2Object->hideUnfilledBatches();
+    m2Object->setAlpha(spawn.Alpha / 255.0f);
+    m2Object->setModelFileId(spawn.ModelFileDataID);
+
+    mathfu::mat4 rotationMat = MathHelper::RotationZ(spawn.Facing);
+    m2Object->createPlacementMatrix(mathfu::vec3(spawn.Pos[0], spawn.Pos[1], spawn.Pos[2]), 0.0f,
+                                    mathfu::vec3(spawn.Scale, spawn.Scale, spawn.Scale), &rotationMat);
+    m2Object->calcWorldPosition();
+
+    for (auto const &attachment : spawn.Attachments) {
+        if (attachment.ModelFileDataID <= 0) continue;
+
+        //The item texture is the model's type 2, and the textures after it fill the types after that
+        std::vector<HBlpTexture> itemTextures(14, nullptr);
+        for (size_t i = 0; i < attachment.Textures.size() && 2 + i < itemTextures.size(); i++) {
+            if (attachment.Textures[i] > 0) itemTextures[2 + i] = textureCache->getFileId(attachment.Textures[i]);
+        }
+
+        auto item = m2Factory->createObject(api);
+        item->setLoadParams(0, {}, itemTextures);
+        item->hideUnfilledBatches();
+        item->setModelFileId(attachment.ModelFileDataID);
+        m2Object->attach(item, attachment.Attachment);
+    }
+
+    auto creature = std::make_shared<PlacedCreature>();
+    creature->m2 = m2Object;
+    creature->id = m2Object->getObjectId();
+    creature->humanoid = spawn.BodyTexture > 0;
+    return creature;
+}
+
+std::shared_ptr<PlacedCreature> WorldObjectManager::createGameObjectSpawn(HApiContainer api, const GameObjectSpawnRecord &spawn) {
+    if (spawn.ModelFileDataID <= 0) return nullptr;
+
+    auto m2Object = m2Factory->createObject(api);
+    m2Object->setLoadParams(0, {}, {});
+    m2Object->hideUnfilledBatches();
+    m2Object->setModelFileId(spawn.ModelFileDataID);
+
+    //The row's quaternion is (x, y, z, w), the same as the GameObjects table's Rot_0 to Rot_3
+    mathfu::mat4 rotationMat = mathfu::quat(spawn.Rotation[3], spawn.Rotation[0], spawn.Rotation[1], spawn.Rotation[2]).ToMatrix4();
+    m2Object->createPlacementMatrix(mathfu::vec3(spawn.Pos[0], spawn.Pos[1], spawn.Pos[2]), 0.0f,
+                                    mathfu::vec3(spawn.Scale, spawn.Scale, spawn.Scale), &rotationMat);
+    m2Object->calcWorldPosition();
+
+    auto placed = std::make_shared<PlacedCreature>();
+    placed->m2 = m2Object;
+    placed->id = m2Object->getObjectId();
+    placed->gameObject = true;
+    return placed;
+}
+
+void WorldObjectManager::homeCreature(const std::shared_ptr<PlacedCreature> &creature, const std::array<float, 3> &spawnPosition,
+                                      const std::vector<std::shared_ptr<WmoObject>> &wmos, bool onlyWhereBounded) {
+    const mathfu::vec3 position(spawnPosition[0], spawnPosition[1], spawnPosition[2]);
+
+    std::vector<WmoObject *> asked;
+    for (auto const &wmo : wmos) {
+        if (wmo == nullptr) continue;
+        if (std::find(asked.begin(), asked.end(), wmo.get()) != asked.end()) continue;
+
+        if (onlyWhereBounded) {
+            const CAaBox bounds = wmo->getAABB();
+            if (position.x < bounds.min.x || position.x > bounds.max.x ||
+                position.y < bounds.min.y || position.y > bounds.max.y ||
+                position.z < bounds.min.z || position.z > bounds.max.z) continue;
+        }
+        asked.push_back(wmo.get());
+    }
+
+    if (asked.empty()) {
+        creature->home = CreatureHome::Exterior;
+        return;
+    }
+
+    //The count is set before the first offer, so an answer cannot see it reach zero while the rest are still to ask
+    creature->wmosToAnswer = (int) asked.size();
+    for (auto *wmo : asked) {
+        wmo->offerCreature(creature, position);
+    }
 }
 
 void WorldObjectManager::spawnCustomM2(CustomM2Object &object) {

@@ -144,6 +144,12 @@ protected:
     HADTRenderConfigDataHolder m_adtConfigHolder = nullptr;
     HWorldObjectManager m_worldObjectManager = nullptr;
 
+    // The creatures and game objects of a map with no tiles, read once its WDT says so. The map holds the only strong refs, so they go
+    // with it.
+    std::vector<std::shared_ptr<PlacedCreature>> m_mapCreatures;
+    bool m_mapCreaturesLoaded = false;
+    void collectMapCreatures(M2ObjectListContainer &m2ObjectsCandidates);
+
 protected:
     explicit Map(const HApiContainer &m_api) : m_dayNightLightHolder(m_api, -1) {
     }
@@ -176,6 +182,7 @@ public:
     void setWorldObjectManager(HWorldObjectManager worldObjectManager) {
         m_worldObjectManager = worldObjectManager;
     }
+    int getMapId() override { return m_mapId; }
     HWorldObjectManager getWorldObjectManager() const {
         return m_worldObjectManager;
     }

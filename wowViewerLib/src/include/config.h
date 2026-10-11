@@ -59,6 +59,12 @@ public:
     std::unordered_set<int> disabledSkyScenePlayerConditions;
     bool renderLiquid = true;
     bool renderGameObjects = true;
+    // The host's CreatureSpawn rows, drawn as M2 models standing where they spawn.
+    bool renderCreatures = true;
+    // The humanoid NPCs among them, the ones dressed by a race and sex model. Off leaves them out while renderCreatures is on.
+    bool renderHumanoids = true;
+    // The host's GameObjectSpawn rows, drawn as M2 models standing where they spawn: herbs, ore veins, chests, mailboxes.
+    bool renderGameObjectSpawns = true;
     bool showGameObjectNameplates = false;
     bool showGameObjectNameplatesForAll = false;
     bool renderBSP = false;
@@ -114,8 +120,6 @@ public:
 
     uint16_t currentTime = 2880/2; //midday is the default time now
     float timeMultiplier = 1.0f;
-
-    bool useWotlkLogic = false;
 
     float fov = DEFAULT_FOV_VALUE;
     float nearPlane = 1;

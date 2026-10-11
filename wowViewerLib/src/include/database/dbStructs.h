@@ -240,6 +240,44 @@ struct GameObjectRecord {
     int PropValue0 = 0; //For TypeID == 5 (Generic), this is `floatingTooltip`
 };
 
+// A model a humanoid wears, hung on the body at one of its M2 attachment points (11 the helm, 5 and 6 the shoulders, 1 and 2 the
+// hands, 0 the shield). The textures are FileDataIDs for the model's texture types 2 and up, the item texture being type 2, 0 for none.
+struct CreatureAttachmentRecord {
+    int Attachment = 0;
+    int ModelFileDataID = 0;
+    std::vector<int> Textures;
+};
+
+// Row of CreatureSpawn, a table the host adds to the database: one creature model standing on a map tile. The textures
+// are FileDataIDs for the model's creature-skin texture types 11, 12 and 13, 0 for none.
+// A humanoid carries its look too: FileDataIDs for the character texture types 1 (body), 2 (cape), 6 (hair) and 8 (skin
+// extra), 0 for none, and the variant its geoset list gives each group of the model. A row with no geoset list leaves
+// MeshIds empty, which draws every geoset of the model. Alpha is the display's CreatureModelAlpha, 0 to 255. The models it wears
+// are its Attachments.
+struct CreatureSpawnRecord {
+    std::array<float, 3> Pos = {0.0f, 0.0f, 0.0f};
+    float Facing = 0.0f; //Radians, 0 facing +x
+    float Scale = 1.0f;
+    int ModelFileDataID = 0;
+    std::array<int, 3> Textures = {0, 0, 0};
+    int BodyTexture = 0;
+    int CapeTexture = 0;
+    int HairTexture = 0;
+    int SkinExtraTexture = 0;
+    std::vector<uint8_t> MeshIds; //Indexed by geoset group, as M2Object::setLoadParams takes it
+    std::vector<CreatureAttachmentRecord> Attachments;
+    int Alpha = 255;
+};
+
+// Row of GameObjectSpawn, a table the host adds to the database: one game object model standing on a map tile. The rotation is the
+// server's quaternion (x, y, z, w) and the model a FileDataID. A row whose model is a WMO is not read.
+struct GameObjectSpawnRecord {
+    std::array<float, 3> Pos = {0.0f, 0.0f, 0.0f};
+    std::array<float, 4> Rotation = {0.0f, 0.0f, 0.0f, 1.0f};
+    float Scale = 1.0f;
+    int ModelFileDataID = 0;
+};
+
 struct GameObjectDisplayInfoRecord {
     int ID = 0;
     int FileDataID = 0;

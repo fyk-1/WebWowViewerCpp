@@ -86,6 +86,7 @@ void GeneralView::addM2FromGroups(const MathHelper::FrustumCullingData &frustumD
         for (auto &m2object : doodads) {
             this->m2List.addCandidate(m2object);
         }
+        wmoGroup->addCreatureCandidates(this->m2List, *config);
     }
 
     auto &candidatesArr = this->m2List.getCandidates();

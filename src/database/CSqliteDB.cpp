@@ -5,6 +5,7 @@
 #include <sqlite3.h>
 #include "CSqliteDB.h"
 #include <cmath>
+#include <cstdlib>
 #include <algorithm>
 #include <iostream>
 
@@ -143,6 +144,66 @@ const std::string liquidTextureFileDataIdsSQL = R"===(
     order by ltxt.OrderIndex;
 )===";
 
+// The look, alpha and attachment columns are in the query where the table has them, which a database an earlier host wrote does not.
+static std::string creatureSpawnsSQL(bool withLook, bool withAlpha, bool withAttachments, const std::string &condition) {
+    return std::string("select X, Y, Z, Facing, Scale, ModelFileDataID, Texture_0, Texture_1, Texture_2")
+        + (withLook ? ", BodyTexture, CapeTexture, HairTexture, SkinExtraTexture, Geosets" : "")
+        + (withAlpha ? ", Alpha" : "")
+        + (withAttachments ? ", Attachments" : "")
+        + " from CreatureSpawn where " + condition + ";";
+}
+
+// The WMO models are left for later, so a row with IsWmo set is not read.
+static std::string gameObjectSpawnsSQL(const std::string &condition) {
+    return "select X, Y, Z, Rot_0, Rot_1, Rot_2, Rot_3, Scale, ModelFileDataID from GameObjectSpawn where IsWmo = 0 and " + condition + ";";
+}
+
+// "101,201,402" to the variant of each group: group 1 variant 1, group 2 variant 1, group 4 variant 2.
+static std::vector<uint8_t> parseMeshIds(const std::string &geosets) {
+    std::vector<uint8_t> meshIds;
+    size_t at = 0;
+    while (at < geosets.size()) {
+        size_t end = geosets.find(',', at);
+        if (end == std::string::npos) end = geosets.size();
+
+        int geoset = std::atoi(geosets.substr(at, end - at).c_str());
+        size_t group = geoset / 100;
+        if (meshIds.size() <= group) meshIds.resize(group + 1, 0);
+        meshIds[group] = geoset % 100;
+
+        at = end + 1;
+    }
+    return meshIds;
+}
+
+// "11,140326,140314;6,143235,143954" to the models a humanoid wears: a model on attachment 11 with the texture 140314 and one
+// on attachment 6 with the texture 143954.
+static std::vector<CreatureAttachmentRecord> parseAttachments(const std::string &attachments) {
+    std::vector<CreatureAttachmentRecord> result;
+    size_t at = 0;
+    while (at < attachments.size()) {
+        size_t end = attachments.find(';', at);
+        if (end == std::string::npos) end = attachments.size();
+
+        std::vector<int> fields;
+        size_t fieldAt = at;
+        while (fieldAt <= end) {
+            size_t fieldEnd = std::min(attachments.find(',', fieldAt), end);
+            fields.push_back(std::atoi(attachments.substr(fieldAt, fieldEnd - fieldAt).c_str()));
+            fieldAt = fieldEnd + 1;
+        }
+        if (fields.size() >= 2) {
+            CreatureAttachmentRecord &attachment = result.emplace_back();
+            attachment.Attachment = fields[0];
+            attachment.ModelFileDataID = fields[1];
+            attachment.Textures.assign(fields.begin() + 2, fields.end());
+        }
+
+        at = end + 1;
+    }
+    return result;
+}
+
 CSqliteDB::CSqliteDB(std::string dbFileName) :
     m_sqliteDatabase(dbFileName, SQLite::OPEN_READWRITE|SQLite::OPEN_CREATE),
     getWmoAreaAreaName(m_sqliteDatabase, getWmoAreaAreaNameSQL),
@@ -174,8 +235,20 @@ CSqliteDB::CSqliteDB(std::string dbFileName) :
     getMapByIdStatement(m_sqliteDatabase, getHasWDTId(m_sqliteDatabase) ? getMapByIDSQL : getMapByIDSQL_classic),
 
     getGameObjectsForMapStatement(m_sqliteDatabase, generateSimpleSelectSQL("GameObjects", {}, "where OwnerID = ?")),
-    getGameObjectDisplayInfoStatement(m_sqliteDatabase, generateSimpleSelectSQL("GameObjectDisplayInfo", {}, "where ID = ?"))
+    getGameObjectDisplayInfoStatement(m_sqliteDatabase, generateSimpleSelectSQL("GameObjectDisplayInfo", {}, "where ID = ?")),
+    getCreatureSpawnsForTileStatement(m_sqliteDatabase, m_sqliteDatabase.tableExists("CreatureSpawn")
+        ? creatureSpawnsSQL(getHasCreatureLook(m_sqliteDatabase), getHasCreatureAlpha(m_sqliteDatabase),
+            getHasCreatureAttachments(m_sqliteDatabase), "Map = ?1 and TileRow = ?2 and TileCol = ?3") : "select 1 from Map;"),
+    getCreatureSpawnsForMapStatement(m_sqliteDatabase, m_sqliteDatabase.tableExists("CreatureSpawn")
+        ? creatureSpawnsSQL(getHasCreatureLook(m_sqliteDatabase), getHasCreatureAlpha(m_sqliteDatabase),
+            getHasCreatureAttachments(m_sqliteDatabase), "Map = ?1") : "select 1 from Map;"),
+    getGameObjectSpawnsForTileStatement(m_sqliteDatabase, m_sqliteDatabase.tableExists("GameObjectSpawn")
+        ? gameObjectSpawnsSQL("Map = ?1 and TileRow = ?2 and TileCol = ?3") : "select 1 from Map;"),
+    getGameObjectSpawnsForMapStatement(m_sqliteDatabase, m_sqliteDatabase.tableExists("GameObjectSpawn")
+        ? gameObjectSpawnsSQL("Map = ?1") : "select 1 from Map;")
 {
+    m_hasCreatureSpawns = m_sqliteDatabase.tableExists("CreatureSpawn");
+    m_hasGameObjectSpawns = m_sqliteDatabase.tableExists("GameObjectSpawn");
     char *sErrMsg = 0;
     sqlite3_exec(m_sqliteDatabase.getHandle(), "PRAGMA synchronous = OFF", NULL, NULL, &sErrMsg);
     sqlite3_exec(m_sqliteDatabase.getHandle(), "PRAGMA temp_store = MEMORY", NULL, NULL, &sErrMsg);
@@ -726,6 +799,76 @@ void CSqliteDB::getGameObjectsForMap(int mapId, std::vector<GameObjectRecord> &g
         gameObjectRecord.Scale = getGameObjectsForMapStatement.getField("Scale").getDouble();
 
         gameObjectRecord.PropValue0 = getGameObjectsForMapStatement.getField("PropValue_0").getInt();
+    }
+}
+
+void CSqliteDB::getCreatureSpawnsForTile(int mapId, int tileRow, int tileCol, std::vector<CreatureSpawnRecord> &spawns) {
+    if (!m_hasCreatureSpawns) return;
+
+    getCreatureSpawnsForTileStatement.setInputs(mapId, tileRow, tileCol);
+    readCreatureSpawns(getCreatureSpawnsForTileStatement, spawns);
+}
+
+void CSqliteDB::getCreatureSpawnsForMap(int mapId, std::vector<CreatureSpawnRecord> &spawns) {
+    if (!m_hasCreatureSpawns) return;
+
+    getCreatureSpawnsForMapStatement.setInputs(mapId);
+    readCreatureSpawns(getCreatureSpawnsForMapStatement, spawns);
+}
+
+void CSqliteDB::readCreatureSpawns(StatementFieldHolder &statement, std::vector<CreatureSpawnRecord> &spawns) {
+    while (statement.execute()) {
+        CreatureSpawnRecord &spawn = spawns.emplace_back();
+
+        spawn.Pos[0] = statement.getField("X").getDouble();
+        spawn.Pos[1] = statement.getField("Y").getDouble();
+        spawn.Pos[2] = statement.getField("Z").getDouble();
+        spawn.Facing = statement.getField("Facing").getDouble();
+        spawn.Scale = statement.getField("Scale").getDouble();
+        spawn.ModelFileDataID = statement.getField("ModelFileDataID").getInt();
+        spawn.Textures[0] = statement.getField("Texture_0").getInt();
+        spawn.Textures[1] = statement.getField("Texture_1").getInt();
+        spawn.Textures[2] = statement.getField("Texture_2").getInt();
+
+        if (statement.getFieldIndex("Geosets") >= 0) {
+            spawn.BodyTexture = statement.getField("BodyTexture").getInt();
+            spawn.CapeTexture = statement.getField("CapeTexture").getInt();
+            spawn.HairTexture = statement.getField("HairTexture").getInt();
+            spawn.SkinExtraTexture = statement.getField("SkinExtraTexture").getInt();
+            spawn.MeshIds = parseMeshIds(statement.getField("Geosets").getString());
+        }
+        if (statement.getFieldIndex("Alpha") >= 0) spawn.Alpha = statement.getField("Alpha").getInt();
+        if (statement.getFieldIndex("Attachments") >= 0) spawn.Attachments = parseAttachments(statement.getField("Attachments").getString());
+    }
+}
+
+void CSqliteDB::getGameObjectSpawnsForTile(int mapId, int tileRow, int tileCol, std::vector<GameObjectSpawnRecord> &spawns) {
+    if (!m_hasGameObjectSpawns) return;
+
+    getGameObjectSpawnsForTileStatement.setInputs(mapId, tileRow, tileCol);
+    readGameObjectSpawns(getGameObjectSpawnsForTileStatement, spawns);
+}
+
+void CSqliteDB::getGameObjectSpawnsForMap(int mapId, std::vector<GameObjectSpawnRecord> &spawns) {
+    if (!m_hasGameObjectSpawns) return;
+
+    getGameObjectSpawnsForMapStatement.setInputs(mapId);
+    readGameObjectSpawns(getGameObjectSpawnsForMapStatement, spawns);
+}
+
+void CSqliteDB::readGameObjectSpawns(StatementFieldHolder &statement, std::vector<GameObjectSpawnRecord> &spawns) {
+    while (statement.execute()) {
+        GameObjectSpawnRecord &spawn = spawns.emplace_back();
+
+        spawn.Pos[0] = statement.getField("X").getDouble();
+        spawn.Pos[1] = statement.getField("Y").getDouble();
+        spawn.Pos[2] = statement.getField("Z").getDouble();
+        spawn.Rotation[0] = statement.getField("Rot_0").getDouble();
+        spawn.Rotation[1] = statement.getField("Rot_1").getDouble();
+        spawn.Rotation[2] = statement.getField("Rot_2").getDouble();
+        spawn.Rotation[3] = statement.getField("Rot_3").getDouble();
+        spawn.Scale = statement.getField("Scale").getDouble();
+        spawn.ModelFileDataID = statement.getField("ModelFileDataID").getInt();
     }
 }
 

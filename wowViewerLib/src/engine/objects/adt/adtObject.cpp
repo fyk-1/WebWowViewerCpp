@@ -8,6 +8,7 @@
 // #include <emmintrin.h>
 #endif
 #include "adtObject.h"
+#include "../worldObject/WorldObjectManager.h"
 #include <ShaderDefinitions.h>
 #include "../../algorithms/mathHelper.h"
 #include "../../algorithms/mathHelper_culling.h"
@@ -40,6 +41,7 @@ void AdtObject::loadingFinished(const HMapSceneBufferCreate &sceneRenderer, cons
 
     loadM2s();
     loadWmos();
+    loadCreatures();
 
     m_loaded = true;
 
@@ -154,6 +156,46 @@ void AdtObject::loadM2s() {
         }
     }
 }
+/*
+robots@Impl: Creatures of the tile.
+
+The tile asks the database for its CreatureSpawn rows as it finishes loading (row is adt_y and column adt_x, the world x
+and y the map indexes mapTiles by) and builds one M2 for each (WorldObjectManager::createCreature says how a row is placed
+and textured). The tile's WMOs go first, since each creature is offered to those whose box holds it (WorldObjectManager::homeCreature),
+which put one standing in an interior group into that group. The others join the candidates of every frame the tile is collected
+in (checkWmoGlobally), so the map's own per-object culling handles them as it does a doodad. Nothing walks. A map with no tiles,
+one global WMO, has its creatures loaded by Map instead (Map::collectMapCreatures).
+
+The tile's GameObjectSpawn rows go the same way (WorldObjectManager::createGameObjectSpawn), into the same list, and are shown or
+hidden by their own flag.
+*/
+void AdtObject::loadCreatures() {
+    ZoneScoped;
+    if (m_api == nullptr || m_api->databaseHandler == nullptr) return;
+
+    std::vector<CreatureSpawnRecord> spawns;
+    m_api->databaseHandler->getCreatureSpawnsForTile(m_mapApi->getMapId(), adt_y, adt_x, spawns);
+
+    m_creatures.reserve(spawns.size());
+    for (auto &spawn : spawns) {
+        auto creature = WorldObjectManager::createCreature(m_api, spawn);
+        if (creature == nullptr) continue;
+
+        WorldObjectManager::homeCreature(creature, spawn.Pos, objectLods[0].wmoObjects, true);
+        m_creatures.push_back(creature);
+    }
+
+    std::vector<GameObjectSpawnRecord> gameObjects;
+    m_api->databaseHandler->getGameObjectSpawnsForTile(m_mapApi->getMapId(), adt_y, adt_x, gameObjects);
+    for (auto &spawn : gameObjects) {
+        auto gameObject = WorldObjectManager::createGameObjectSpawn(m_api, spawn);
+        if (gameObject == nullptr) continue;
+
+        WorldObjectManager::homeCreature(gameObject, spawn.Pos, objectLods[0].wmoObjects, true);
+        m_creatures.push_back(gameObject);
+    }
+}
+
 void AdtObject::loadWmos() {
     ZoneScoped;
 
@@ -1294,6 +1336,11 @@ void
 AdtObject::checkWmoGlobally(int lodLevel, M2ObjectListContainer &m2ObjectsCandidates, WMOListContainer &wmoCandidates, int x,
                  int y,
                  int x_len, int y_len) {
+
+    for (auto const &creature : m_creatures) {
+        if (creature->home == CreatureHome::Exterior && creature->shown(*m_api->getConfig()))
+            m2ObjectsCandidates.addCandidate(creature->id);
+    }
 
     if (lodLevel >= 4) {
         for (auto const &m2ObjectId : objectLods[0].m2ObjectIds)

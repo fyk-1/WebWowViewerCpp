@@ -47,6 +47,29 @@ void WmoObject::startLoading() {
     }
 }
 
+bool WmoObject::isDoodadInActiveSets(int index) {
+    for (int i = 0; i < this->mainGeom->doodadSetsLen; i++) {
+        if (!m_activeDoodadSets[i]) continue;;
+
+        if (
+            index >= this->mainGeom->doodadSets[i].firstinstanceindex &&
+            index <= this->mainGeom->doodadSets[i].firstinstanceindex + this->mainGeom->doodadSets[i].numDoodads
+            ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+float WmoObject::getDoodadMddiVal(int index) {
+    if (mainGeom->doodadDefs[index].flag_0x10 && index < mainGeom->m_doodadAdditionalInfoLen) {
+        return mainGeom->m_doodadAdditionalInfo[index];
+    }
+
+    return 1.0f;
+}
+
 std::shared_ptr<M2Object> WmoObject::getDoodad(int index, int fromGroupIndex) {
     auto iterator = this->m_doodadsUnorderedMap.find(index);
     if (iterator != this->m_doodadsUnorderedMap.end()) {
@@ -59,20 +82,7 @@ std::shared_ptr<M2Object> WmoObject::getDoodad(int index, int fromGroupIndex) {
         }
     }
 
-    bool existsInActiveDoodadSets = false;
-    for (int i = 0; i < this->mainGeom->doodadSetsLen; i++) {
-        if (!m_activeDoodadSets[i]) continue;;
-
-        if (
-            index >= this->mainGeom->doodadSets[i].firstinstanceindex &&
-            index <= this->mainGeom->doodadSets[i].firstinstanceindex + this->mainGeom->doodadSets[i].numDoodads
-            ) {
-            existsInActiveDoodadSets = true;
-            break;
-        }
-    }
-
-    if (!existsInActiveDoodadSets)
+    if (!isDoodadInActiveSets(index))
         return nullptr;
 
     const SMODoodadDef *doodadDef = &this->mainGeom->doodadDefs[index];
@@ -106,10 +116,7 @@ std::shared_ptr<M2Object> WmoObject::getDoodad(int index, int fromGroupIndex) {
     m2Object->calcWorldPosition();
 
     //Set interior lighting params
-    float mddiVal = 1.0f;
-    if (doodadDef->flag_0x10 && index < mainGeom->m_doodadAdditionalInfoLen) {
-        mddiVal = mainGeom->m_doodadAdditionalInfo[index];
-    }
+    const float mddiVal = getDoodadMddiVal(index);
 
     auto l_wmoId = this->getObjectId();
     m2Object->addPostLoadEvent([l_wmoId, l_doodadDef = *doodadDef, mddiVal, fromGroupIndex](M2Object *m2Object) {
@@ -558,6 +565,7 @@ bool WmoObject::doPostLoad(const HMapSceneBufferCreate &sceneRenderer) {
             m_loading = false;
             return true;
         } else {
+            if (isFailedToLoadGeom()) declineCreatures();
             this->startLoading();
         }
 
@@ -805,6 +813,9 @@ void WmoObject::createMaterialCache() {
 
 void WmoObject::postWmoGroupObjectLoad(int groupId, int lod) {
     //1. Create portal verticles from geometry
+
+    //A group that loaded may be one a waiting creature stands in
+    m_creaturesToHome = true;
 }
 
 void WmoObject::checkGroupDoodads(int groupId, mathfu::vec4 &cameraVec4,
@@ -1040,6 +1051,163 @@ bool WmoObject::startTraversingWMOGroup(
 
     //M2s will be collected later from separate function call
     return traverseTempData.atLeastOneGroupIsDrawn;
+}
+
+/*
+robots@Impl: Creatures in the groups of a WMO.
+
+A tile or the map offers each creature to the WMOs whose box holds it (WorldObjectManager::homeCreature), and the creature stays
+hidden until all of them have answered. A WMO answers once it is loaded and every group whose volume holds the
+creature's position is loaded too, with the lookup the camera uses (getGroupWmoThatCameraIsInside) on the position lifted one
+yard, since a position on the floor is not above it. A creature in an interior group, the lookup's group not flagged EXTERIOR,
+goes to that group (WmoGroupObject::adoptCreature) and is lit as a doodad of that group; any other answer is a decline. The
+groups still to load are queued by queueCreatureGroupLoads, which the map calls for the WMOs it collects, and each group load
+sets the WMO to answer again, which the map asks of each WMO it collects as it loads (homeCreaturesIfChanged), drawn or not.
+*/
+void WmoObject::offerCreature(const std::shared_ptr<PlacedCreature> &creature, const mathfu::vec3 &position) {
+    if (isFailedToLoadGeom()) {
+        creature->declinedByWmo();
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(m_creatureMutex);
+        m_pendingCreatures.push_back({creature, position, {}});
+    }
+    m_creaturesToHome = true;
+}
+
+//A WMO that will not load holds no creature
+void WmoObject::declineCreatures() {
+    std::lock_guard<std::mutex> lock(m_creatureMutex);
+    for (auto &pending : m_pendingCreatures) {
+        if (auto creature = pending.creature.lock()) creature->declinedByWmo();
+    }
+    m_pendingCreatures.clear();
+}
+
+void WmoObject::queueCreatureGroupLoads(WMOGroupListContainer &wmoGroupArray) {
+    std::lock_guard<std::mutex> lock(m_creatureMutex);
+    for (auto const &pending : m_pendingCreatures) {
+        for (int groupId : pending.unloadedGroups) {
+            wmoGroupArray.addToLoad(groupObjects[groupId]);
+        }
+    }
+}
+
+void WmoObject::homeCreaturesIfChanged() {
+    if (!m_loaded || !m_creaturesToHome.exchange(false)) return;
+
+    homeCreatures();
+}
+
+void WmoObject::homeCreatures() {
+    std::lock_guard<std::mutex> lock(m_creatureMutex);
+
+    for (auto it = m_pendingCreatures.begin(); it != m_pendingCreatures.end();) {
+        auto creature = it->creature.lock();
+        //Gone with its owner, or taken by another WMO
+        if (creature == nullptr || creature->home != CreatureHome::Pending) {
+            it = m_pendingCreatures.erase(it);
+            continue;
+        }
+
+        const mathfu::vec3 &position = it->position;
+        it->unloadedGroups.clear();
+        for (int i = 0; i < groupObjects.size(); i++) {
+            if (groupObjects[i] == nullptr || groupObjects[i]->getIsLoaded()) continue;
+
+            const CAaBox &box = m_groupVolumeWorldBorders[i];
+            if (position.x > box.min.x && position.x < box.max.x &&
+                position.y > box.min.y && position.y < box.max.y &&
+                position.z > box.min.z && position.z < box.max.z) {
+                it->unloadedGroups.push_back(i);
+            }
+        }
+        if (!it->unloadedGroups.empty()) {
+            ++it;
+            continue;
+        }
+
+        WmoGroupResult groupResult;
+        float bottomBorder = -99999;
+        const bool found = getGroupWmoThatCameraIsInside(mathfu::vec4(position.x, position.y, position.z + 1.0f, 1.0f), groupResult, bottomBorder);
+
+        if (found && isGroupWmoInterior(groupResult.groupIndex)) {
+            auto &flags = mainGeom->groups[groupResult.groupIndex].flags;
+            if (!(flags.EXTERIOR_LIT || flags.EXTERIOR || !flags.INTERIOR)) {
+                applyInteriorLightingToCreature(*creature->m2, groupResult.groupIndex, position);
+            }
+            groupObjects[groupResult.groupIndex]->adoptCreature(creature);
+            creature->home = CreatureHome::Interior;
+        } else {
+            creature->declinedByWmo();
+        }
+        it = m_pendingCreatures.erase(it);
+    }
+}
+
+//The doodad of the group standing nearest to the position, among the active doodad sets; the whole WMO's when the group lists none.
+//A doodad whose flags leave its ambient or direct color unset (0x4, 0x8) or black (0x40) is passed over.
+int WmoObject::findNearestDoodadDef(int groupIndex, const mathfu::vec3 &position) {
+    int nearest = -1;
+    float nearestDistance = std::numeric_limits<float>::max();
+    auto consider = [&](int index) {
+        if (index >= mainGeom->doodadDefsLen || !isDoodadInActiveSets(index)) return;
+
+        const SMODoodadDef &doodadDef = mainGeom->doodadDefs[index];
+        if (doodadDef.flag_0x4 || doodadDef.flag_0x8 || doodadDef.flag_0x40) return;
+
+        const mathfu::vec3 doodadPosition = (m_placementMatrix * mathfu::vec4(mathfu::vec3(doodadDef.position), 1.0f)).xyz();
+        const float distance = (doodadPosition - position).LengthSquared();
+        if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearest = index;
+        }
+    };
+
+    const auto groupGeom = groupObjects[groupIndex] != nullptr ? groupObjects[groupIndex]->getWmoGroupGeom() : nullptr;
+    if (groupGeom != nullptr) {
+        for (int i = 0; i < groupGeom->doodadRefsLen; i++) {
+            consider(groupGeom->doodadRefs[i]);
+        }
+    }
+    if (nearest < 0) {
+        for (int i = 0; i < mainGeom->doodadDefsLen; i++) {
+            consider(i);
+        }
+    }
+
+    return nearest;
+}
+
+//A creature is lit as the doodad of its group standing nearest to it, which is where the WMO's authors put the light of that
+//spot; a WMO with no doodad lights it by the WMO's ambient color, kept to the limits applyLightingParamsToDoodad gives it
+void WmoObject::applyInteriorLightingToCreature(M2Object &creature, int groupIndex, const mathfu::vec3 &position) {
+    creature.setInteriorExteriorBlend(0.0f);
+
+    const mathfu::vec3 color = m_ambientColors[0];
+    creature.setInteriorDirectColor(fixDirectColor(color, 0x70u));
+    creature.setAmbientColorOverride(
+        fixAmbient1(color, 0x60u),
+        fixAmbient1(color, 0x60u),
+        fixAmbient1(color, 0x60u));
+
+    const int doodadIndex = findNearestDoodadDef(groupIndex, position);
+    if (doodadIndex < 0) return;
+
+    //The light of a doodad that points at a MOLT light is aimed from the model's box, which a creature has once it loads
+    auto light = [wmoId = getObjectId(), doodadDef = mainGeom->doodadDefs[doodadIndex], mddiVal = getDoodadMddiVal(doodadIndex), groupIndex](M2Object *m2Object) {
+        auto wmoObj = wmoFactory->getObjectById<0>(wmoId);
+        if (!wmoObj) return;
+
+        wmoObj->applyLightingParamsToDoodad(&doodadDef, m2Object, mddiVal, groupIndex);
+    };
+    if (creature.getGetIsLoaded()) {
+        light(&creature);
+    } else {
+        creature.addPostLoadEvent(light);
+    }
 }
 
 void WmoObject::triggerExteriorGroupLoads(WMOGroupListContainer &wmoGroupArray) {

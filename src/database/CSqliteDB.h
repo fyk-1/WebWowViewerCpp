@@ -6,6 +6,7 @@
 #define AWEBWOWVIEWERCPP_CSQLITEDB_H
 
 #include <vector>
+#include <algorithm>
 #include <functional>
 #include <unordered_map>
 #include <SQLiteCpp/Database.h>
@@ -35,6 +36,10 @@ public:
 
     void getGameObjectsForMap(int mapId, std::vector<GameObjectRecord> &gameObjects) override;
     bool getGameObjectDisplayInfo(int displayId, GameObjectDisplayInfoRecord &result) override;
+    void getCreatureSpawnsForTile(int mapId, int tileRow, int tileCol, std::vector<CreatureSpawnRecord> &spawns) override;
+    void getCreatureSpawnsForMap(int mapId, std::vector<CreatureSpawnRecord> &spawns) override;
+    void getGameObjectSpawnsForTile(int mapId, int tileRow, int tileCol, std::vector<GameObjectSpawnRecord> &spawns) override;
+    void getGameObjectSpawnsForMap(int mapId, std::vector<GameObjectSpawnRecord> &spawns) override;
 
     void getSkySceneXPlayerConditions(std::vector<SkySceneXPlayerConditionRecord> &result) override;
 
@@ -111,6 +116,12 @@ private:
 
     StatementFieldHolder getGameObjectsForMapStatement;
     StatementFieldHolder getGameObjectDisplayInfoStatement;
+    StatementFieldHolder getCreatureSpawnsForTileStatement;
+    StatementFieldHolder getCreatureSpawnsForMapStatement;
+    bool m_hasCreatureSpawns = false;
+    StatementFieldHolder getGameObjectSpawnsForTileStatement;
+    StatementFieldHolder getGameObjectSpawnsForMapStatement;
+    bool m_hasGameObjectSpawns = false;
 
     // Lazy full-table cache for SkySceneXPlayerCondition. The db2 import is optional,
     // so the table may be absent entirely — absence is cached too. Queried per loaded
@@ -125,10 +136,31 @@ public:
 private:
     std::vector<SkySceneXPlayerConditionRecord> m_skySceneXPlayerConditionCache;
 
+    void readCreatureSpawns(StatementFieldHolder &statement, std::vector<CreatureSpawnRecord> &spawns);
+    void readGameObjectSpawns(StatementFieldHolder &statement, std::vector<GameObjectSpawnRecord> &spawns);
+
     bool getHasLiquidTypeXTexture(SQLite::Database &sqliteDatabase) {
         bool m_hasLiquidTypeXTexture = sqliteDatabase.tableExists("LiquidTypeXTexture") ? 1 : 0;
 
         return m_hasLiquidTypeXTexture;
+    }
+
+    bool getHasCreatureLook(SQLite::Database &sqliteDatabase) {
+        auto fields = getTableFields(sqliteDatabase, "CreatureSpawn");
+
+        return std::find(fields.begin(), fields.end(), "Geosets") != fields.end();
+    }
+
+    bool getHasCreatureAlpha(SQLite::Database &sqliteDatabase) {
+        auto fields = getTableFields(sqliteDatabase, "CreatureSpawn");
+
+        return std::find(fields.begin(), fields.end(), "Alpha") != fields.end();
+    }
+
+    bool getHasCreatureAttachments(SQLite::Database &sqliteDatabase) {
+        auto fields = getTableFields(sqliteDatabase, "CreatureSpawn");
+
+        return std::find(fields.begin(), fields.end(), "Attachments") != fields.end();
     }
 
     bool getHasWDTId(SQLite::Database &sqliteDatabase) {

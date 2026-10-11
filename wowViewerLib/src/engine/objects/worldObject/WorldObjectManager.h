@@ -10,6 +10,10 @@
 #include <vector>
 #include "GameObject.h"
 #include "GameObjectBVH.h"
+#include "PlacedCreature.h"
+
+class WmoObject;
+
 #include "../../ApiContainer.h"
 
 // A user-placed custom M2 (not DB-driven). The manager owns the strong ref to the
@@ -59,6 +63,22 @@ public:
     // back to the owning GameObject, if the picked M2/WMO happens to be GameObject-spawned.
     HGameObject getGameObjectByM2Id(M2ObjId id) const;
     HGameObject getGameObjectByWmoId(WMOObjId id) const;
+
+    // The creature a CreatureSpawn row places: its model at the row's world position, turned about z by its facing and at its scale,
+    // with the row's textures in the model's creature-skin slots 11 to 13. A batch whose first texture slot stays empty, or is a type
+    // the row cannot fill, is left out of the draw. The models the row says it wears hang on the creature's attachment points
+    // (M2Object::attach) and are drawn with it. Null for a row with no model. The caller owns it, homes it
+    // (homeCreature) and takes it into the exterior candidates of the map or tile it belongs to once its home is Exterior.
+    static std::shared_ptr<PlacedCreature> createCreature(HApiContainer api, const CreatureSpawnRecord &spawn);
+    // The game object a GameObjectSpawn row places: its model at the row's world position, turned by its quaternion and at its scale,
+    // as it stands with nothing replaced and nothing hidden but the batches whose first texture nothing fills. Null for a row with no
+    // model. The caller owns it and homes it as a creature (homeCreature).
+    static std::shared_ptr<PlacedCreature> createGameObjectSpawn(HApiContainer api, const GameObjectSpawnRecord &spawn);
+    // Hands the creature, standing at the position, to the WMOs it may stand in, which decide in which interior group, if any, it does
+    // (WmoObject::offerCreature). With onlyWhereBounded the WMOs are those whose bounding box holds the position, and a creature in none
+    // of them is Exterior at once.
+    static void homeCreature(const std::shared_ptr<PlacedCreature> &creature, const std::array<float, 3> &position,
+                             const std::vector<std::shared_ptr<WmoObject>> &wmos, bool onlyWhereBounded);
 
     // ---------------- Custom user-placed M2s ----------------
     // Custom M2s bypass the (build-once, non-refit-capable) GameObjectBVH and are

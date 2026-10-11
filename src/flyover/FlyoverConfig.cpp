@@ -46,6 +46,9 @@ namespace {
     X(Bool, renderSkyScene) \
     X(Bool, renderLiquid) \
     X(Bool, renderGameObjects) \
+    X(Bool, renderCreatures) \
+    X(Bool, renderHumanoids) \
+    X(Bool, renderGameObjectSpawns) \
     X(Bool, showGameObjectNameplates) \
     X(Bool, showGameObjectNameplatesForAll) \
     X(Bool, renderBSP) \
@@ -66,7 +69,7 @@ namespace {
     X(Bool, enableFXAA) \
     X(Bool, fsrUpscaling) \
     X(Bool, enableLightBuffer) \
-    X(Bool, useWotlkLogic) \
+\
     X(Bool, disableGlow) \
     X(Bool, pauseAnimation) \
     X(Bool, useGpuAnimation) \

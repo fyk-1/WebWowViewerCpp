@@ -188,6 +188,10 @@ private:
     };
     std::array<lodLevels, 2> objectLods;
 
+    // The creatures the tile's CreatureSpawn rows place, and the game objects its GameObjectSpawn rows do. The tile holds the only
+    // strong refs, so they go with it.
+    std::vector<std::shared_ptr<PlacedCreature>> m_creatures;
+
     HGSamplableTexture getAdtTexture(int textureId);
     HGSamplableTexture getAdtHeightTexture(int textureId);
     HGSamplableTexture getAdtSpecularTexture(int textureId);
@@ -195,6 +199,7 @@ private:
     void calcBoundingBoxes();
     void calcCullBox();
     void loadM2s();
+    void loadCreatures();
     void loadWmos();
     void loadWater(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager);
 
