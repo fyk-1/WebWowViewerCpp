@@ -151,6 +151,7 @@ std::shared_ptr<ILiquidMaterial> LiquidMaterialManager::createLiquidMaterial(
     {
         auto &liquidInstanceData = liquidMaterial->m_instance->getObject();
         liquidInstanceData.liquidMaterial = liquidData->liquidMaterial;
+        liquidInstanceData.liquidType = liquidObjRec.liquidTypeId;
         liquidInstanceData.flowDirection = liquidObjRec.flowDirection;
         liquidInstanceData.flowSpeed = liquidObjRec.flowSpeed;
         liquidInstanceData.isInterior = isInterior ? 1 : 0;
