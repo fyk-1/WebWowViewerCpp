@@ -171,9 +171,35 @@ public:
         const float air = minM2ScreenPercentAir > MinM2ScreenPercentFloor ? minM2ScreenPercentAir : MinM2ScreenPercentFloor;
         return cameraGrounded ? ground : air;
     }
+    // The band's top as a multiple of the percent: M2CullFadeBand with m2CullFade on, and 1, no band, with it off.
+    float effectiveM2CullFadeBand() const {
+        return m2CullFade ? M2CullFadeBand : 1.0f;
+    }
     // Which WoWee shader ports draw, as a bitmask: 1 water, 2 terrain, 4 WMO, 8 M2, 16 magma and slime. The rest of each
     // family keeps the retail shading. Reaches the shaders in the scene-wide block's uSceneSize_DisableLightBuffer.w.
     int woweeShaders = 17;
+    // A model starts its first animation at a random point of it, so the instances of one model (a herd, a stand of trees)
+    // no longer move in step. Read as a model loads.
+    bool randomAnimationPhase = false;
+    // The shading of WoWee's foliage on the alpha-keyed batches of the models: a hue and brightness shift per instance,
+    // crowns darker low and brighter on top, and a warm backlight against the sun. The forward pass shades it all, the
+    // G-buffer pass only the shift.
+    bool foliageTint = false;
+    // A model the small-model cull is about to drop fades out over the band above minM2ScreenPercent, to nothing at the
+    // percent itself, instead of vanishing. A batch with no alpha test or blend cannot drop fragments and still vanishes
+    // at the percent.
+    bool m2CullFade = false;
+    // How far above minM2ScreenPercent the band reaches, as a multiple of the percent.
+    static constexpr float M2CullFadeBand = 2;
+    // The sky cone takes WoWee's sun glow: a warm scatter and a soft glow around the sun, and a haze at the horizon.
+    bool skyGlow = false;
+    // Zone light is eased toward its target with a time constant of a fifth of a second, so a jump at a light volume,
+    // a zone light or a WMO fog does not show as a pop. Time that does not pass, a paused animation, takes the target.
+    bool lightSmoothing = false;
+    // Water above the surface mixes in the sky at grazing angles, as WoWee's water does with its planar reflection,
+    // here from a gradient of the zone's sky colours. Takes effect where the WoWee water shading draws, woweeShaders
+    // bit 1, and not on water inside a WMO.
+    bool waterSkyReflection = false;
     // Set by the host when the camera jumps, so the next FSR dispatch drops its history. The renderer clears it.
     bool fsrResetRequested = false;
 

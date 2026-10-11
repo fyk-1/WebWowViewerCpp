@@ -72,6 +72,13 @@ struct sceneWideBlockVSPS {
     mathfu::vec4_packed farOceanColor;
 
     SceneExteriorLight extLight;
+    // x skyGlow, y waterSkyReflection (Config)
+    mathfu::vec4_packed uWoweeLook;
+    // The zone's sky colours, which the WoWee water reflects; filled only with waterSkyReflection on
+    mathfu::vec4_packed uSkyTopColor;
+    mathfu::vec4_packed uSkyMiddleColor;
+    mathfu::vec4_packed uSkyBand1Color;
+    mathfu::vec4_packed uSkyBand2Color;
     PSFog fogData;
 
     // Underwater fog (Light.db2 LightParams slot 1), used by liquid above shaders
@@ -178,8 +185,8 @@ namespace M2 {
     struct modelWideBlockPS {
         InteriorLightParam intLight;
         float modelAlpha;
-        float unused0;
-        float unused1;
+        float cullFade;      // 1 draws the model whole; below 1 the shader drops that share of its fragments (m2CullFade)
+        float foliageHeight; // The model's height in its own space when foliageTint is on, else 0
         float unused2;
         uint32_t objectId; // dense M2ObjId, used for GPU object-id picking
         uint32_t pad0;

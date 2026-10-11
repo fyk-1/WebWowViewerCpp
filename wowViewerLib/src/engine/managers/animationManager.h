@@ -53,6 +53,8 @@ public:
     bool setAnimationId(int animationId, bool reset);
     int getCurrentAnimationIndex();
     void setAnimationPercent(float percent);
+    // Moves the playing animation, and each global sequence the model's own tracks run on, to a random point of its length.
+    void seedRandomPhase();
 
     // Sequencing-only part of update(): advances animation/global-sequence time, picks and
     // blends sub-animations, applies the deferred (.anim) loading gate.

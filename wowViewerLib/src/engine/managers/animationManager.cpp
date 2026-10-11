@@ -98,6 +98,20 @@ void AnimationManager::resetCurrentAnimation() {
     }
 }
 
+void AnimationManager::seedRandomPhase() {
+    auto &current = this->animationInfo.currentAnimation;
+    if (current.animationRecord != nullptr && current.animationRecord->duration > 0) {
+        current.animationTime = current.animationRecord->duration * ((double) std::rand() / (double) RAND_MAX);
+    }
+
+    auto &global_loops = *boneMasterData->getSkelData()->m_globalSequences;
+    for (int i = 0; i < (int) this->globalSequenceTimes.size(); i++) {
+        if (global_loops[i]->timestamp > 0) {
+            this->globalSequenceTimes[i] = global_loops[i]->timestamp * ((double) std::rand() / (double) RAND_MAX);
+        }
+    }
+}
+
 bool AnimationManager::setAnimationId(int animationId, bool reset) {
     int animationIndex = -1;
     bool animationFoundInParent = false;

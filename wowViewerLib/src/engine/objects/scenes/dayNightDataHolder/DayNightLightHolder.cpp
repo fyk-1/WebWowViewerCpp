@@ -523,6 +523,50 @@ void DayNightLightHolder::updateLightAndSkyboxData(const HMapRenderPlan &mapRend
 
         }
     }
+
+    if (config->lightSmoothing) {
+        smoothLight(fdd, mapRenderPlan->deltaTime);
+    } else {
+        m_smoothedLight.valid = false;
+    }
+}
+
+// robots@Impl: The light a frame computes is the target. The shown light follows it as WoWee's lighting manager does,
+// by 1 - exp(-5 dt) of the way each frame, so the time constant is a fifth of a second whatever the frame rate, with dt
+// capped at a quarter second, so a stall does not swallow a change. Fog, underwater fog, sky, exterior and liquid colours and
+// glow go through the same mixers the zone blend uses. The first frame, and any frame in which no time passed (a paused
+// animation), take the target as it is, since easing needs time to pass; a new map starts afresh with its holder.
+void DayNightLightHolder::smoothLight(const HFrameDependantData &fdd, animTime_t deltaTime) {
+    auto &state = m_smoothedLight;
+    auto &fog = fdd->fogResults.back();
+
+    if (!state.valid || deltaTime <= 0.0) {
+        state.valid = true;
+        state.glow = fdd->currentGlow;
+        state.colors = fdd->colors;
+        state.skyColors = fdd->skyColors;
+        state.liquidColors = fdd->liquidColors;
+        state.fog = fog;
+        state.underWaterFog = fdd->underWaterFogResult;
+        return;
+    }
+
+    const float seconds = std::min(float(deltaTime) * 0.001f, 0.25f);
+    const float blend = 1.0f - std::exp(-seconds * 5.0f);
+
+    state.glow = mix(state.glow, fdd->currentGlow, blend);
+    mixStructure(state.colors, fdd->colors, blend);
+    mixStructure(state.skyColors, fdd->skyColors, blend);
+    mixStructure(state.liquidColors, fdd->liquidColors, blend);
+    mixStructure(state.fog, fog, blend);
+    mixStructure(state.underWaterFog, fdd->underWaterFogResult, blend);
+
+    fdd->currentGlow = state.glow;
+    fdd->colors = state.colors;
+    fdd->skyColors = state.skyColors;
+    fdd->liquidColors = state.liquidColors;
+    fog = state.fog;
+    fdd->underWaterFogResult = state.underWaterFog;
 }
 
 

@@ -44,6 +44,9 @@ struct M2LoadedStatus {
     // the playing animation's bounds, which can cover a small part of the model (a lamp's flame, not its post), so the
     // small-model cull measures with whichever is larger.
     float m_screenRadius = 0;
+    // The share of the model the small-model cull's fade band draws, 1 for all of it. Set every frame by the cull while
+    // Config::m2CullFade is on, and read only then.
+    float m_cullFade = 1;
 };
 
 extern std::shared_ptr<EntityFactory<10000, M2ObjId, M2Object, CAaBox, M2LoadedStatus>> m2Factory;
@@ -99,6 +102,10 @@ private:
     mathfu::mat4 m_placementMatrix = mathfu::mat4::Identity();
     bool m_placementMatrixChanged = false;
     bool m_modelWideDataChanged = false;
+    // What the model-wide block last carried of Config::m2CullFade and Config::foliageTint, so a change of either, or of
+    // the cull's fade, uploads the block again.
+    float m_uploadedCullFade = 1;
+    float m_uploadedFoliageHeight = 0;
     bool m_firstUpdate = true;
     mathfu::mat4 m_placementInvertMatrix;
     mathfu::vec3 m_worldPosition;
@@ -507,6 +514,12 @@ template<>
 inline float retrieveScreenRadius<>(const M2ObjId &objectId) {
     auto * ptr = m2Factory->getObjectByIdConst<2>(objectId);
     return ptr ? ptr->m_screenRadius : 0.0f;
+}
+
+template<>
+inline void storeCullFade<>(const M2ObjId &objectId, float fade) {
+    auto * ptr = m2Factory->getObjectById<2>(objectId);
+    if (ptr && ptr->m_cullFade != fade) ptr->m_cullFade = fade;
 }
 
 

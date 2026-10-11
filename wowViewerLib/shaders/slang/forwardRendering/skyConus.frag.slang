@@ -10,6 +10,7 @@ precision highp int;
 #include "../common/commonLightFunctions.slang"
 #include "../common/commonFogFunctions.slang"
 #include "../common/commonUboSceneData.slang"
+#include "../common/commonWoweeSky.slang"
 
 layout(location = 0) in vec4 vColor;
 layout(location = 1) in vec4 vPosition;
@@ -39,6 +40,10 @@ void main() {
          nDotSun = ((nDotSun * nDotSun) * nDotSun);
 	     resultColor = mix(vColor.xyz, sunFogColor, vec3(clamp(nDotSun * scalar, 0, 1))).xyz;
     }
+
+	if (woweeSkyGlowOn(scene) && dot(sunDir, sunDir) > 0.0001) {
+		resultColor = wsky_glow(resultColor, normal, sunDir, normalize(scene.uViewUpSceneTime.xyz));
+	}
 
 	outputColor = vec4(vec3(resultColor), vColor.a);
 	writeObjectId(0u);

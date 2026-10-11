@@ -23,15 +23,21 @@ public:
 };
 
 // Marks culled the visible objects whose bounding sphere spans less than minScreenPercent of the view's height,
-// seen from cameraPos with tanHalfFovY. An object around the camera stays.
+// seen from cameraPos with tanHalfFovY. An object around the camera stays. With fadeBandTop above 1, an object between
+// the percent and the percent times fadeBandTop is kept at a share of itself that grows from 0 to 1 across the band
+// (storeCullFade), and every other kept object is stored at 1.
 template<typename T>
 class ScreenSizeCulling {
 public:
     static void cull(const mathfu::vec3 &cameraPos, float tanHalfFovY, float minScreenPercent,
                      const size_t start, const size_t end,
                      const framebased::vector<T> &objects,
-                     std::vector<uint32_t> &culling_res) {
+                     std::vector<uint32_t> &culling_res,
+                     float fadeBandTop = 1.0f) {
         if (minScreenPercent <= 0.0f || tanHalfFovY <= 0.0f) return;
+        const bool fading = fadeBandTop > 1.0f;
+        // The shader tells this many shares apart, so a finer fade only costs uploads.
+        constexpr float FadeSteps = 16.0f;
         for (size_t i = start; i < end; i++) {
             if (culling_res[i]) continue;
             const CAaBox &aabb = retrieveAABB(objects[i]);
@@ -39,8 +45,23 @@ public:
             mathfu::vec3 aabbMax = mathfu::vec3(aabb.max.x, aabb.max.y, aabb.max.z);
             float radius = std::max((aabbMax - aabbMin).Length() * 0.5f, retrieveScreenRadius(objects[i]));
             float distance = ((aabbMin + aabbMax) * 0.5f - cameraPos).Length();
-            if (distance <= radius) continue;
-            if (100.0f * radius / (distance * tanHalfFovY) < minScreenPercent) culling_res[i] = 0xFFFFFFFF;
+            if (distance <= radius) {
+                if (fading) storeCullFade(objects[i], 1.0f);
+                continue;
+            }
+            const float percent = 100.0f * radius / (distance * tanHalfFovY);
+            if (percent < minScreenPercent) {
+                culling_res[i] = 0xFFFFFFFF;
+                continue;
+            }
+            if (!fading) continue;
+
+            const float fade = std::floor(std::min((percent - minScreenPercent) / (minScreenPercent * (fadeBandTop - 1.0f)), 1.0f) * FadeSteps) / FadeSteps;
+            if (fade <= 0.0f) {
+                culling_res[i] = 0xFFFFFFFF;
+            } else {
+                storeCullFade(objects[i], fade);
+            }
         }
     }
 };

@@ -1280,6 +1280,12 @@ void M2Object::uploadBuffers(mathfu::mat4 &viewMat, const HFrameDependantData &f
         m_modelWideData->m_textureMatrices->save();
     }
 
+    const Config *config = m_api->getConfig();
+    const float cullFade = config->m2CullFade ? status->m_cullFade : 1.0f;
+    const float foliageHeight = !config->foliageTint ? 0.0f :
+        std::max(m2File->bounding_box.max.z - std::min(m2File->bounding_box.min.z, 0.0f), 0.01f);
+    if (cullFade != m_uploadedCullFade || foliageHeight != m_uploadedFoliageHeight) m_modelWideDataChanged = true;
+
     if (m_firstUpdate || m_modelWideDataChanged || m_setInteriorSunDir)
     {
         auto &modelFragmentData = m_modelWideData->m_modelFragmentData->getObject();
@@ -1313,6 +1319,10 @@ void M2Object::uploadBuffers(mathfu::mat4 &viewMat, const HFrameDependantData &f
             ));
 
         modelFragmentData.modelAlpha = m_alpha;
+        modelFragmentData.cullFade = cullFade;
+        modelFragmentData.foliageHeight = foliageHeight;
+        m_uploadedCullFade = cullFade;
+        m_uploadedFoliageHeight = foliageHeight;
         modelFragmentData.objectId = static_cast<uint32_t>(this->getObjectId());
 
         m_modelWideData->m_modelFragmentData->save();
@@ -2062,6 +2072,7 @@ void M2Object::forEachRibbonEmitter(const std::function<void(CRibbonEmitter *emi
 void M2Object::initAnimationManager() {
     ZoneScoped;
     this->m_animationManager = std::make_unique<AnimationManager>(m_api, m_boneMasterData, m_m2Geom->exp2 != nullptr);
+    if (m_api->getConfig()->randomAnimationPhase && !m_boolSkybox) m_animationManager->seedRandomPhase();
 }
 
 void M2Object::initBoneAnimMatrices() {

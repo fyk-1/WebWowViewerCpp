@@ -7,6 +7,7 @@ precision highp int;
 #include "../../common/commonFogFunctions.slang"
 #include "../../common/commonM2Material.slang"
 #include "../../common/commonWoweeM2Light.slang"
+#include "../../common/commonWoweeM2Foliage.slang"
 #include "../../common/commonWoweeSwitch.slang"
 #include "../../common/commonLiquidDepthTest.slang"
 
@@ -30,6 +31,14 @@ layout(location = 0) out vec4 outColor;
 #include "../../common/commonM2IndirectDescriptorSet.slang"
 
 layout (set = 2, binding = 0) uniform sampler2D s_Textures[];
+
+#ifndef TRUE_OPAQUE
+// The screen-door of Config::m2CullFade: keeps the share `fade` of the fragments, in a pattern fixed to the screen
+// (interleaved gradient noise). The opaque pipelines test depth before the shader runs, so they cannot drop a fragment.
+bool dropsForCullFade(float fade, vec2 fragCoord) {
+    return fade < 1.0 && fract(52.9829189 * fract(dot(fragCoord, vec2(0.06711056, 0.00583715)))) >= fade;
+}
+#endif
 
 #ifdef TRUE_OPAQUE
 [earlydepthstencil]
@@ -130,7 +139,15 @@ void main() {
 #ifndef TRUE_OPAQUE
         if (doDiscard)
             discard;
+        if (dropsForCullFade(modelWide.modelAlpha.y, gl_FragCoord.xy))
+            discard;
 #endif
+
+        // The foliage shading of Config::foliageTint, which sets the model's height above 0.
+        bool foliage = modelWide.modelAlpha.z > 0.0 && blendMode == 1;
+        if (foliage) {
+            matDiffuse *= wf_tint(placementMats[placementMatrixInd].placementMat[3].xy);
+        }
 
         // ------------------------------
         // Apply lighting
@@ -174,6 +191,17 @@ void main() {
                 specular,
                 vec3(0.0),
                 1.0 /* ao */
+            );
+        }
+        if (foliage) {
+            vec4 modelPoint = placementMats[placementMatrixInd].invPlacementMat * (scene.uInvLookAtMat * vec4(vPosition_EdgeFade.xyz, 1.0));
+            litColor = wf_shade(
+                litColor,
+                l_Normal,
+                vPosition_EdgeFade.xyz,
+                modelPoint.z / modelWide.modelAlpha.z,
+                modelWide.intLight.uInteriorAmbientColorAndInteriorExteriorBlend.w,
+                scene
             );
         }
         finalColor = vec4(litColor, finalOpacity);

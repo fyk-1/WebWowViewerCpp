@@ -81,6 +81,19 @@ private:
     float getClampedFarClip(float farClip);
     void createMinFogDistances();
 
+    // The light eased toward its target across frames, kept while Config::lightSmoothing is on.
+    struct SmoothedLight {
+        bool valid = false;
+        float glow = 0.0f;
+        ExteriorColors colors;
+        SkyColors skyColors;
+        LiquidColors liquidColors;
+        FogResult fog;
+        FogResult underWaterFog;
+    } m_smoothedLight;
+
+    void smoothLight(const HFrameDependantData &fdd, animTime_t deltaTime);
+
     void
     inline calcLightParamResult(int lightParamId, const Config *config,
                                 float &glow,

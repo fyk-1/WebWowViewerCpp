@@ -49,6 +49,11 @@ struct SceneWideParams {
     vec4 closeOceanColor_shallowAlpha;
     vec4 farOceanColor_deepAlpha;
     SceneExteriorLight extLight;
+    vec4 uWoweeLook;
+    vec4 uSkyTopColor;
+    vec4 uSkyMiddleColor;
+    vec4 uSkyBand1Color;
+    vec4 uSkyBand2Color;
 };
 
 struct InteriorLightParam {

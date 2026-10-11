@@ -8,14 +8,16 @@ import glsl;
 #include "../commonLightFunctions.slang"
 #include "../commonFogFunctions.slang"
 #include "../commonGBufferData.slang"
+#include "../commonWoweeSky.slang"
 
 // robots@Impl: A port of WoWee's water shader (assets/shaders/water.frag.glsl), in place of the retail-derived
 // calcWaterLiquidMat, which renders Era water as a flat opaque sheet. Kept: procedural wave normals, screen-space
 // refraction of the liquid backbuffer, Beer-Lambert absorption, the shallow-to-deep body colour, shoreline wet band
 // and foam, GGX sun specular with sparkle, the alpha model and the horizon fade. Dropped, for lack of the inputs:
 // planar reflection, wake froth, wave crests and subsurface scattering (WoWee feeds those from its own vertex
-// displacement and player state). The body colours and alphas are WoWee's per-type constants. Scene time arrives in
-// milliseconds; WoWee's constants are tuned in seconds.
+// displacement and player state); Config::waterSkyReflection stands a sky gradient in for the reflection. The body
+// colours and alphas are WoWee's per-type constants. Scene time arrives in milliseconds; WoWee's constants are tuned in
+// seconds.
 
 float ww_hash21(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -205,6 +207,14 @@ vec4 calcWoweeWaterMat(in LiquidInstanceData inst, in WaterData data, in SceneWi
         float sparkleNoise = ww_fbm(worldPos.xy * 4.0 + time * 0.5, time * 1.5);
         float sparkle = pow(max(sparkleNoise - 0.55, 0.0) / 0.45, 3.0) * shimmerStrength * 0.10;
         specular += sparkle * lightColor * (1.0 - smoothstep(150.0, 700.0, dist));
+    }
+
+    // Sky reflection: the sky's colour at the reflected ray's elevation, weighted by the Fresnel term up to WoWee's cap.
+    // Water inside a WMO and the underside of the surface take none.
+    bool isInterior = inst.liquidMaterial_liquidType_isInterior_vtxCellOffetWidthHeight.z > 0;
+    if (woweeWaterSkyOn(scene) && !isInterior && viewDir.z > 0.0) {
+        vec3 reflected = reflect(-viewDir, norm);
+        refractedColor = mix(refractedColor, wsky_gradient(max(reflected.z, 0.0), scene), clamp(fresnel, 0.0, 0.30));
     }
 
     vec3 color = refractedColor + specular;

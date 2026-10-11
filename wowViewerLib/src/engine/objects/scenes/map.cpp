@@ -932,6 +932,7 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
         auto &candidates = exteriorView->m2List.getCandidates();
         // Models too small on screen are skipped like ones outside the frustum (minM2ScreenPercent, by altitude).
         const float minScreenPercent = m_api->getConfig()->effectiveMinM2ScreenPercent();
+        const float fadeBandTop = m_api->getConfig()->effectiveM2CullFadeBand();
         const float tanHalfFov = std::tan(toRadian(m_api->getConfig()->fov) * 0.5f);
         const mathfu::vec3 cullCameraPos = cameraPos.xyz();
         if (candidates.size() > 0) {
@@ -956,7 +957,7 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
                                                                      results);
 #endif
                       ScreenSizeCulling<M2ObjId>::cull(cullCameraPos, tanHalfFov, minScreenPercent,
-                                                       r.begin(), r.end(), candidates, results);
+                                                       r.begin(), r.end(), candidates, results, fadeBandTop);
     //            }
                 }, tbb::auto_partitioner());
             });
