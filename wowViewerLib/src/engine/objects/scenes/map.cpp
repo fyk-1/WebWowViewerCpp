@@ -1347,6 +1347,10 @@ void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRende
                 wmoObject->homeCreaturesIfChanged();
             }
         }
+        //The WMO the camera stands in is drawn by traversal and is no candidate when no exterior shows through its portals
+        if (auto currentWmo = wmoFactory->getObjectById<0>(renderPlan->m_currentWMO)) {
+            currentWmo->homeCreaturesIfChanged();
+        }
     }
 
     {
