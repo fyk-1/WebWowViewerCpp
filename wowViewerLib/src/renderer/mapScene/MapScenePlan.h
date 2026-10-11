@@ -18,6 +18,10 @@ struct MapRenderPlan {
     std::string areaName = "";
     std::string wmoAreaName = "";
 
+    // The terrain height under the camera, in world z, where the camera stands over a loaded tile.
+    bool hasGroundHeight = false;
+    float groundHeight = 0;
+
     animTime_t deltaTime;
     HCameraMatrices renderingMatrices;
 

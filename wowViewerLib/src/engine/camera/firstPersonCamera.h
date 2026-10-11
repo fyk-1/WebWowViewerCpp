@@ -87,6 +87,8 @@ public:
     void tick(animTime_t timeDelta) override;
     void setCameraPos(float x, float y, float z) override;
     void setCameraLookAt(float x, float y, float z) override;
+    // Faces the camera by yaw and pitch in degrees, yaw 0 along +x growing toward +y, pitch positive upward.
+    void setViewAngles(float yawDegrees, float pitchDegrees);
 };
 
 

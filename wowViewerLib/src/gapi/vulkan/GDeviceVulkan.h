@@ -106,6 +106,7 @@ public:
 
 
     void drawFrame(const FrameRenderFuncs &renderFuncs, bool windowSizeChanged) override;
+    bool captureNextFrame(std::function<void(FrameCapture &&)> done) override;
 
     bool getIsVulkanAxisSystem() override {return true;}
 
@@ -401,6 +402,25 @@ protected:
     VkSwapchainKHR swapChain = VK_NULL_HANDLE;
 
     VkExtent2D swapChainExtent;
+
+    // The swapchain's images and format, kept for the frame capture. Readable is false where the surface
+    // does not allow the images to be copied from.
+    std::vector<VkImage> m_swapChainImages;
+    VkFormat m_swapChainFormat = VK_FORMAT_UNDEFINED;
+    bool m_swapChainReadable = false;
+
+    // The capture waiting for its frame, then the frame's readback buffer until the frame has finished. Main thread only.
+    struct FrameReadback {
+        VkBuffer buffer = VK_NULL_HANDLE;
+        VmaAllocation allocation = nullptr;
+        void *mapped = nullptr;
+        VkExtent2D extent = {0, 0};
+        VkFormat format = VK_FORMAT_UNDEFINED;
+    };
+    std::function<void(FrameCapture &&)> m_captureDone;
+    FrameReadback m_readback;
+    void recordFrameCapture(CmdBufRecorder &swapChainCmd, uint32_t imageIndex);
+    void finishFrameCapture(const std::shared_ptr<GFenceVLK> &frameFence);
 
     std::vector<std::shared_ptr<GFrameBufferVLK>> swapChainFramebuffers;
 

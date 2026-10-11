@@ -663,6 +663,8 @@ void GDeviceVLK::createSwapChainAndFramebuffer() {
     if (swapChain != VK_NULL_HANDLE) {
         ERR_GUARD_VULKAN(vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data()));
     }
+    m_swapChainImages = swapChainImages;
+    m_swapChainFormat = surfaceFormat.format;
 
     //Create imageView
     std::vector<VkImageView> swapChainImageViews;
@@ -724,8 +726,11 @@ void GDeviceVLK::createSwapChain(SwapChainSupportDetails &swapChainSupport, VkSu
         createInfo.imageExtent = extent;
         createInfo.imageArrayLayers = 1;
         createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        // Copying from the images is what the frame capture does; a surface that does not allow it is not read back.
+        m_swapChainReadable = (swapChainSupport.capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0;
+        if (m_swapChainReadable) createInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
-        uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
+        uint32_t queueFamilyIndices[]= {indices.graphicsFamily.value(), indices.presentFamily.value()};
 
     //    if (indices.graphicsFamily != indices.presentFamily) {
     //        createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
@@ -1542,6 +1547,9 @@ void GDeviceVLK::drawFrame(const FrameRenderFuncs &frameRenderFuncs, bool window
                 dynamic_cast<IRenderFunctionVLK *>(renderFuncs[i].get())->executeRender(*this, frameBufCmd, swapChainCmd);
             }
         }
+
+        // After the swapchain pass has ended, so the copy sees the finished frame.
+        if (m_captureDone) recordFrameCapture(swapChainCmd, imageIndex);
     }
 
     submitQueue(
@@ -1582,9 +1590,136 @@ void GDeviceVLK::drawFrame(const FrameRenderFuncs &frameRenderFuncs, bool window
         );
     }
 
+    if (m_readback.buffer != VK_NULL_HANDLE) finishFrameCapture(inFlightFences[currentDrawFrame]);
+
     executeDeallocators(false);
 
     firstTimeRender[currentDrawFrame] = false;
+}
+
+/*
+robots@Impl: Frame capture. The image copied is the swapchain image of the frame being drawn, after the swapchain pass
+(FSR's output and any UI), so the pixels are what the window shows, not a window or desktop grab. The copy is
+recorded into the frame's swapchain command buffer behind a PRESENT_SRC to TRANSFER_SRC barrier and back, into a
+host-visible buffer that exists only for that frame. After the present the frame's fence is waited, which stalls the
+main thread for the rest of that one frame, and the buffer is read, converted and freed. The swapchain is created
+with TRANSFER_SRC usage when its surface allows it, and a surface that does not has no capture. Only the two
+8-bit formats the swapchain picks are converted; the pixels leave as RGB, alpha dropped.
+*/
+bool GDeviceVLK::captureNextFrame(std::function<void(FrameCapture &&)> done) {
+    if (m_captureDone || m_readback.buffer != VK_NULL_HANDLE) return false;
+    m_captureDone = std::move(done);
+    return true;
+}
+
+void GDeviceVLK::recordFrameCapture(CmdBufRecorder &swapChainCmd, uint32_t imageIndex) {
+    auto fail = [this](const std::string &reason) {
+        FrameCapture capture;
+        capture.error = reason;
+        auto done = std::move(m_captureDone);
+        m_captureDone = nullptr;
+        done(std::move(capture));
+    };
+
+    if (swapChain == VK_NULL_HANDLE || imageIndex >= m_swapChainImages.size()) return fail("the window has no swapchain image");
+    if (!m_swapChainReadable) return fail("the swapchain cannot be copied from");
+    if (m_swapChainFormat != VK_FORMAT_B8G8R8A8_UNORM && m_swapChainFormat != VK_FORMAT_B8G8R8A8_SRGB &&
+        m_swapChainFormat != VK_FORMAT_R8G8B8A8_UNORM && m_swapChainFormat != VK_FORMAT_R8G8B8A8_SRGB) {
+        return fail("the swapchain format " + std::to_string((int) m_swapChainFormat) + " is not read back");
+    }
+
+    VkBufferCreateInfo bufferInfo = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.size = (VkDeviceSize) swapChainExtent.width * swapChainExtent.height * 4;
+    bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo allocCreateInfo = {};
+    allocCreateInfo.usage = VMA_MEMORY_USAGE_GPU_TO_CPU;
+    allocCreateInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    FrameReadback readback;
+    VmaAllocationInfo allocationInfo = {};
+    if (vmaCreateBuffer(vmaAllocator, &bufferInfo, &allocCreateInfo, &readback.buffer, &readback.allocation, &allocationInfo) != VK_SUCCESS ||
+        allocationInfo.pMappedData == nullptr) {
+        if (readback.buffer != VK_NULL_HANDLE) vmaDestroyBuffer(vmaAllocator, readback.buffer, readback.allocation);
+        return fail("the readback buffer could not be made");
+    }
+    readback.mapped = allocationInfo.pMappedData;
+    readback.extent = swapChainExtent;
+    readback.format = m_swapChainFormat;
+
+    const VkImage image = m_swapChainImages[imageIndex];
+
+    VkImageMemoryBarrier toTransferSrc = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    toTransferSrc.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    toTransferSrc.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    toTransferSrc.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    toTransferSrc.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    toTransferSrc.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toTransferSrc.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toTransferSrc.image = image;
+    toTransferSrc.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    swapChainCmd.recordPipelineImageBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                            std::vector<VkImageMemoryBarrier>{toTransferSrc});
+
+    VkBufferImageCopy copyRegion = {};
+    copyRegion.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    copyRegion.imageExtent = {swapChainExtent.width, swapChainExtent.height, 1};
+    vkCmdCopyImageToBuffer(swapChainCmd.getNativeCmdBuffer(), image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           readback.buffer, 1, &copyRegion);
+
+    VkImageMemoryBarrier backToPresent = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    backToPresent.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    backToPresent.dstAccessMask = 0;
+    backToPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    backToPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    backToPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    backToPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    backToPresent.image = image;
+    backToPresent.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+    VkBufferMemoryBarrier toHost = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    toHost.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    toHost.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    toHost.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toHost.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toHost.buffer = readback.buffer;
+    toHost.offset = 0;
+    toHost.size = VK_WHOLE_SIZE;
+    swapChainCmd.recordPipelineBufferBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                                             std::vector<VkBufferMemoryBarrier>{toHost});
+    swapChainCmd.recordPipelineImageBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                            std::vector<VkImageMemoryBarrier>{backToPresent});
+
+    m_readback = readback;
+}
+
+void GDeviceVLK::finishFrameCapture(const std::shared_ptr<GFenceVLK> &frameFence) {
+    FrameReadback readback = m_readback;
+    m_readback = {};
+    auto done = std::move(m_captureDone);
+    m_captureDone = nullptr;
+
+    frameFence->wait(std::numeric_limits<uint64_t>::max());
+    vmaInvalidateAllocation(vmaAllocator, readback.allocation, 0, VK_WHOLE_SIZE);
+
+    FrameCapture capture;
+    capture.width = readback.extent.width;
+    capture.height = readback.extent.height;
+    const size_t pixels = (size_t) capture.width * capture.height;
+    capture.rgb.resize(pixels * 3);
+
+    const bool bgr = readback.format == VK_FORMAT_B8G8R8A8_UNORM || readback.format == VK_FORMAT_B8G8R8A8_SRGB;
+    const uint8_t *src = static_cast<const uint8_t *>(readback.mapped);
+    uint8_t *dst = capture.rgb.data();
+    for (size_t i = 0; i < pixels; i++, src += 4, dst += 3) {
+        dst[0] = src[bgr ? 2 : 0];
+        dst[1] = src[1];
+        dst[2] = src[bgr ? 0 : 2];
+    }
+    vmaDestroyBuffer(vmaAllocator, readback.buffer, readback.allocation);
+
+    if (done) done(std::move(capture));
 }
 
 RenderPassHelper GDeviceVLK::beginSwapChainRenderPass(uint32_t imageIndex, CmdBufRecorder &swapChainCmd) {

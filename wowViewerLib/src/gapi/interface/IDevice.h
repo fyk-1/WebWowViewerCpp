@@ -152,6 +152,15 @@ public:
     virtual ~IRenderDocCaptureHandler() = default;
 };
 
+// One presented frame read back from the device: width * height pixels as tightly packed R, G, B bytes, top row first.
+// error is empty on success and then names why there are no pixels.
+struct FrameCapture {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::vector<uint8_t> rgb;
+    std::string error;
+};
+
 class IDevice {
     public:
         static const constexpr uint8_t MAX_FRAMES_IN_FLIGHT = 3;
@@ -177,6 +186,9 @@ class IDevice {
         virtual void submitDrawCommands() {};
 
         virtual void drawFrame(const FrameRenderFuncs &renderFuncs, bool windowSizeChanged) = 0;
+        // Reads back the next frame drawn, as the window shows it, and hands it to done on the thread that draws, once that
+        // frame has finished. False when a capture is already waiting; done then never runs.
+        virtual bool captureNextFrame(std::function<void(FrameCapture &&)> done) = 0;
 
         virtual bool getIsAnisFiltrationSupported();
         virtual float getAnisLevel() = 0;

@@ -5,8 +5,15 @@
 // spells it, instead of the first storage in cascStorages.json. One without the other is a usage error.
 // A failure to open the install exits 2.
 //
+// The periodic `flyover pos <x> <y> <hx> <hy> <z>` line is the camera in use: its world x and y, the unit heading over the ground, and its z.
+// A reader of the first four fields ignores the fifth.
+//
 // `--db <file>` (also `--db=<file>`) opens that SQLite file as the client database instead of `./export.db3`.
 // A file that is missing or fails to open exits 2 before any window exists.
+//
+// `dump <file.png>` on stdin writes the next frame drawn to that PNG and answers with one `flyover dump {json}` line,
+// the viewer's side of a debug dump: see FlyoverMode.cpp. F12 in the viewer's window sends `flyover dumpkey`, which the
+// host answers with that command.
 //
 
 #ifndef AWEBWOWVIEWERCPP_FLYOVERMODE_H
@@ -38,6 +45,12 @@ struct FlyoverRoute {
     // A route of one point: free mode only, a switch to the path is refused.
     bool freeOnly = false;
     int timeOfDay = -1;
+    // The free camera's starting facing, as `yawDegrees` and `pitchDegrees` in the file, which come together and are read only in free mode.
+    // The convention is the debug dump's: yaw 0 faces +x and grows toward +y, pitch is positive upward. Without them the camera
+    // faces along the route.
+    bool hasFacing = false;
+    float yawDegrees = 0.0f;
+    float pitchDegrees = 0.0f;
     // Config fields as name and value text, in file order.
     std::vector<std::pair<std::string, std::string>> config;
 };
@@ -73,8 +86,10 @@ public:
     void update();
     // The F key.
     void requestToggleMode();
+    // The F12 key.
+    void requestDump();
 private:
-    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, ModeToggle, Look, Move, FreeSpeed, Route, Config, ConfigDump, Quit };
+    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, ModeToggle, Look, Move, FreeSpeed, Route, Config, ConfigDump, Dump, Quit };
     struct Command {
         CommandType type;
         std::string name;
@@ -99,6 +114,8 @@ private:
     bool sameRoute(const FlyoverRoute &route) const;
     void applyConfig(const std::string &name, const std::string &value);
     void setMode(bool free, bool announce);
+    void takeDump(const std::string &pngFile);
+    void finishDump(const std::string &pngFile, FrameCapture &&capture);
 
     int m_failureExitCode = 1;
 

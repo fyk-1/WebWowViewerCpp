@@ -166,6 +166,10 @@ void FirstPersonCamera::setCameraPos (float x, float y, float z) {
 
     // setCameraLookAt(lookAt.x, lookAt.y, lookAt.z);
 }
+void FirstPersonCamera::setViewAngles(float yawDegrees, float pitchDegrees) {
+    ah = yawDegrees;
+    av = pitchDegrees;
+}
 void FirstPersonCamera::setCameraLookAt(float x, float y, float z) {
     this->lookAt = {x, y, z};
 

@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <thread>
@@ -38,8 +39,12 @@
 #include "../database/CSqliteDB.h"
 #include "../database/buildInfoParser/buildInfoParser.h"
 #include "../../3rdparty/nlohmann/json.hpp"
+#include "../../wowViewerLib/src/engine/algorithms/mathHelper.h"
 #include "../../wowViewerLib/src/engine/camera/firstPersonCamera.h"
 #include "../../wowViewerLib/src/engine/camera/pathCamera.h"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "../../3rdparty/glfw/deps/stb_image_write.h"
 
 using json = nlohmann::json;
 
@@ -84,6 +89,21 @@ distance at 0, and a different map reopens.
 Ready is sent once the scene has produced a render plan and two more frames have run. The area comes from
 that plan, the same values the viewer's own stats window shows, not from Map::getAdtAreaId: that function
 reads the tile table the culling threads write, and a tile still loading is a null pointer in it.
+
+Debug dump: `dump <file.png>` asks the device for the next frame drawn (IDevice::captureNextFrame), and when that frame
+has finished writes it as a PNG and prints `flyover dump {json}`. The json holds the viewer's side of the dump: `png`
+(the path as given), `image` {width, height} or else `error`, `mapId`, `camera` {x, y, z, yawDegrees, pitchDegrees},
+`tile` {col, row} as the viewer indexes tiles, `terrainHeight` (null where no loaded tile is under the camera),
+`areaId`, `parentAreaId`, `timeOfDay` in half-minutes from midnight, `mode`, `paused`, `distance` and `display`. The
+terrain height is the plan's, taken by the culling thread, since the tile table is not safe to read from here. A dump
+with no pixels still answers, with its error, so a waiting host never hangs. The PNG is written with stb_image_write,
+and the json is read on the main thread when the frame finishes, so its camera is within a frame of the picture's.
+
+Start facing: a route in free mode may carry `yawDegrees` and `pitchDegrees`, and the free camera then starts facing that
+way instead of along the route. They use the dump's convention, so a dump's camera replays as a route. The free camera
+takes the angles directly (FirstPersonCamera::setViewAngles) rather than a look-at point, since a point one yard away
+at a coordinate of several thousand loses a tenth of a degree to float precision. Only a route that starts the camera
+reads them: a refresh of the same points, a switch of mode and a `look` leave the camera as it is.
 */
 
 namespace {
@@ -259,6 +279,15 @@ bool FlyoverMode::loadRoute(const std::string &file, FlyoverRoute &route, std::s
             error = "mode must be path or free";
             return false;
         }
+        route.hasFacing = root.contains("yawDegrees") || root.contains("pitchDegrees");
+        if (route.hasFacing) {
+            if (!root.contains("yawDegrees") || !root.contains("pitchDegrees")) {
+                error = "yawDegrees and pitchDegrees go together";
+                return false;
+            }
+            route.yawDegrees = root.at("yawDegrees").get<float>();
+            route.pitchDegrees = root.at("pitchDegrees").get<float>();
+        }
         // One point is a free flight from there: the path camera gets a second point 100 yards north, past its look-ahead, to stand on and look
         // along, and the route stays in free mode.
         if (route.points.size() == 1 && route.freeMode) {
@@ -380,6 +409,11 @@ bool FlyoverMode::start(const std::string &routeFile, const FlyoverInstall &inst
 void FlyoverMode::requestToggleMode() {
     post(*m_queue, {CommandType::ModeToggle, "", ""});
 }
+
+void FlyoverMode::requestDump() {
+    emit("flyover dumpkey");
+}
+
 void FlyoverMode::post(CommandQueue &queue, Command command) {
     std::lock_guard<std::mutex> lock(queue.mutex);
     queue.items.push_back(std::move(command));
@@ -460,6 +494,8 @@ void FlyoverMode::parseLine(const std::string &rawLine, CommandQueue &queue) {
             std::string value = nameEnd == std::string::npos ? "" : trim(rest.substr(nameEnd));
             post(queue, {CommandType::Config, name, value});
         }
+    } else if (word == "dump") {
+        post(queue, {CommandType::Dump, "", rest});
     } else if (word == "quit") {
         post(queue, {CommandType::Quit, "", ""});
     } else {
@@ -560,10 +596,91 @@ void FlyoverMode::apply(const Command &command) {
         case CommandType::ConfigDump:
             emit("flyover config " + FlyoverConfig::dump(*m_api->getConfig()));
             break;
+        case CommandType::Dump:
+            if (command.text.empty()) {
+                emitError("dump", "expected a png path");
+            } else {
+                takeDump(command.text);
+            }
+            break;
         case CommandType::Quit:
             glfwSetWindowShouldClose(m_window, GLFW_TRUE);
             break;
     }
+}
+
+void FlyoverMode::takeDump(const std::string &pngFile) {
+    FrameCapture refused;
+    if (!m_readySent) {
+        refused.error = "the viewer is not ready";
+    } else if (!m_api->hDevice->captureNextFrame([this, pngFile](FrameCapture &&capture) { finishDump(pngFile, std::move(capture)); })) {
+        refused.error = "another dump is waiting for its frame";
+    } else {
+        return;
+    }
+    finishDump(pngFile, std::move(refused));
+}
+
+void FlyoverMode::finishDump(const std::string &pngFile, FrameCapture &&capture) {
+    json dump;
+    dump["png"] = pngFile;
+
+    std::string error = capture.error;
+    if (error.empty()) {
+        std::string bytes;
+        stbi_write_png_to_func([](void *context, void *data, int size) {
+            static_cast<std::string *>(context)->append(static_cast<const char *>(data), size);
+        }, &bytes, (int) capture.width, (int) capture.height, 3, capture.rgb.data(), (int) capture.width * 3);
+
+        std::ofstream file(std::filesystem::u8path(pngFile), std::ios::binary);
+        if (bytes.empty() || !file.write(bytes.data(), (std::streamsize) bytes.size())) {
+            error = "cannot write " + pngFile;
+        } else {
+            dump["image"] = {{"width", capture.width}, {"height", capture.height}};
+        }
+    }
+    if (!error.empty()) dump["error"] = error;
+
+    dump["mapId"] = m_mapId;
+    dump["mode"] = m_isFree ? "free" : "path";
+    dump["paused"] = m_paused;
+    dump["distance"] = m_path ? m_path->getDistance() : 0.0f;
+
+    std::shared_ptr<ICamera> camera = m_isFree && m_free ? std::static_pointer_cast<ICamera>(m_free) : std::static_pointer_cast<ICamera>(m_path);
+    if (camera) {
+        auto matrices = camera->getCameraMatrices(1.0f, 1.0f, 1.0f, 100.0f);
+        mathfu::vec3 position = matrices->cameraPos.xyz();
+        mathfu::vec3 ahead = matrices->lookAt.xyz() - position;
+        const float radiansToDegrees = 180.0f / (float) M_PI;
+        dump["camera"] = {
+            {"x", position.x}, {"y", position.y}, {"z", position.z},
+            {"yawDegrees", std::atan2(ahead.y, ahead.x) * radiansToDegrees},
+            {"pitchDegrees", std::atan2(ahead.z, std::sqrt(ahead.x * ahead.x + ahead.y * ahead.y)) * radiansToDegrees},
+        };
+        dump["tile"] = {{"col", worldCoordinateToAdtIndex(position.y)}, {"row", worldCoordinateToAdtIndex(position.x)}};
+    }
+
+    auto plan = m_scene->getLastPlan();
+    dump["areaId"] = plan ? json(plan->areaId) : json(nullptr);
+    dump["parentAreaId"] = plan ? json(plan->parentAreaId) : json(nullptr);
+    dump["terrainHeight"] = plan && plan->hasGroundHeight ? json(plan->groundHeight) : json(nullptr);
+
+    const Config &config = *m_api->getConfig();
+    dump["timeOfDay"] = config.currentTime;
+    dump["display"] = {
+        {"drawDistance", {{"ground", config.farPlaneForCulling}, {"air", config.farPlaneForCullingAir}, {"inUse", config.effectiveFarPlaneForCulling()}}},
+        {"modelCullPercent", {{"ground", config.minM2ScreenPercent}, {"air", config.minM2ScreenPercentAir}, {"inUse", config.effectiveMinM2ScreenPercent()}}},
+        {"cameraGrounded", config.cameraGrounded},
+        {"creatures", config.renderCreatures},
+        {"humanoids", config.renderHumanoids},
+        {"gameObjectSpawns", config.renderGameObjectSpawns},
+        {"liquids", config.renderLiquid},
+        {"renderScale", config.renderScale},
+        {"fsr", config.fsrUpscaling},
+        {"fov", config.fov},
+    };
+
+    emit("flyover dump " + dump.dump(-1, ' ', false, json::error_handler_t::replace));
 }
 
 void FlyoverMode::applyConfig(const std::string &name, const std::string &value) {
@@ -619,6 +736,7 @@ void FlyoverMode::applyRoute(const FlyoverRoute &route, bool openMap) {
     m_free = nullptr;
     m_isFree = false;
     setMode(route.freeMode, false);
+    if (route.freeMode && route.hasFacing) m_free->setViewAngles(route.yawDegrees, route.pitchDegrees);
 }
 
 void FlyoverMode::setMode(bool free, bool announce) {
@@ -695,7 +813,7 @@ void FlyoverMode::update() {
         char text[64];
         std::snprintf(text, sizeof(text), "flyover d %.1f", m_path ? m_path->getDistance() : 0.0f);
         emit(text);
-        // The camera in use, path or free, as world x and y and its heading over the ground.
+        // The camera in use, path or free, as world x and y, its heading over the ground, and then its z. The z trails the line so a host that reads four fields still parses it.
         std::shared_ptr<ICamera> camera = m_isFree && m_free ? std::static_pointer_cast<ICamera>(m_free) : std::static_pointer_cast<ICamera>(m_path);
         if (camera) {
             auto matrices = camera->getCameraMatrices(1.0f, 1.0f, 1.0f, 100.0f);
@@ -703,7 +821,7 @@ void FlyoverMode::update() {
             mathfu::vec3 ahead = matrices->lookAt.xyz() - position;
             float across = std::sqrt(ahead.x * ahead.x + ahead.y * ahead.y);
             if (across < 1e-4f) across = 1.0f;
-            std::snprintf(text, sizeof(text), "flyover pos %.1f %.1f %.3f %.3f", position.x, position.y, ahead.x / across, ahead.y / across);
+            std::snprintf(text, sizeof(text), "flyover pos %.1f %.1f %.3f %.3f %.1f", position.x, position.y, ahead.x / across, ahead.y / across, position.z);
             emit(text);
         }
     }

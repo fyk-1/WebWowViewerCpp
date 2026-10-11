@@ -63,7 +63,7 @@ bool stopMouse = false;
 bool stopKeyboard = false;
 
 std::shared_ptr<FrontendUI> frontendUI = nullptr;
-// Set in the --flyover mode, where F toggles between the path camera and the free camera.
+// Set in the --flyover mode, where F toggles between the path camera and the free camera and F12 asks the host for a debug dump.
 FlyoverMode *flyoverMode = nullptr;
 
 static void cursor_position_callback(GLFWwindow* window, double xpos, double ypos){
@@ -162,6 +162,10 @@ static void onKey(GLFWwindow* window, int key, int scancode, int action, int mod
 {
     if (flyoverMode && key == GLFW_KEY_F && action == GLFW_PRESS) {
         flyoverMode->requestToggleMode();
+        return;
+    }
+    if (flyoverMode && key == GLFW_KEY_F12 && action == GLFW_PRESS) {
+        flyoverMode->requestDump();
         return;
     }
 
