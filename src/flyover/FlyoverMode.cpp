@@ -666,6 +666,12 @@ void FlyoverMode::finishDump(const std::string &pngFile, FrameCapture &&capture)
     dump["terrainHeight"] = plan && plan->hasGroundHeight ? json(plan->groundHeight) : json(nullptr);
 
     const Config &config = *m_api->getConfig();
+    std::vector<int> spawnEvents;
+    {
+        std::shared_lock lock(config.activeSpawnEventsLock);
+        spawnEvents.assign(config.activeSpawnEvents.begin(), config.activeSpawnEvents.end());
+    }
+    std::sort(spawnEvents.begin(), spawnEvents.end());
     dump["timeOfDay"] = config.currentTime;
     dump["display"] = {
         {"drawDistance", {{"ground", config.farPlaneForCulling}, {"air", config.farPlaneForCullingAir}, {"inUse", config.effectiveFarPlaneForCulling()}}},
@@ -674,6 +680,7 @@ void FlyoverMode::finishDump(const std::string &pngFile, FrameCapture &&capture)
         {"creatures", config.renderCreatures},
         {"humanoids", config.renderHumanoids},
         {"gameObjectSpawns", config.renderGameObjectSpawns},
+        {"spawnEvents", spawnEvents},
         {"liquids", config.renderLiquid},
         {"renderScale", config.renderScale},
         {"fsr", config.fsrUpscaling},

@@ -163,6 +163,18 @@ private:
         return std::find(fields.begin(), fields.end(), "Attachments") != fields.end();
     }
 
+    bool getHasCreatureEvents(SQLite::Database &sqliteDatabase) {
+        auto fields = getTableFields(sqliteDatabase, "CreatureSpawn");
+
+        return std::find(fields.begin(), fields.end(), "Events") != fields.end();
+    }
+
+    bool getHasGameObjectEvents(SQLite::Database &sqliteDatabase) {
+        auto fields = getTableFields(sqliteDatabase, "GameObjectSpawn");
+
+        return std::find(fields.begin(), fields.end(), "Events") != fields.end();
+    }
+
     bool getHasWDTId(SQLite::Database &sqliteDatabase) {
         bool m_hasWdtId;
         try {

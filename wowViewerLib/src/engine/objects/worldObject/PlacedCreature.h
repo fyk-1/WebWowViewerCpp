@@ -7,6 +7,8 @@
 
 #include <atomic>
 #include <memory>
+#include <shared_mutex>
+#include <vector>
 #include "../m2/m2Object.h"
 #include "../../../include/config.h"
 
@@ -29,12 +31,32 @@ struct PlacedCreature {
     bool humanoid = false;
     // From a GameObjectSpawn row. Config::renderGameObjectSpawns shows these alone, where renderCreatures shows the creatures.
     bool gameObject = false;
+    // The signed world event ids of the spawn's row, empty for a spawn no event ties. Config::activeSpawnEvents decides which count.
+    std::vector<int> events;
     std::atomic<CreatureHome> home{CreatureHome::Pending};
     std::atomic<int> wmosToAnswer{0};
 
     bool shown(const Config &config) const {
+        if (!inActiveEvents(config)) return false;
         if (gameObject) return config.renderGameObjectSpawns;
         return config.renderCreatures && (config.renderHumanoids || !humanoid);
+    }
+
+    // A positive event shows the spawn while it runs, and any one of several does. A negative event hides it while that event runs.
+    bool inActiveEvents(const Config &config) const {
+        if (events.empty()) return true;
+
+        std::shared_lock lock(config.activeSpawnEventsLock);
+        bool tied = false, running = false;
+        for (int event : events) {
+            bool active = config.activeSpawnEvents.count(event < 0 ? -event : event) > 0;
+            if (event < 0 && active) return false;
+            if (event > 0) {
+                tied = true;
+                running = running || active;
+            }
+        }
+        return !tied || running;
     }
 
     // A WMO that holds the creature in no interior group of its own. The last to answer sends a creature no WMO took outside.

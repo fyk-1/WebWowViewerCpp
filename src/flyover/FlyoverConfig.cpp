@@ -18,7 +18,8 @@ robots@Impl: The name table.
 
 FLYOVER_CONFIG_FIELDS is the one list of settable fields. Each entry is a kind and a member path from Config,
 and the name is that path as written, so `exteriorColors.exteriorAmbientColor` is the name of the member of
-that path. A field is added or removed here and nowhere else.
+that path. A field is added or removed here and nowhere else. An IntSet field is set from comma-separated integers, or from
+`none` for the empty set, and dumped as a sorted array.
 
 The debug toggles that break the frame are left out on purpose: stopBufferUpdates, stepBufferUpdate,
 doubleCameraDebug, controlSecondCamera, swapMainAndDebug, cameraM2 and drawDepthBuffer. The structs
@@ -27,7 +28,7 @@ in the table either, nor is fsrResetRequested, a request that FlyoverMode sets a
 */
 
 namespace {
-    enum class Kind { Bool, Int, U16, Float, Double, Vec3, Vec4, ParamSource, FreeStrategy };
+    enum class Kind { Bool, Int, U16, Float, Double, Vec3, Vec4, IntSet, ParamSource, FreeStrategy };
 
     struct Field {
         const char *name;
@@ -49,6 +50,7 @@ namespace {
     X(Bool, renderCreatures) \
     X(Bool, renderHumanoids) \
     X(Bool, renderGameObjectSpawns) \
+    X(IntSet, activeSpawnEvents) \
     X(Bool, showGameObjectNameplates) \
     X(Bool, showGameObjectNameplatesForAll) \
     X(Bool, renderBSP) \
@@ -277,6 +279,25 @@ namespace FlyoverConfig {
                 *(mathfu::vec4 *) target = mathfu::vec4(parts[0], parts[1], parts[2], parts[3]);
                 return "";
             }
+            case Kind::IntSet: {
+                // Comma-separated integers, or none for the empty set: a stdin config command carries no empty value.
+                std::unordered_set<int> ids;
+                if (!equalsNoCase(text, "none")) {
+                    std::stringstream stream(text);
+                    std::string part;
+                    while (std::getline(stream, part, ',')) {
+                        long long number;
+                        if (!parseLong(part, number) || number < std::numeric_limits<int>::min() || number > std::numeric_limits<int>::max()) {
+                            return "expected comma-separated integers, or none";
+                        }
+                        ids.insert((int) number);
+                    }
+                    if (ids.empty()) return "expected comma-separated integers, or none";
+                }
+                std::unique_lock lock(config.activeSpawnEventsLock);
+                config.activeSpawnEvents = std::move(ids);
+                return "";
+            }
             case Kind::ParamSource: {
                 int enumValue;
                 if (!parseEnum(text, kParamSources, std::size(kParamSources), enumValue)) {
@@ -328,6 +349,13 @@ namespace FlyoverConfig {
                 case Kind::Vec4: {
                     auto &v = *(mathfu::vec4 *) source;
                     result[field.name] = {shortFloat(v.x), shortFloat(v.y), shortFloat(v.z), shortFloat(v.w)};
+                    break;
+                }
+                case Kind::IntSet: {
+                    std::shared_lock lock(config.activeSpawnEventsLock);
+                    std::vector<int> sorted(config.activeSpawnEvents.begin(), config.activeSpawnEvents.end());
+                    std::sort(sorted.begin(), sorted.end());
+                    result[field.name] = sorted;
                     break;
                 }
                 case Kind::ParamSource:

@@ -62,6 +62,7 @@ std::shared_ptr<PlacedCreature> WorldObjectManager::createCreature(HApiContainer
     creature->m2 = m2Object;
     creature->id = m2Object->getObjectId();
     creature->humanoid = spawn.BodyTexture > 0;
+    creature->events = spawn.Events;
     return creature;
 }
 
@@ -83,6 +84,7 @@ std::shared_ptr<PlacedCreature> WorldObjectManager::createGameObjectSpawn(HApiCo
     placed->m2 = m2Object;
     placed->id = m2Object->getObjectId();
     placed->gameObject = true;
+    placed->events = spawn.Events;
     return placed;
 }
 

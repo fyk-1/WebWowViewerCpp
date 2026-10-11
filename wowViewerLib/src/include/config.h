@@ -5,6 +5,7 @@
 #ifndef WOWVIEWERLIB_CONFIG_H
 #define WOWVIEWERLIB_CONFIG_H
 
+#include <shared_mutex>
 #include <string>
 #include <unordered_set>
 #include <unordered_map>
@@ -65,6 +66,12 @@ public:
     bool renderHumanoids = true;
     // The host's GameObjectSpawn rows, drawn as M2 models standing where they spawn: herbs, ore veins, chests, mailboxes.
     bool renderGameObjectSpawns = true;
+    // The ids of the world events whose spawns stand, as the host sends them. A spawn tied to a positive event (the Events column of
+    // CreatureSpawn and GameObjectSpawn) draws only while one of its events is in the set, and one tied to a negative event is gone
+    // while that event's id is in it. Empty draws the spawns no event ties and the ones that are gone only while an event runs. The culling
+    // threads read the set while the command thread replaces it, so both go through activeSpawnEventsLock.
+    std::unordered_set<int> activeSpawnEvents;
+    mutable std::shared_mutex activeSpawnEventsLock;
     bool showGameObjectNameplates = false;
     bool showGameObjectNameplatesForAll = false;
     bool renderBSP = false;

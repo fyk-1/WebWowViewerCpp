@@ -144,18 +144,21 @@ const std::string liquidTextureFileDataIdsSQL = R"===(
     order by ltxt.OrderIndex;
 )===";
 
-// The look, alpha and attachment columns are in the query where the table has them, which a database an earlier host wrote does not.
-static std::string creatureSpawnsSQL(bool withLook, bool withAlpha, bool withAttachments, const std::string &condition) {
+// The look, alpha, attachment and events columns are in the query where the table has them, which a database an earlier host wrote does not.
+static std::string creatureSpawnsSQL(bool withLook, bool withAlpha, bool withAttachments, bool withEvents, const std::string &condition) {
     return std::string("select X, Y, Z, Facing, Scale, ModelFileDataID, Texture_0, Texture_1, Texture_2")
         + (withLook ? ", BodyTexture, CapeTexture, HairTexture, SkinExtraTexture, Geosets" : "")
         + (withAlpha ? ", Alpha" : "")
         + (withAttachments ? ", Attachments" : "")
+        + (withEvents ? ", Events" : "")
         + " from CreatureSpawn where " + condition + ";";
 }
 
 // The WMO models are left for later, so a row with IsWmo set is not read.
-static std::string gameObjectSpawnsSQL(const std::string &condition) {
-    return "select X, Y, Z, Rot_0, Rot_1, Rot_2, Rot_3, Scale, ModelFileDataID from GameObjectSpawn where IsWmo = 0 and " + condition + ";";
+static std::string gameObjectSpawnsSQL(bool withEvents, const std::string &condition) {
+    return std::string("select X, Y, Z, Rot_0, Rot_1, Rot_2, Rot_3, Scale, ModelFileDataID")
+        + (withEvents ? ", Events" : "")
+        + " from GameObjectSpawn where IsWmo = 0 and " + condition + ";";
 }
 
 // "101,201,402" to the variant of each group: group 1 variant 1, group 2 variant 1, group 4 variant 2.
@@ -174,6 +177,20 @@ static std::vector<uint8_t> parseMeshIds(const std::string &geosets) {
         at = end + 1;
     }
     return meshIds;
+}
+
+// "12,-2" to the ids 12 and -2.
+static std::vector<int> parseEvents(const std::string &events) {
+    std::vector<int> result;
+    size_t at = 0;
+    while (at < events.size()) {
+        size_t end = events.find(',', at);
+        if (end == std::string::npos) end = events.size();
+
+        result.push_back(std::atoi(events.substr(at, end - at).c_str()));
+        at = end + 1;
+    }
+    return result;
 }
 
 // "11,140326,140314;6,143235,143954" to the models a humanoid wears: a model on attachment 11 with the texture 140314 and one
@@ -238,14 +255,15 @@ CSqliteDB::CSqliteDB(std::string dbFileName) :
     getGameObjectDisplayInfoStatement(m_sqliteDatabase, generateSimpleSelectSQL("GameObjectDisplayInfo", {}, "where ID = ?")),
     getCreatureSpawnsForTileStatement(m_sqliteDatabase, m_sqliteDatabase.tableExists("CreatureSpawn")
         ? creatureSpawnsSQL(getHasCreatureLook(m_sqliteDatabase), getHasCreatureAlpha(m_sqliteDatabase),
-            getHasCreatureAttachments(m_sqliteDatabase), "Map = ?1 and TileRow = ?2 and TileCol = ?3") : "select 1 from Map;"),
+            getHasCreatureAttachments(m_sqliteDatabase), getHasCreatureEvents(m_sqliteDatabase),
+            "Map = ?1 and TileRow = ?2 and TileCol = ?3") : "select 1 from Map;"),
     getCreatureSpawnsForMapStatement(m_sqliteDatabase, m_sqliteDatabase.tableExists("CreatureSpawn")
         ? creatureSpawnsSQL(getHasCreatureLook(m_sqliteDatabase), getHasCreatureAlpha(m_sqliteDatabase),
-            getHasCreatureAttachments(m_sqliteDatabase), "Map = ?1") : "select 1 from Map;"),
+            getHasCreatureAttachments(m_sqliteDatabase), getHasCreatureEvents(m_sqliteDatabase), "Map = ?1") : "select 1 from Map;"),
     getGameObjectSpawnsForTileStatement(m_sqliteDatabase, m_sqliteDatabase.tableExists("GameObjectSpawn")
-        ? gameObjectSpawnsSQL("Map = ?1 and TileRow = ?2 and TileCol = ?3") : "select 1 from Map;"),
+        ? gameObjectSpawnsSQL(getHasGameObjectEvents(m_sqliteDatabase), "Map = ?1 and TileRow = ?2 and TileCol = ?3") : "select 1 from Map;"),
     getGameObjectSpawnsForMapStatement(m_sqliteDatabase, m_sqliteDatabase.tableExists("GameObjectSpawn")
-        ? gameObjectSpawnsSQL("Map = ?1") : "select 1 from Map;")
+        ? gameObjectSpawnsSQL(getHasGameObjectEvents(m_sqliteDatabase), "Map = ?1") : "select 1 from Map;")
 {
     m_hasCreatureSpawns = m_sqliteDatabase.tableExists("CreatureSpawn");
     m_hasGameObjectSpawns = m_sqliteDatabase.tableExists("GameObjectSpawn");
@@ -839,6 +857,7 @@ void CSqliteDB::readCreatureSpawns(StatementFieldHolder &statement, std::vector<
         }
         if (statement.getFieldIndex("Alpha") >= 0) spawn.Alpha = statement.getField("Alpha").getInt();
         if (statement.getFieldIndex("Attachments") >= 0) spawn.Attachments = parseAttachments(statement.getField("Attachments").getString());
+        if (statement.getFieldIndex("Events") >= 0) spawn.Events = parseEvents(statement.getField("Events").getString());
     }
 }
 
@@ -869,6 +888,7 @@ void CSqliteDB::readGameObjectSpawns(StatementFieldHolder &statement, std::vecto
         spawn.Rotation[3] = statement.getField("Rot_3").getDouble();
         spawn.Scale = statement.getField("Scale").getDouble();
         spawn.ModelFileDataID = statement.getField("ModelFileDataID").getInt();
+        if (statement.getFieldIndex("Events") >= 0) spawn.Events = parseEvents(statement.getField("Events").getString());
     }
 }
 

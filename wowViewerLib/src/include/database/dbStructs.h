@@ -253,7 +253,7 @@ struct CreatureAttachmentRecord {
 // A humanoid carries its look too: FileDataIDs for the character texture types 1 (body), 2 (cape), 6 (hair) and 8 (skin
 // extra), 0 for none, and the variant its geoset list gives each group of the model. A row with no geoset list leaves
 // MeshIds empty, which draws every geoset of the model. Alpha is the display's CreatureModelAlpha, 0 to 255. The models it wears
-// are its Attachments.
+// are its Attachments. Events are its signed world event ids (PlacedCreature::events).
 struct CreatureSpawnRecord {
     std::array<float, 3> Pos = {0.0f, 0.0f, 0.0f};
     float Facing = 0.0f; //Radians, 0 facing +x
@@ -267,15 +267,17 @@ struct CreatureSpawnRecord {
     std::vector<uint8_t> MeshIds; //Indexed by geoset group, as M2Object::setLoadParams takes it
     std::vector<CreatureAttachmentRecord> Attachments;
     int Alpha = 255;
+    std::vector<int> Events;
 };
 
 // Row of GameObjectSpawn, a table the host adds to the database: one game object model standing on a map tile. The rotation is the
-// server's quaternion (x, y, z, w) and the model a FileDataID. A row whose model is a WMO is not read.
+// server's quaternion (x, y, z, w) and the model a FileDataID. A row whose model is a WMO is not read. Events are as on CreatureSpawnRecord.
 struct GameObjectSpawnRecord {
     std::array<float, 3> Pos = {0.0f, 0.0f, 0.0f};
     std::array<float, 4> Rotation = {0.0f, 0.0f, 0.0f, 1.0f};
     float Scale = 1.0f;
     int ModelFileDataID = 0;
+    std::vector<int> Events;
 };
 
 struct GameObjectDisplayInfoRecord {
