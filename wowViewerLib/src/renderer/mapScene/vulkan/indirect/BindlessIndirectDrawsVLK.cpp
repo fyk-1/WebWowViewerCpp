@@ -5,9 +5,14 @@
 #include "../../../../gapi/vulkan/materials/ISimpleMaterialVLK.h"
 
 BindlessIndirectDrawsVLK::BindlessIndirectDrawsVLK(const HGDeviceVLK &device, Config *config,
-                                                   MaterialResolver materialResolver)
+                                                   MaterialResolver materialResolver, FadeResolver fadeResolver)
     : GpuIndirectDrawsVLK(device, config),
-      m_materialResolver(std::move(materialResolver)) {}
+      m_materialResolver(std::move(materialResolver)),
+      m_fadeResolver(std::move(fadeResolver)) {}
+
+uint32_t BindlessIndirectDrawsVLK::fadeMaterialId(uint32_t matId) {
+    return m_fadeResolver(matId);
+}
 
 void BindlessIndirectDrawsVLK::sortOpaqueDraws(std::vector<IndirectDrawEntry> &draws) {
     // Group by (VAO, matId) so each run can be submitted with one bind + one multi-draw

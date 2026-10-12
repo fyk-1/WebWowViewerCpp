@@ -356,6 +356,7 @@ void GpuIndirectDrawsVLK::fillDrawEntry(GMeshVLK *mesh, uint32_t cullObjectId, I
     entry.material = mesh->material().get();
     entry.matId = mesh->material()->getMaterialId();
     entry.priorityPlane = mesh->priorityPlane();
+    entry.fades = false;
     entry.vertexBindingsShared = mesh->bindings();
 #ifdef DEBUG_MESH_NAMES
     entry.debugName = mesh->debugName();
@@ -372,6 +373,7 @@ void GpuIndirectDrawsVLK::collectM2Meshes(M2Object *m2Object, uint32_t cullObjec
     header.sortDistance = m2Object->getCurrentDistance();
     header.transpBegin = transpDraws.size();
     const uint32_t opaqueBegin = opaqueDraws.size();
+    const bool fades = m_config->m2CullFade && m2Object->getCullFade() < 1.0f;
 
     // The M2 serves its meshes in render order: transparent ones are already sorted
     // within the object (M2Object::forEachVisibleMeshSorted) — keep that order here.
@@ -384,6 +386,7 @@ void GpuIndirectDrawsVLK::collectM2Meshes(M2Object *m2Object, uint32_t cullObjec
             e = &opaqueDraws.emplace_back();
         }
         fillDrawEntry(vlkMesh, cullObjectId, *e);
+        e->fades = fades;
         // Particles/ribbons patch start/end per frame — carry the live values as overrides
         if (hasDynamicDrawParams) {
             e->dynFirstIndex = mesh->start() / 2;
@@ -497,6 +500,14 @@ void GpuIndirectDrawsVLK::collectMeshDraws(const std::shared_ptr<MapRenderPlan> 
         }
     }
 
+    // The solid batches of a fading model move to the material that can drop fragments, so the whole model dissolves.
+    if (m_config->m2CullFade) {
+        for (auto &e : frameData.opaqueDraws) {
+            if (!e.fades || e.matId == 0) continue;
+            if (const uint32_t fadeId = fadeMaterialId(e.matId)) e.matId = fadeId;
+        }
+    }
+
     if (m_config->renderWMO) {
         ZoneScopedN("WMO collect");
         for (auto &[group, slot] : m_drawnWmoGroups) {
@@ -523,6 +534,10 @@ void GpuIndirectDrawsVLK::collectMeshDraws(const std::shared_ptr<MapRenderPlan> 
     // Transparent draws are already ordered by distance (M2 groups far-to-near by
     // bounding-box distance, meshes within each M2 pre-sorted by M2Object, WMO groups
     // after) — don't re-sort
+}
+
+uint32_t GpuIndirectDrawsVLK::fadeMaterialId(uint32_t) {
+    return 0;
 }
 
 void GpuIndirectDrawsVLK::sortOpaqueDraws(std::vector<IndirectDrawEntry> &draws) {

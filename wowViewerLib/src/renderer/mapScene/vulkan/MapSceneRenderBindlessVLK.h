@@ -204,6 +204,10 @@ protected:
         Liquid::LiquidMaterialType materialType);
 
     /*virtual*/ std::shared_ptr<ISimpleMaterialVLK> getM2StaticMaterial(const PipelineTemplate &pipelineTemplate);
+    std::shared_ptr<ISimpleMaterialVLK> buildM2StaticMaterial(const PipelineTemplate &pipelineTemplate, bool solid);
+    // The id of the material that draws a solid M2 material's batches with the fragment discard of Config::m2CullFade;
+    // 0 for an id that is not a solid M2 material.
+    uint32_t getM2FadeMaterialId(uint32_t matId);
     /*virtual*/ std::shared_ptr<ISimpleMaterialVLK> getM2ProjectiveStaticMaterial(const PipelineTemplate &pipelineTemplate);
     /*virtual*/ std::shared_ptr<ISimpleMaterialVLK> getWMOStaticMaterial(const PipelineTemplate &pipelineTemplate);
 
@@ -220,6 +224,8 @@ protected:
         };
     };
     robin_hood::unordered_flat_map<PipelineTemplate, std::shared_ptr<ISimpleMaterialVLK>, PipelineTemplateHasher> m_m2StaticMaterials;
+    // Each solid M2 material's twin that can drop fragments, by the solid material's id.
+    robin_hood::unordered_flat_map<uint32_t, std::shared_ptr<ISimpleMaterialVLK>> m_m2FadeMaterials;
     robin_hood::unordered_flat_map<PipelineTemplate, std::shared_ptr<ISimpleMaterialVLK>, PipelineTemplateHasher> m_m2ProjectiveStaticMaterials;
     robin_hood::unordered_flat_map<PipelineTemplate, std::shared_ptr<ISimpleMaterialVLK>, PipelineTemplateHasher> m_wmoStaticMaterials;
 protected:

@@ -186,8 +186,8 @@ public:
     // G-buffer pass only the shift.
     bool foliageTint = false;
     // A model the small-model cull is about to drop fades out over the band above minM2ScreenPercent, to nothing at the
-    // percent itself, instead of vanishing. A batch with no alpha test or blend cannot drop fragments and still vanishes
-    // at the percent.
+    // percent itself, instead of vanishing. Every batch of the model dissolves, the solid ones through the alpha-keyed
+    // pipeline, which can drop fragments.
     bool m2CullFade = false;
     // How far above minM2ScreenPercent the band reaches, as a multiple of the percent.
     static constexpr float M2CullFadeBand = 2;

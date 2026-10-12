@@ -19,13 +19,16 @@ public:
     // mirroring the original bindless collector's matId mechanism. Returns nullptr if the
     // id is not registered (the draw run is then skipped, like the old "material checks").
     using MaterialResolver = std::function<std::shared_ptr<ISimpleMaterialVLK>(uint32_t matId)>;
+    // Maps the id of a solid M2 material to the id of its discard-capable twin, 0 for a material with none.
+    using FadeResolver = std::function<uint32_t(uint32_t matId)>;
 
     BindlessIndirectDrawsVLK(const HGDeviceVLK &device, Config *config,
-                             MaterialResolver materialResolver);
+                             MaterialResolver materialResolver, FadeResolver fadeResolver);
 
 protected:
     void sortOpaqueDraws(std::vector<IndirectDrawEntry> &draws) override;
     VkDrawIndexedIndirectCommand buildStaticCommand(GMeshVLK *mesh) override;
+    uint32_t fadeMaterialId(uint32_t matId) override;
     void recordDrawCommands(CmdBufRecorder &cmdBuf,
                             const std::vector<IndirectDrawEntry> &draws,
                             uint32_t bufferBaseIndex,
@@ -33,6 +36,7 @@ protected:
 
 private:
     MaterialResolver m_materialResolver;
+    FadeResolver m_fadeResolver;
 };
 
 #endif //WOWSTUDIO_BINDLESSINDIRECTDRAWSVLK_H

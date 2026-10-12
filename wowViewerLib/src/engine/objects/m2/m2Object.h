@@ -362,6 +362,8 @@ public:
     }
     void calcDistance(const mathfu::vec3 &cameraPos);
     float getCurrentDistance();
+    // The share of the model the small-model cull's fade band draws this frame, 1 for all of it.
+    float getCullFade() const { return status->m_cullFade; }
     mathfu::vec3 getLocalPosition() {
         return m_localPosition;
     };

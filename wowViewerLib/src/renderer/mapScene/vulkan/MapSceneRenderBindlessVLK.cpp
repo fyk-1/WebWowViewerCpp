@@ -238,6 +238,9 @@ MapSceneRenderBindlessVLK::MapSceneRenderBindlessVLK(const HGDeviceVLK &hDevice,
             // Static materials are registered in exactly one of the caches
             if (auto m = m_m2MatCacheId[matId].lock()) return m;
             return m_wmoMatCacheId[matId].lock();
+        },
+        [this](uint32_t matId) -> uint32_t {
+            return getM2FadeMaterialId(matId);
         }),
     m_gpuM2Animation(hDevice, config) {
     std::cout << "Create Bindless scene renderer " << std::endl;
@@ -986,25 +989,40 @@ std::shared_ptr<ISimpleMaterialVLK> MapSceneRenderBindlessVLK::getM2StaticMateri
         return i->second;
     }
 
-    bool isOpaq = pipelineTemplate.blendMode == EGxBlendEnum::GxBlend_Opaque ||
-                  pipelineTemplate.blendMode == EGxBlendEnum::GxBlend_AlphaKey;
-
-    bool isTrueOpaq = pipelineTemplate.blendMode == EGxBlendEnum::GxBlend_Opaque;
-
-    auto staticMaterial =
-        MaterialBuilderVLK::fromShader(m_device, {"m2Shader", isTrueOpaq ? "m2Shader_opaq" : "m2Shader"}, m2BindlessShaderConfig)
-            .setMaterialId(generateUniqueM2MatId())
-            .createPipeline(m_emptyM2VAO, m_forwardRenderPass, pipelineTemplate)
-            .createGBufferPipeline(m_emptyM2VAO, {"m2Shader", isTrueOpaq ? "m2Shader_opaq" : "m2Shader"}, m2BindlessGBufferShaderConfig, m_gBufferPass)
-            .bindDescriptorSet(0, sceneWideDS)
-            .bindDescriptorSet(1, m2BufferOneDS)
-            .bindDescriptorSet(2, m2TextureDS)
-            .toMaterial();
+    const bool solid = pipelineTemplate.blendMode == EGxBlendEnum::GxBlend_Opaque;
+    auto staticMaterial = buildM2StaticMaterial(pipelineTemplate, solid);
 
     m_m2StaticMaterials[pipelineTemplate] = staticMaterial;
     m_m2MatCacheId[staticMaterial->getMaterialId()] = staticMaterial;
 
+    // The twin that can drop fragments, for Config::m2CullFade. It is built with its solid material, since the draw stage reads
+    // the cache by id while the update stage fills it.
+    if (solid) {
+        auto fadeMaterial = buildM2StaticMaterial(pipelineTemplate, false);
+        m_m2MatCacheId[fadeMaterial->getMaterialId()] = fadeMaterial;
+        m_m2FadeMaterials[staticMaterial->getMaterialId()] = fadeMaterial;
+    }
+
     return staticMaterial;
+}
+
+// A solid material runs the shader that tests depth before it runs and so cannot drop a fragment; any other runs the one that can.
+std::shared_ptr<ISimpleMaterialVLK> MapSceneRenderBindlessVLK::buildM2StaticMaterial(const PipelineTemplate &pipelineTemplate, bool solid) {
+    const std::string shaderName = solid ? "m2Shader_opaq" : "m2Shader";
+
+    return MaterialBuilderVLK::fromShader(m_device, {"m2Shader", shaderName}, m2BindlessShaderConfig)
+        .setMaterialId(generateUniqueM2MatId())
+        .createPipeline(m_emptyM2VAO, m_forwardRenderPass, pipelineTemplate)
+        .createGBufferPipeline(m_emptyM2VAO, {"m2Shader", shaderName}, m2BindlessGBufferShaderConfig, m_gBufferPass)
+        .bindDescriptorSet(0, sceneWideDS)
+        .bindDescriptorSet(1, m2BufferOneDS)
+        .bindDescriptorSet(2, m2TextureDS)
+        .toMaterial();
+}
+
+uint32_t MapSceneRenderBindlessVLK::getM2FadeMaterialId(uint32_t matId) {
+    auto fade = m_m2FadeMaterials.find(matId);
+    return fade != m_m2FadeMaterials.end() ? fade->second->getMaterialId() : 0;
 }
 
 std::shared_ptr<ISimpleMaterialVLK> MapSceneRenderBindlessVLK::getM2ProjectiveStaticMaterial(const PipelineTemplate &pipelineTemplate) {
