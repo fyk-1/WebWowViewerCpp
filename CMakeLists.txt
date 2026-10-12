@@ -64,7 +64,7 @@ if (WIN32)
 	set(WITH_LIBTOMCRYPT true)
 endif()
 
-add_subdirectory(3rdparty/TactCpp EXCLUDE_FROM_ALL)
+add_subdirectory(src/tact)
 
 add_subdirectory(wowViewerLib)
 
@@ -213,7 +213,6 @@ target_link_libraries(WoWFrontendLib Threads::Threads)
 target_link_libraries(WoWFrontendLib glfw)
 
 target_link_libraries(WoWFrontendLib TactCppLib)
-target_link_libraries(WoWFrontendLib cpr::cpr)
 
 #target_link_options(WoWFrontendLib PUBLIC "SHELL: -llibg")
 

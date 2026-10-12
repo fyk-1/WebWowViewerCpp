@@ -281,7 +281,6 @@ set(SOURCE_FILES
         src/engine/objects/scenes/EntityActorsFactory.cpp
         src/engine/objects/scenes/EntityActorsFactory.cpp
         src/engine/objects/scenes/EntityActorsFactory.h
-        3rdparty/arena-allocator/arena_alloc.cc
         src/engine/objects/SceneObjectWithID.h
         src/engine/custom_allocators/FrameBasedStackAllocator.cpp
         src/engine/custom_allocators/FrameBasedStackAllocator.h

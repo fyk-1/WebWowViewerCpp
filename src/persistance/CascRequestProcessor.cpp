@@ -56,13 +56,11 @@ CascRequestProcessor::CascRequestProcessor(const std::string &path, const BuildD
     settings.BuildConfigPathOrHash = buildDef.buildConfigHash;
     settings.CDNConfigPathOrHash = buildDef.cdnConfigHash;
     settings.CDNPath = buildDef.cdnPath;
-    settings.CDNServersOverride = buildDef.cdnServersOverride;
     settings.Product = buildDef.productName;
     settings.Locale = GetLocaleFlag(buildDef.installedLanguage);
     settings.ArmadilloKey = buildDef.armadilloKey;
     settings.Region = buildDef.region;
 
-    settings.allowOnlineDownload = buildDef.allowOnlineDownload;
     settings.preferLowViolence = buildDef.preferLowViolence;
     settings.preferHiResTextures = buildDef.preferHiResTextures;
 
