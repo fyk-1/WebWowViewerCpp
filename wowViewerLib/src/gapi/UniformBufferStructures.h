@@ -145,7 +145,7 @@ namespace M2 {
         int PixelShader;
         int UnFogged;
         int BlendMode;
-        int unused;
+        int backFacesDrawn; // 1 where drawBackFaces opened up a batch the artists culled; the shader lights its back faces as their own side
 
         int textureWeightIndexes[4];
 

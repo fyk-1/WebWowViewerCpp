@@ -200,6 +200,10 @@ public:
     // here from a gradient of the zone's sky colours. Takes effect where the WoWee water shading draws, woweeShaders
     // bit 1, and not on water inside a WMO.
     bool waterSkyReflection = false;
+    // M2 and WMO batches draw their back faces too, where the game culls them, so geometry whose hidden sides were never
+    // modelled stops showing through from the air. A back face is lit as its own side. Terrain, liquids, particles, ribbons
+    // and the sky keep their culling. A material builds its pipeline once, so a change takes effect from the next flight.
+    bool drawBackFaces = true;
     // Set by the host when the camera jumps, so the next FSR dispatch drops its history. The renderer clears it.
     bool fsrResetRequested = false;
 

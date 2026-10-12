@@ -1782,6 +1782,10 @@ EGxBlendEnum M2Object::getBlendMode(int batchIndex) {
 }
 
 
+bool M2Object::drawsBackFaces(uint16_t materialFlags) {
+    return !(materialFlags & 0x4) && !m_boolSkybox && m_api->getConfig()->drawBackFaces;
+}
+
 std::shared_ptr<IM2Material> M2Object::createM2Material(const HMapSceneBufferCreate &sceneRenderer, int batchIndex,
                                                         const EGxBlendEnum blendMode, bool overrideBlend) {
     M2MaterialTemplate materialTemplate;
@@ -1804,7 +1808,7 @@ std::shared_ptr<IM2Material> M2Object::createM2Material(const HMapSceneBufferCre
     pipelineTemplate.element = DrawElementMode::TRIANGLES;
     pipelineTemplate.depthWrite = !(renderFlag->flags & 0x10);
     pipelineTemplate.depthCulling = !(renderFlag->flags & 0x8);
-    pipelineTemplate.backFaceCulling = !(renderFlag->flags & 0x4);
+    pipelineTemplate.backFaceCulling = !(renderFlag->flags & 0x4) && !drawsBackFaces(renderFlag->flags);
     if (overrideBlend) {
         pipelineTemplate.blendMode = blendMode;
         if (blendMode > EGxBlendEnum::GxBlend_AlphaKey)

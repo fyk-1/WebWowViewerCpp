@@ -9,6 +9,7 @@ precision highp int;
 #include "../../common/commonWoweeM2Light.slang"
 #include "../../common/commonWoweeM2Foliage.slang"
 #include "../../common/commonWoweeSwitch.slang"
+#include "../../common/commonBackFace.slang"
 #include "../../common/commonLiquidDepthTest.slang"
 
 layout(location=0) in vec2 vTexCoord;
@@ -93,7 +94,7 @@ void main() {
 
     vMeshColorAlpha.a *= modelWide.modelAlpha.x;
 
-    vec3 l_Normal = vNormal;
+    vec3 l_Normal = backFaceNormal(vNormal, meshWide.PixelShader_UnFogged_blendMode.w == 1);
 
     //----------------------
     // Calc Diffuse and Specular
@@ -240,6 +241,6 @@ void main() {
     outColor = finalColor;
     writeObjectId(0x80000000u | modelWide.objectId_pad.x);
 #else
-    writeGBuffer(matDiffuse.xyz, normalize(vNormal), specular.rgb, vPosition_EdgeFade.xyz);
+    writeGBuffer(matDiffuse.xyz, normalize(l_Normal), specular.rgb, vPosition_EdgeFade.xyz);
 #endif
 }

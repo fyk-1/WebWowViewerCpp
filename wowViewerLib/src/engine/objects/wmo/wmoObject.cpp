@@ -2021,7 +2021,8 @@ std::shared_ptr<IWMOMaterial> WmoObject::getMaterialInstance(int materialIndex, 
     pipelineTemplate.element = DrawElementMode::TRIANGLES;
     pipelineTemplate.depthWrite = blendMode <= 1;
     pipelineTemplate.depthCulling = true;
-    pipelineTemplate.backFaceCulling = !(material.flags.F_UNCULLED);
+    const bool backFacesDrawn = !(material.flags.F_UNCULLED) && m_api->getConfig()->drawBackFaces;
+    pipelineTemplate.backFaceCulling = !(material.flags.F_UNCULLED) && !backFacesDrawn;
 
     pipelineTemplate.blendMode = static_cast<EGxBlendEnum>(blendMode);
 
@@ -2077,8 +2078,10 @@ std::shared_ptr<IWMOMaterial> WmoObject::getMaterialInstance(int materialIndex, 
         blockPS.EnableAlpha = (blendMode > 0) ? 1 : 0;
         blockPS.PixelShader = pixelShader;
         blockPS.BlendMode = blendMode;
+        // x: 1 where drawBackFaces opened up a material the artists culled, and the shader lights its back faces as their
+        // own side. The bindless shaders read no fog colour from this block.
         blockPS.uFogColor_AlphaTest = mathfu::vec4_packed(
-            mathfu::vec4(0,0,0, alphaTest));
+            mathfu::vec4(backFacesDrawn ? 1.0f : 0.0f, 0, 0, alphaTest));
         materialInstance->m_materialPS->save();
     }
 

@@ -286,6 +286,9 @@ public:
     bool getIsSkybox() {
         return m_boolSkybox;
     }
+    // Whether Config::drawBackFaces opens up a batch with these material flags, one the artists culled. The sky keeps its
+    // culling.
+    bool drawsBackFaces(uint16_t materialFlags);
 
     void setInteriorExteriorBlend(float val) {
         m_interiorExteriorBlend = val;

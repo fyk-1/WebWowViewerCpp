@@ -9,6 +9,7 @@ precision highp int;
 #include "../../common/commonWMOMaterial.slang"
 #include "../../common/commonWoweeWmoLight.slang"
 #include "../../common/commonWoweeSwitch.slang"
+#include "../../common/commonBackFace.slang"
 #include "../../common/commonUboSceneData.slang"
 #include "../../common/commonLiquidDepthTest.slang"
 
@@ -58,12 +59,13 @@ void main() {
     int text7 = meshWideBindless.text5_text6_text7_text8.z;
     int text8 = meshWideBindless.text5_text6_text7_text8.w;
     int text9 = meshWideBindless.placementMat_meshWideIndex_blockVSIndex_texture9.w;
+    vec3 normal = backFaceNormal(vNormal, wmoMeshWide.FogColor_AlphaTest.x > 0.5);
 
     caclWMOFragMat(uPixelShader, wmoMeshWide.UseLitColor_EnableAlpha_PixelShader_BlendMode.y == 1,
                    s_Textures[nonuniformEXT(text1)], s_Textures[nonuniformEXT(text2)], s_Textures[nonuniformEXT(text3)], s_Textures[nonuniformEXT(text4)],
                    s_Textures[nonuniformEXT(text5)], s_Textures[nonuniformEXT(text6)], s_Textures[nonuniformEXT(text7)], s_Textures[nonuniformEXT(text8)],
                    s_Textures[nonuniformEXT(text9)],
-                   vPosition.xyz, vNormal, vTexCoord, vTexCoord2, vTexCoord3, vTexCoord4,
+                   vPosition.xyz, normal, vTexCoord, vTexCoord2, vTexCoord3, vTexCoord4,
                    vColor2,
                    vColorSecond,
                    matDiffuse, spec, emissive, finalOpacity,
@@ -104,7 +106,7 @@ void main() {
     if (woweeOn(scene, WOWEE_WMO)) {
         litColor = wo_calcLight(
             matDiffuse,
-            vNormal,
+            normal,
             vPosition.xyz,
             wmoMeshWide.UseLitColor_EnableAlpha_PixelShader_BlendMode.x == 1,
             scene,
@@ -117,7 +119,7 @@ void main() {
     } else {
         litColor = calcLight(
             matDiffuse,
-            vNormal,
+            normal,
             vPosition.xyz,
             wmoMeshWide.UseLitColor_EnableAlpha_PixelShader_BlendMode.x == 1,
             scene,
@@ -151,6 +153,6 @@ finalColor.a = 1.0;
     // .w of the per-mesh record was packed by createWMOMesh: bits [30:10] = wmoObjId, bits [9:0] = groupNum
     writeObjectId(0xC0000000u | uint(perMeshData.meshWideBindlessIndex_groupNum_canHaveExterior.w));
 #else
-    writeGBuffer(matDiffuse.xyz, normalize(vNormal), spec.rgb, vPosition.xyz);
+    writeGBuffer(matDiffuse.xyz, normalize(normal), spec.rgb, vPosition.xyz);
 #endif
 }
