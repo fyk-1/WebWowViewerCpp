@@ -549,7 +549,7 @@ void FlyoverMode::apply(const Command &command) {
             if (std::sscanf(command.text.c_str(), "%f", &steps) != 1) {
                 emitError("freespeed", "expected a number of steps, negative for slower");
             } else {
-                m_freeSpeed = std::clamp(m_freeSpeed * std::pow(1.25f, steps), 0.02f, 20.0f);
+                m_freeSpeed = std::clamp(m_freeSpeed * std::pow(1.25f, steps), 0.002f, 20.0f);
                 if (m_free) m_free->setMovementSpeed(m_freeSpeed);
             }
             break;
@@ -758,7 +758,7 @@ void FlyoverMode::setMode(bool free, bool announce) {
             m_free = std::make_shared<FirstPersonCamera>();
             m_free->setCameraPos(position.x, position.y, position.z);
             m_free->setCameraLookAt(lookAt.x, lookAt.y, lookAt.z);
-            // The scene's own free-camera speed at first, then whatever `freespeed` made it.
+            // 30 yards a second at first, then whatever `freespeed` made it.
             m_free->setMovementSpeed(m_freeSpeed);
         }
         m_scene->setCamera(m_free);

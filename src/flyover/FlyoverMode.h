@@ -127,7 +127,8 @@ private:
     std::shared_ptr<PathCamera> m_path;
     std::shared_ptr<FirstPersonCamera> m_free;
     bool m_isFree = false;
-    float m_freeSpeed = 0.3f;
+    // Yards per millisecond, 30 yards a second at the start of every flight, since a new viewer starts each one
+    float m_freeSpeed = 0.03f;
     bool m_paused = false;
     int m_mapId = -1;
     int m_wdtFileId = -1;
