@@ -12,7 +12,8 @@ import glsl;
 // retail calcLight, since WoWee has no interior lighting for M2 beyond a darken it never sets. Dropped, for lack of the
 // inputs: foliage hue shift, sway, translucency and height occlusion, volumetric beam and fire card, the sky mode,
 // shadow maps, ray-traced light, local-light array, fog volume and the back-face normal flip. The light buffer stands in
-// for the local lights and keeps the retail gamma/linear split; combiner specular still adds.
+// for the local lights and keeps the retail gamma/linear split; combiner specular still adds. ambientScale multiplies
+// the exterior ambient term alone; only the foliage sky bounce passes other than 1.
 
 vec3 wm_calcLight(
     in vec3 albedo,
@@ -23,7 +24,8 @@ vec3 wm_calcLight(
     in SceneWideParams scene,
     in InteriorLightParam intLight,
     in vec3 accumLight,
-    in vec3 specular
+    in vec3 specular,
+    in float ambientScale
 ) {
     if (!applyLight)
         return albedo + specular;
@@ -39,7 +41,7 @@ vec3 wm_calcLight(
         float diff = alphaKeyed ? abs(nDotL) : max(nDotL, 0.0);
         float spec = alphaKeyed ? 0.0 : pow(max(dot(N, halfDir), 0.0), 32.0) * 0.5;
 
-        vec3 gammaTerm = albedo * (scene.extLight.uExteriorAmbientColor.rgb + diff * scene.extLight.uExteriorDirectColor.rgb);
+        vec3 gammaTerm = albedo * (scene.extLight.uExteriorAmbientColor.rgb * ambientScale + diff * scene.extLight.uExteriorDirectColor.rgb);
         vec3 linearTerm = (albedo * albedo) * accumLight;
         exteriorResult = sqrt(gammaTerm * gammaTerm + linearTerm) + spec * scene.extLight.uExteriorDirectColor.rgb;
     }

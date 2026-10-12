@@ -218,7 +218,8 @@ void MapSceneRenderer::updateSceneWideChunk(const std::shared_ptr<IBufferChunkVe
             1.0f
         );
         blockPSVS.extLight.uAdtSpecMult_FogCount         = mathfu::vec4(m_config->adtSpecMult, fdd->fogResults.size(), 0, 1.0);
-        blockPSVS.uWoweeLook = mathfu::vec4(m_config->skyGlow ? 1.0f : 0.0f, m_config->waterSkyReflection ? 1.0f : 0.0f, 0, 0);
+        blockPSVS.uWoweeLook = mathfu::vec4(m_config->skyGlow ? 1.0f : 0.0f, m_config->waterSkyReflection ? 1.0f : 0.0f,
+                                           std::clamp(m_config->foliageTintStrength, 0.0f, 2.0f), 0);
         if (m_config->waterSkyReflection) {
             blockPSVS.uSkyTopColor    = mathfu::vec4(fdd->skyColors.SkyTopColor, 0.0f);
             blockPSVS.uSkyMiddleColor = mathfu::vec4(fdd->skyColors.SkyMiddleColor, 0.0f);

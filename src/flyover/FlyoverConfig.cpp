@@ -95,7 +95,7 @@ namespace {
     X(Float, renderScale) \
     X(Float, fsrSharpness)     X(Float, fsrOutputScale)     X(Float, minM2ScreenPercent) \
     X(Float, groundAltitude)   X(Float, minM2ScreenPercentAir) \
-    X(Int, woweeShaders)     X(Bool, randomAnimationPhase)   X(Bool, foliageTint)   X(Bool, m2CullFade) \
+    X(Int, woweeShaders)     X(Bool, randomAnimationPhase)   X(Bool, foliageTint)   X(Float, foliageTintStrength)   X(Bool, m2CullFade) \
     X(Bool, skyGlow)   X(Bool, lightSmoothing)   X(Bool, waterSkyReflection)   X(Bool, drawBackFaces) \
     X(Float, fogDensityIncreaser)     X(Float, classicFogStrength) X(Float, classicFogFalloff) \
     X(Float, adtSpecMult) \

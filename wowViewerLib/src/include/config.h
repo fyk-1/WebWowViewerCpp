@@ -185,6 +185,9 @@ public:
     // crowns darker low and brighter on top, and a warm backlight against the sun. The forward pass shades it all, the
     // G-buffer pass only the shift.
     bool foliageTint = false;
+    // How strongly foliageTint shows, from 0 to 2: 0 leaves the models as they are, 1 is the full shading, and 2 doubles
+    // every term of it. Reaches the shaders in the scene-wide block's uWoweeLook.z.
+    float foliageTintStrength = 1.0f;
     // A model the small-model cull is about to drop fades out over the band above minM2ScreenPercent, to nothing at the
     // percent itself, instead of vanishing. Every batch of the model dissolves, the solid ones through the alpha-keyed
     // pipeline, which can drop fragments.

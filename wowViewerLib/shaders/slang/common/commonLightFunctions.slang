@@ -105,23 +105,9 @@ vec3 applyAndMixAmbients(vec3 ambient, vec3 horizAmbient, vec3 groundAmbient, ve
     return currColor;
 }
 
-vec3 calcLight(
-    const in vec3 matDiffuse,
-    const in vec3 vNormal,
-    const in vec3 vPositionCamSpace,
-    const in bool applyLight,
-    const in SceneWideParams sceneParams,
-    const in InteriorLightParam intLight,
-    const in vec3 accumLight, const in vec3 precomputedLight, const in vec3 specular,
-    const in vec3 emissive,
-    const in float ao
-) {
-    return calcLight(matDiffuse, vNormal, vPositionCamSpace, applyLight, sceneParams, intLight,
-                     accumLight, precomputedLight, precomputedLight, specular, emissive, ao);
-}
-
-// precomputedLightExterior is the baked colour of the exterior term, precomputedLight that of the interior term.
-vec3 calcLight(
+// precomputedLightExterior is the baked colour of the exterior term, precomputedLight that of the interior term;
+// ambientScale multiplies the exterior ambient term alone. The calcLight overloads below are this with 1.
+vec3 calcLightAmbientScaled(
     const in vec3 matDiffuse,
     const in vec3 vNormal,
     const in vec3 vPositionCamSpace,
@@ -130,7 +116,8 @@ vec3 calcLight(
     const in InteriorLightParam intLight,
     const in vec3 accumLight, const in vec3 precomputedLight, const in vec3 precomputedLightExterior, const in vec3 specular,
     const in vec3 emissive,
-    const in float ao
+    const in float ao,
+    const in float ambientScale
 ) {
 
     vec3 result = matDiffuse;
@@ -169,7 +156,7 @@ vec3 calcLight(
                 precomputedLightExterior,
                 nDotL,
                 nDotUp
-            );
+            ) * ambientScale;
 
             lDiffuse = (sceneParams.extLight.uExteriorDirectColor.xyz * nDotL) * attenuation;
         }
@@ -215,6 +202,53 @@ vec3 calcLight(
     }
 
     return (result + specular) * ao;
+}
+
+
+vec3 calcLightAmbientScaled(
+    const in vec3 matDiffuse,
+    const in vec3 vNormal,
+    const in vec3 vPositionCamSpace,
+    const in bool applyLight,
+    const in SceneWideParams sceneParams,
+    const in InteriorLightParam intLight,
+    const in vec3 accumLight, const in vec3 precomputedLight, const in vec3 specular,
+    const in vec3 emissive,
+    const in float ao,
+    const in float ambientScale
+) {
+    return calcLightAmbientScaled(matDiffuse, vNormal, vPositionCamSpace, applyLight, sceneParams, intLight,
+        accumLight, precomputedLight, precomputedLight, specular, emissive, ao, ambientScale);
+}
+
+vec3 calcLight(
+    const in vec3 matDiffuse,
+    const in vec3 vNormal,
+    const in vec3 vPositionCamSpace,
+    const in bool applyLight,
+    const in SceneWideParams sceneParams,
+    const in InteriorLightParam intLight,
+    const in vec3 accumLight, const in vec3 precomputedLight, const in vec3 precomputedLightExterior, const in vec3 specular,
+    const in vec3 emissive,
+    const in float ao
+) {
+    return calcLightAmbientScaled(matDiffuse, vNormal, vPositionCamSpace, applyLight, sceneParams, intLight,
+        accumLight, precomputedLight, precomputedLightExterior, specular, emissive, ao, 1.0);
+}
+
+vec3 calcLight(
+    const in vec3 matDiffuse,
+    const in vec3 vNormal,
+    const in vec3 vPositionCamSpace,
+    const in bool applyLight,
+    const in SceneWideParams sceneParams,
+    const in InteriorLightParam intLight,
+    const in vec3 accumLight, const in vec3 precomputedLight, const in vec3 specular,
+    const in vec3 emissive,
+    const in float ao
+) {
+    return calcLightAmbientScaled(matDiffuse, vNormal, vPositionCamSpace, applyLight, sceneParams, intLight,
+        accumLight, precomputedLight, specular, emissive, ao, 1.0);
 }
 
 

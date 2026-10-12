@@ -35,7 +35,8 @@ layout (set = 2, binding = 0) uniform sampler2D s_Textures[];
 
 #ifndef TRUE_OPAQUE
 // The screen-door of Config::m2CullFade: keeps the share `fade` of the fragments, in a pattern fixed to the screen
-// (interleaved gradient noise). The opaque pipelines test depth before the shader runs, so they cannot drop a fragment.
+// (interleaved gradient noise). The opaque pipelines test depth before the shader runs, so they cannot drop a fragment;
+// a solid batch of a fading model draws through this shader with its opaque state instead.
 bool dropsForCullFade(float fade, vec2 fragCoord) {
     return fade < 1.0 && fract(52.9829189 * fract(dot(fragCoord, vec2(0.06711056, 0.00583715)))) >= fade;
 }
@@ -147,7 +148,7 @@ void main() {
         // The foliage shading of Config::foliageTint, which sets the model's height above 0.
         bool foliage = modelWide.modelAlpha.z > 0.0 && blendMode == 1;
         if (foliage) {
-            matDiffuse *= wf_tint(placementMats[placementMatrixInd].placementMat[3].xy);
+            matDiffuse *= wf_tint(placementMats[placementMatrixInd].placementMat[3].xy, scene.uWoweeLook.z);
         }
 
         // ------------------------------
@@ -166,6 +167,13 @@ void main() {
 //    matDiffuse.rbg = vec3(0, 1, 0);
 
 
+        // The sky bounce on the ambient term, which the lighting below scales.
+        float ambientScale = 1.0;
+        if (foliage) {
+            vec3 modelUpView = normalize((scene.uLookAtMat * placementMats[placementMatrixInd].placementMat)[2].xyz);
+            ambientScale = wf_bounce(vNormal, modelUpView, scene.uWoweeLook.z, scene);
+        }
+
         vec3 litColor;
         if (woweeOn(scene, WOWEE_M2)) {
             litColor = wm_calcLight(
@@ -177,10 +185,11 @@ void main() {
                 scene,
                 modelWide.intLight,
                 accumLight,
-                specular
+                specular,
+                ambientScale
             );
         } else {
-            litColor = calcLight(
+            litColor = calcLightAmbientScaled(
                 matDiffuse,
                 l_Normal,
                 vPosition_EdgeFade.xyz,
@@ -191,7 +200,8 @@ void main() {
                 vec3(0.0),
                 specular,
                 vec3(0.0),
-                1.0 /* ao */
+                1.0 /* ao */,
+                ambientScale
             );
         }
         if (foliage) {
@@ -202,6 +212,7 @@ void main() {
                 vPosition_EdgeFade.xyz,
                 modelPoint.z / modelWide.modelAlpha.z,
                 modelWide.intLight.uInteriorAmbientColorAndInteriorExteriorBlend.w,
+                scene.uWoweeLook.z,
                 scene
             );
         }
