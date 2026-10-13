@@ -75,11 +75,12 @@ reads smooth at 30. The normal UI mode stays uncapped.
 Render scale: flyover sets fsrUpscaling on and renderScale to 0.59, so the scene renders at 59 % of the window's
 width and height (35 % of its pixels) and FSR upscales it to the window. On the iGPU a 4K window took nearly the
 whole GPU where a smaller monitor took half, so the pixel count is the cost. Where FSR is unavailable the final
-pass stretches the scene instead. The normal UI mode renders at 1, without FSR.
+pass stretches the scene instead, and so it does while the camera is above fsrMaxHeight (100 yards by default, 0
+for no limit), so FSR runs only near the ground. The normal UI mode renders at 1, without FSR.
 
 FSR history: the camera jumping makes the upscaler drop its history. A route that opens a map or changes the
 points, and every switch between the path and the free camera, set fsrResetRequested; the renderer consumes it
-on its next frame.
+on its next frame. So does the camera coming back below fsrMaxHeight.
 
 End of stdin queues quit, so a host that dies leaves no orphaned viewer. A route command for the same map
 whose point list matches the current route (count, and coordinate sum within 0.01) is a refresh: distance
@@ -743,6 +744,9 @@ void FlyoverMode::finishDump(const std::string &pngFile, FrameCapture &&capture)
         {"liquids", config.renderLiquid},
         {"renderScale", config.renderScale},
         {"fsr", config.fsrUpscaling},
+        {"fsrMaxHeight", config.fsrMaxHeight},
+        {"cameraAltitude", config.cameraAltitude},
+        {"fsrEngaged", config.effectiveFsrUpscaling()},
         {"fov", config.fov},
         {"farTerrain", {
             {"on", config.farTerrain},

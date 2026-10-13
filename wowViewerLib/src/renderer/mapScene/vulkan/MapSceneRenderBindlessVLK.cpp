@@ -2408,6 +2408,12 @@ projection, since the camera classes built it from whatever the scene window pas
 The draw stage runs FSR in this order: motion vectors right after the Hi-Z step, while the GBuffer depth is
 sampleable; a copy of the forward color after the first forward pass, which is the opaque scene; then, after the
 glow, the composite, the upscale, and a fullscreen draw of its output onto the swapchain in place of FXAA.
+
+Whether FSR runs is Config::effectiveFsrUpscaling, read once at the top of this stage and handed to the render
+lambda, so the jitter and the view agree. Where the camera is above fsrMaxHeight it is false, which is the same
+path as fsrUpscaling off: the view drops its FSR context and the scene renders at renderScale, stretched by the
+final pass. The context is built again on the first frame back below, so each crossing costs one context build
+and never a per-frame allocation.
 */
 std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::shared_ptr<FrameInputParams<MapSceneParams>> &frameInputParams,
                                                                    const std::shared_ptr<MapRenderPlan> &framePlan) {
@@ -2464,8 +2470,10 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
         matAndSceneSize.height = rt.viewPortDimensions.maxs[1];
     }
 
+    // Read once, so the jitter and the view agree on whether FSR runs this frame.
+    const bool fsrWanted = m_config->effectiveFsrUpscaling();
     FsrFrame fsrFrame;
-    if (m_config->fsrUpscaling && !renderingMatricessAndSizes.empty() && FsrUpscalerVLK::isAvailable()) {
+    if (fsrWanted && !renderingMatricessAndSizes.empty() && FsrUpscalerVLK::isAvailable()) {
         auto firstView = std::dynamic_pointer_cast<RendererViewClass>(frameInputParams->frameParameters->renderTargets[0].target);
         auto &mainTarget = renderingMatricessAndSizes[0];
 
@@ -2600,7 +2608,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
 
     bool renderSky = framePlan->renderSky;
     return createRenderFuncVLK(
-        [l_this, mapScene, framePlan, transparentMeshes, frameInputParams, stepBufferUpdates]() -> void {
+        [l_this, mapScene, framePlan, transparentMeshes, frameInputParams, stepBufferUpdates, fsrWanted]() -> void {
             {
                 ZoneScopedN("Post Load");
                 //Do postLoad here. So creation of stuff is done from main thread
@@ -2614,7 +2622,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                     if (!updatingTarget) updatingTarget = l_this->defaultView;
 
                     updatingTarget->setFxaaEnabled(l_this->m_config->enableFXAA);
-                    updatingTarget->setFsrEnabled(l_this->m_config->fsrUpscaling && updatingTarget == l_this->defaultView);
+                    updatingTarget->setFsrEnabled(fsrWanted && updatingTarget == l_this->defaultView);
                     updatingTarget->setFsrOutputScale(l_this->m_config->fsrOutputScale);
                     updatingTarget->update(
                         renderTarget.viewPortDimensions.maxs[0],

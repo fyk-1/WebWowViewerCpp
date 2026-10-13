@@ -418,6 +418,27 @@ std::tuple<HGMesh, std::shared_ptr<IPlanetMaterial>> createPlanetMesh(const HMap
     return {hmesh, material};
 }
 
+namespace {
+    /*
+    robots@Impl: FSR ceiling.
+
+    cameraFsrLow is the latch that tells the renderer whether FSR may run, from the smoothed cameraAltitude that
+    cameraGrounded uses. It lifts above fsrMaxHeight and returns below it less the return band, 10 yards or half the
+    ceiling where that is lower, so a ceiling under 10 yards still returns. A returning latch asks for an FSR history
+    reset, since the upscaler was off for as long as the camera was high. A ceiling of 0 or less keeps the latch low.
+    */
+    void updateFsrCeiling(Config &config, float altitude) {
+        const float ceiling = config.fsrMaxHeight;
+        bool low = true;
+        if (ceiling > 0) {
+            const float returnBand = std::min(10.0f, ceiling * 0.5f);
+            low = config.cameraFsrLow ? altitude <= ceiling : altitude < ceiling - returnBand;
+        }
+        if (low && !config.cameraFsrLow) config.fsrResetRequested = true;
+        config.cameraFsrLow = low;
+    }
+}
+
 void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams, const HMapRenderPlan &mapRenderPlan) {
     ZoneScoped ;
 
@@ -490,7 +511,8 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
             // hill or a ravine passing below does not make the fog or the cull pulse while a climb onto a plateau still
             // catches up. A jump of the camera, such as a route opening another map, takes the new terrain at once.
             // The altitude sets config's cameraAltitude and cameraGrounded, which leaves the ground above groundAltitude
-            // and comes back below it less 10 yards, so hovering at the line does not flip it every frame. Both are kept
+            // and comes back below it less 10 yards, so hovering at the line does not flip it every frame. FSR's
+            // cameraFsrLow follows the same altitude against fsrMaxHeight (updateFsrCeiling, above). All three are kept
             // where no terrain is found under the camera.
             if (adtHeight > -99999) {
                 const float jump = (cameraVec3 - m_altitudeCameraPos).Length();
@@ -504,6 +526,7 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
                 if (config->cameraGrounded && altitude > config->groundAltitude) config->cameraGrounded = false;
                 else if (!config->cameraGrounded && altitude < config->groundAltitude - 10.0f) config->cameraGrounded = true;
                 config->cameraAltitude = altitude;
+                updateFsrCeiling(*config, altitude);
             }
             m_altitudeCameraPos = cameraVec3;
         }

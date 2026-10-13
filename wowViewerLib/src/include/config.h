@@ -151,6 +151,9 @@ public:
     // Upscales the scene to the window with AMD FSR 3.1 instead of stretching it. Needs the bindless renderer and
     // amd_fidelityfx_vk.dll beside the executable; without either the scene is stretched as before.
     bool fsrUpscaling = false;
+    // Yards above the terrain up to which fsrUpscaling engages, measured as cameraAltitude. Above it the frame renders as
+    // with fsrUpscaling off. 0 or less never lifts it.
+    float fsrMaxHeight = 100;
     // RCAS sharpening of the FSR output, 0 to 1.
     float fsrSharpness = 0.3f;
     // Size FSR upscales to, as a fraction of the window, 0.25 to 1; the last pass stretches its output to the window.
@@ -168,6 +171,9 @@ public:
     // Set by the map every frame from cameraAltitude and groundAltitude.
     bool cameraGrounded = true;
 
+    // Set by the map every frame from cameraAltitude and fsrMaxHeight: whether the camera is low enough for FSR.
+    bool cameraFsrLow = true;
+
     float effectiveFarPlaneForCulling() const {
         return cameraGrounded ? farPlaneForCulling : farPlaneForCullingAir;
     }
@@ -175,6 +181,10 @@ public:
         const float ground = minM2ScreenPercent > MinM2ScreenPercentFloor ? minM2ScreenPercent : MinM2ScreenPercentFloor;
         const float air = minM2ScreenPercentAir > MinM2ScreenPercentFloor ? minM2ScreenPercentAir : MinM2ScreenPercentFloor;
         return cameraGrounded ? ground : air;
+    }
+    // Whether FSR is wanted this frame: fsrUpscaling on and, unless fsrMaxHeight is off, the camera low.
+    bool effectiveFsrUpscaling() const {
+        return fsrUpscaling && (fsrMaxHeight <= 0 || cameraFsrLow);
     }
     // The band's top as a multiple of the percent: M2CullFadeBand with m2CullFade on, and 1, no band, with it off.
     float effectiveM2CullFadeBand() const {
