@@ -61,7 +61,7 @@ struct MapRenderPlan {
     bool hasSelectedAABB = false;
     CAaBox selectedAABB;
 
-    // Result of a passive "hover peek" pick (e.g. GameObject nameplates) — same readback
+    // Result of a passive "hover peek" pick — same readback
     // mechanism as hasSelectedM2/selectedWMO above, but kept separate so hovering doesn't
     // change the actual selection (and therefore doesn't trigger the selection AABB highlight).
     bool hasHoveredM2 = false;

@@ -71,8 +71,6 @@ public:
     // threads read the set while the command thread replaces it, so both go through activeSpawnEventsLock.
     std::unordered_set<int> activeSpawnEvents;
     mutable std::shared_mutex activeSpawnEventsLock;
-    bool showGameObjectNameplates = false;
-    bool showGameObjectNameplatesForAll = false;
     bool renderBSP = false;
     bool renderPortals = false;
     bool renderAntiPortals = false;

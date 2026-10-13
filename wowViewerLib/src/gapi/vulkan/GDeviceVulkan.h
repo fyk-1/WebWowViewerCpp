@@ -80,9 +80,6 @@ public:
     bool getIsAsynBuffUploadSupported() override {
         return true;
     }
-    bool supportsBindless() override {
-        return m_supportsBindless;
-    }
     bool supportsIndependentBlend() const {
         return m_supportsIndependentBlend;
     }
@@ -464,7 +461,6 @@ protected:
     int uniformBufferOffsetAlign = -1;
     int ssboBufferOffsetAlign = -1;
     int maxMultiSample = -1;
-    bool m_supportsBindless = false;
     bool m_supportsConservativeRasterization = false;
     bool m_supportsConditionalRendering = false;
     bool m_supportsIndependentBlend = false;

@@ -4,9 +4,7 @@
 
 #include "MapSceneRenderer.h"
 #include "../../engine/objects/scenes/map.h"
-#include "../../gapi/interface/sortLambda.h"
 #include "../frame/FrameProfile.h"
-#include "../../gapi/interface/FrameContext.h"
 
 std::shared_ptr<MapRenderPlan>
 MapSceneRenderer::processCulling(const std::shared_ptr<FrameInputParams<MapSceneParams>> &frameInputParams) {
@@ -17,29 +15,6 @@ MapSceneRenderer::processCulling(const std::shared_ptr<FrameInputParams<MapScene
 //    }
 
     return mapPlan;
-}
-
-void MapSceneRenderer::collectMeshes(const std::shared_ptr<MapRenderPlan> &renderPlan,
-                                     COpaqueMeshCollector &opaqueMeshCollector,
-                                     const std::shared_ptr<framebased::vector<HGSortableMesh>> &htransparentMeshes,
-                                     const std::shared_ptr<framebased::vector<HGMesh>> &hSkyMeshes) {
-    ZoneScoped;
-
-    // Combined CPU collection used by the forward and bindless renderers.
-    auto &transparentMeshes = *htransparentMeshes;
-
-    transparentMeshes.reserve(30000);
-    hSkyMeshes->reserve(1000);
-
-    collectViewMeshes(renderPlan, opaqueMeshCollector, transparentMeshes, true);
-    collectM2MeshesCpu(renderPlan, opaqueMeshCollector, transparentMeshes);
-    collectSkyMeshes(renderPlan, *hSkyMeshes);
-
-    //No need to sort array which has only one element
-    if (transparentMeshes.size() > 1) {
-        ZoneScopedN("sort transparent");
-        std::sort(transparentMeshes.begin(), transparentMeshes.end(), SortMeshes);
-    }
 }
 
 void MapSceneRenderer::collectViewMeshes(const std::shared_ptr<MapRenderPlan> &renderPlan,
@@ -67,60 +42,10 @@ void MapSceneRenderer::collectViewMeshes(const std::shared_ptr<MapRenderPlan> &r
     }
 }
 
-void MapSceneRenderer::collectM2MeshesCpu(const std::shared_ptr<MapRenderPlan> &renderPlan,
-                                          COpaqueMeshCollector &opaqueMeshCollector,
-                                          framebased::vector<HGSortableMesh> &transparentMeshes) {
-    ZoneScopedN("collect m2s");
-
-    if (!m_config->renderM2) return;
-
-    auto threadsAvailable = m_config->hardwareThreadCount();
-    auto &m2ToDraw = renderPlan->m2Array.getDrawn();
-    int granSize = m2ToDraw.size() / (2 * threadsAvailable);
-
-    if (granSize > 0) {
-        std::mutex mergeMtx;
-        auto processingFrame = FrameContext::getCurrentProcessingFrameNumber();
-        oneapi::tbb::task_arena arena(std::min<uint32_t>(threadsAvailable, 16), 1);
-        arena.execute([&] {
-            tbb::static_partitioner ap;
-
-            tbb::parallel_for(tbb::blocked_range<size_t>(0, m2ToDraw.size(), granSize),
-                              [&](tbb::blocked_range<size_t> r) {
-                                  FrameContext::setCurrentProcessingFrameNumber(processingFrame);
-                                  transp_vec<HGSortableMesh> transpVec;
-                                  auto lCollector = opaqueMeshCollector.clone();
-                                  for (size_t i = r.begin(); i != r.end(); ++i) {
-                                      auto *m2Object = m2Factory->getObjectById<0>(m2ToDraw[i]);
-                                      if (m2Object != nullptr) {
-                                          m2Object->collectMeshes(*lCollector, transpVec);
-                                          m2Object->drawParticles(*lCollector, transpVec);
-                                      }
-                                  }
-
-                                  {
-                                      std::lock_guard<std::mutex> lock(mergeMtx);
-                                      opaqueMeshCollector.merge(*lCollector);
-                                      transparentMeshes.insert(transparentMeshes.end(), transpVec.begin(), transpVec.end());
-                                  }
-                                  delete lCollector;
-
-                              }, ap);
-        });
-    } else {
-        for (auto m2ObjectId : m2ToDraw) {
-            auto m2Object = m2Factory->getObjectById<0>(m2ObjectId);
-            if (m2Object == nullptr) continue;
-            m2Object->collectMeshes(opaqueMeshCollector, transparentMeshes);
-            m2Object->drawParticles(opaqueMeshCollector, transparentMeshes);
-        }
-    }
-}
-
 void MapSceneRenderer::collectM2ProjectiveMeshes(const std::shared_ptr<MapRenderPlan> &renderPlan,
                                                  COpaqueMeshCollector &opaqueMeshCollector) {
     // Decal/projective meshes aren't part of the GPU-indirect draw path, so they are
-    // collected here on the CPU, same as the bindless renderer does for all M2 meshes.
+    // collected here on the CPU.
     if (!m_config->renderM2 || !m_config->renderM2Decals) return;
 
     ZoneScopedN("collect m2 decals");

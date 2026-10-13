@@ -14,7 +14,6 @@
 #include "../../../gapi/vulkan/buffers/GBufferChunkDynamicVLK.h"
 #include "../../../gapi/vulkan/buffers/GBufferChunkDynamicVersionedVLK.h"
 #include "../../frame/FrameProfile.h"
-#include "view/RenderViewForwardVLK.h"
 #include "../../../gapi/vulkan/commandBuffer/commandBufferRecorder/CommandBufferRecorder_inline.h"
 #include <future>
 
@@ -218,8 +217,8 @@ static const ShaderConfig liquidBindlessDepthShaderConfig = {
     }};
 
 static const ShaderConfig aabbDebugShaderConfig = {
-    "deferred/debug",
-    "deferred/debug",
+    "bindless/debug",
+    "bindless/debug",
     {
         {0, SceneDataSetConfig},
         {1, {
@@ -3102,7 +3101,7 @@ void MapSceneRenderBindlessVLK::LiquidDataBindlessVLK<T>::updateAnimatedTextures
     if (m_bindlessTargets.empty() || m_texturesDS == nullptr) return;
 
     // Resolve the 9 texture slots once — shared by every material record of this liquid data.
-    // Slot layout matches the deferred per-type descriptor sets (LiquidDataForwardVLK):
+    // Slot layout:
     // slots 0-6 = resolved animated textures, 7 = extraTexture2, 8 = extraTexture3
     int texIndices[9];
     {

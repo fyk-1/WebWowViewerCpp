@@ -67,15 +67,15 @@ public:
     virtual HGVertexBufferBindings createM2VAO(HGVertexBuffer vertexBuffer, HGIndexBuffer indexBuffer) = 0;
     virtual HGVertexBufferBindings createM2ParticleVAO(HGVertexBuffer vertexBuffer, HGIndexBuffer indexBuffer) = 0;
     // Pull-model particle VAO for the GPU particle path: index buffer only, no vertex
-    // buffers (the vertex shader pulls particle data from SSBOs). Null when unsupported.
-    virtual HGVertexBufferBindings createM2ParticleGpuVAO(HGIndexBuffer indexBuffer) { return nullptr; }
+    // buffers (the vertex shader pulls particle data from SSBOs).
+    virtual HGVertexBufferBindings createM2ParticleGpuVAO(HGIndexBuffer indexBuffer) = 0;
     virtual HGVertexBufferBindings createM2RibbonVAO(HGVertexBuffer vertexBuffer, HGIndexBuffer indexBuffer) = 0;
     // Pull-model ribbon VAO for the GPU ribbon path: index buffer only, no vertex
-    // buffers (the vertex shader reads the ribbon edge SSBO). Null when unsupported.
-    virtual HGVertexBufferBindings createM2RibbonGpuVAO(HGIndexBuffer indexBuffer) { return nullptr; }
+    // buffers (the vertex shader reads the ribbon edge SSBO).
+    virtual HGVertexBufferBindings createM2RibbonGpuVAO(HGIndexBuffer indexBuffer) = 0;
     // Per-ribbon GPU index buffer chunk in the renderer's GPU-writable index pool
-    // (the ribbon sim rewrites its content per frame). Null when unsupported.
-    virtual std::shared_ptr<IBuffer> createM2RibbonGpuIndexBuffer(int32_t edgeCount) { return nullptr; }
+    // (the ribbon sim rewrites its content per frame). Null while the GPU animation path is disabled.
+    virtual std::shared_ptr<IBuffer> createM2RibbonGpuIndexBuffer(int32_t edgeCount) = 0;
     virtual HGVertexBufferBindings createWaterVAO(HGVertexBuffer vertexBuffer, HGIndexBuffer indexBuffer) = 0;
     virtual HGVertexBufferBindings createSkyVAO(HGVertexBuffer vertexBuffer, HGIndexBuffer indexBuffer) = 0;
     virtual HGVertexBufferBindings createPortalVAO(HGVertexBuffer vertexBuffer, HGIndexBuffer indexBuffer) = 0;
@@ -113,8 +113,8 @@ public:
 
     virtual std::shared_ptr<IM2ModelData> createM2ModelMat(int bonesCount, int m2ColorsCount, int textureWeightsCount, int textureMatricesCount, uint32_t objectId = 0) = 0;
 
-    // GPU M2 animation path (bindless Vulkan renderer only).
-    // supportsM2GpuAnimation() reports availability; createM2GpuAnimData allocates
+    // GPU M2 animation path.
+    // supportsM2GpuAnimation() reports whether it is enabled. createM2GpuAnimData allocates
     // the per-object animation-state slot and sim data. The static track data is
     // shared per source model: modelKey identifies it (the M2Geom pointer — a live
     // track set is always referenced by a live M2Object which keeps its geometry
@@ -123,15 +123,15 @@ public:
     // data (only when no shared track set exists yet).
     // emitterSeeds/emitterRandomizedTextureIndexMasks carry the CPU emitters' RNG
     // state so the GPU sim continues the same streams (empty when no emitters).
-    // Default: unsupported (other backends keep the CPU path).
-    virtual bool supportsM2GpuAnimation() const { return false; }
+    // Null while the path is disabled.
+    virtual bool supportsM2GpuAnimation() const = 0;
     virtual std::shared_ptr<IM2GpuAnimData> createM2GpuAnimData(
         const void *modelKey,
         const std::function<M2GpuTrackPack()> &packBuilder,
         const std::shared_ptr<IM2ModelData> &m2ModelData,
         const std::vector<M2GpuEmitterSeeds> &emitterSeeds,
         const std::vector<int32_t> &emitterRandomizedTextureIndexMasks,
-        const std::vector<std::shared_ptr<IBuffer>> &ribbonGpuIndexBuffers) { return nullptr; }
+        const std::vector<std::shared_ptr<IBuffer>> &ribbonGpuIndexBuffers) = 0;
 
     virtual std::shared_ptr<IM2Material> createM2Material(const std::shared_ptr<IM2ModelData> &m2ModelData,
                                                           const PipelineTemplate &pipelineTemplate,

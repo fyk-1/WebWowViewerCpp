@@ -50,8 +50,6 @@ namespace {
     X(Bool, renderHumanoids) \
     X(Bool, renderGameObjectSpawns) \
     X(IntSet, activeSpawnEvents) \
-    X(Bool, showGameObjectNameplates) \
-    X(Bool, showGameObjectNameplatesForAll) \
     X(Bool, renderBSP) \
     X(Bool, renderPortals) \
     X(Bool, renderAntiPortals) \

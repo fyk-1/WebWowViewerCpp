@@ -7,12 +7,6 @@
 
 
 WorldObjectManager::WorldObjectManager(HApiContainer api, int mapId) : m_api(api), m_mapId(mapId) {
-    std::vector<GameObject*> allObjects;
-    allObjects.reserve(m_gameObjectsById.size());
-    for (auto &[id, gameObject] : m_gameObjectsById) {
-        allObjects.push_back(gameObject.get());
-    }
-    m_bvh.build(allObjects);
 }
 
 std::shared_ptr<PlacedCreature> WorldObjectManager::createCreature(HApiContainer api, const CreatureSpawnRecord &spawn) {
@@ -220,55 +214,12 @@ int WorldObjectManager::getCustomM2IdByM2ObjId(M2ObjId id) const {
     return it != m_customIdByM2Id.end() ? it->second : -1;
 }
 
-std::vector<GameObject*> WorldObjectManager::queryVisible(const MathHelper::FrustumCullingData &frustumData) const {
-    std::vector<GameObject*> visible;
-    m_bvh.queryFrustum(frustumData, visible);
-    return visible;
-}
-
-void WorldObjectManager::cullAndCollect(const MathHelper::FrustumCullingData &frustumData,
-                                        M2ObjectListContainer &m2CandidatesOut,
-                                        WMOListContainer &wmoCandidatesOut) {
-    for (auto *gameObject : queryVisible(frustumData)) {
-        if (gameObject->isWmo()) {
-            wmoCandidatesOut.addCand(gameObject->getWmoObject());
-        } else {
-            m2CandidatesOut.addCandidate(gameObject->getM2Object()->getObjectId());
-        }
-    }
-
-    // Custom M2s aren't in the BVH; submit them all and let Map's exact per-object
-    // culling (and load-state routing) sort them out.
+void WorldObjectManager::cullAndCollect(M2ObjectListContainer &m2CandidatesOut) {
+    // Submit every custom M2 and let Map's exact per-object culling (and load-state
+    // routing) sort them out.
     for (auto &[id, customObject] : m_customM2s) {
         if (customObject.m2Object) {
             m2CandidatesOut.addCandidate(customObject.m2Object->getObjectId());
         }
     }
-}
-
-void WorldObjectManager::getPotentialWmoCandidates(const MathHelper::FrustumCullingData &frustumData, WMOListContainer &potentialWmoOut) {
-    for (auto *gameObject : queryVisible(frustumData)) {
-        if (gameObject->isWmo()) {
-            potentialWmoOut.addCand(gameObject->getWmoObject());
-        }
-    }
-}
-
-HGameObject WorldObjectManager::getGameObjectById(int id) const {
-    auto it = m_gameObjectsById.find(id);
-    return it != m_gameObjectsById.end() ? it->second : nullptr;
-}
-
-HGameObject WorldObjectManager::getGameObjectByM2Id(M2ObjId id) const {
-    auto it = m_gameObjectByM2Id.find(id);
-    if (it == m_gameObjectByM2Id.end()) return nullptr;
-
-    return getGameObjectById(it->second->getId());
-}
-
-HGameObject WorldObjectManager::getGameObjectByWmoId(WMOObjId id) const {
-    auto it = m_gameObjectByWmoId.find(id);
-    if (it == m_gameObjectByWmoId.end()) return nullptr;
-
-    return getGameObjectById(it->second->getId());
 }

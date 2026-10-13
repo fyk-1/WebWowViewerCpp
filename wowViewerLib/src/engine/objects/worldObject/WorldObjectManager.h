@@ -8,8 +8,9 @@
 #include <map>
 #include <unordered_map>
 #include <vector>
-#include "GameObject.h"
-#include "GameObjectBVH.h"
+#include "../m2/m2Object.h"
+#include "../wmo/wmoObject.h"
+#include "../../../include/database/dbStructs.h"
 #include "PlacedCreature.h"
 
 class WmoObject;
@@ -34,35 +35,19 @@ struct CustomM2Object {
     mathfu::mat4 lastPlacementMatrix = mathfu::mat4::Identity();
 };
 
-// Holds client-side world objects for a single map (GameObjects,
-// which spawn either an M2 or a WMO, plus user-placed custom M2s). Created once per
-// opened map and handed to Map, which asks it to contribute BVH-narrowed candidates
-// into the frame's exterior culling pass every frame (Map's existing M2/WMO
-// candidate->drawn machinery does the exact per-object test and load-state routing
-// from there, same as ADT-placed doodads).
+// Holds client-side world objects for a single map: the user-placed custom M2s, and the
+// static factories for the creatures and game objects the spawn rows place. Created once
+// per opened map and handed to Map, which asks it to contribute its candidates into the
+// frame's exterior culling pass every frame (Map's existing M2/WMO candidate->drawn
+// machinery does the exact per-object test and load-state routing from there, same as
+// ADT-placed doodads).
 class WorldObjectManager {
 public:
     WorldObjectManager(HApiContainer api, int mapId);
 
-    // Adds BVH-visible world objects as candidates into m2CandidatesOut/wmoCandidatesOut
-    // (e.g. exteriorView->m2List / mapRenderPlan->wmoArray), mirroring how AdtObject
-    // registers ADT-placed doodads as candidates for the same containers.
-    void cullAndCollect(const MathHelper::FrustumCullingData &frustumData,
-                        M2ObjectListContainer &m2CandidatesOut,
-                        WMOListContainer &wmoCandidatesOut);
-
-    // Adds BVH-visible WMO world objects as "is camera inside" candidates (used by
-    // Map::getPotentialEntities / m_currentWMO detection). A box containing the camera
-    // position always intersects the view frustum, so reusing the frustum-based BVH
-    // query here doesn't miss any WMO the camera could actually be inside.
-    void getPotentialWmoCandidates(const MathHelper::FrustumCullingData &frustumData, WMOListContainer &potentialWmoOut);
-
-    HGameObject getGameObjectById(int id) const;
-
-    // Reverse lookups from a pooled M2ObjId/WMOObjId (e.g. resolved from a GPU pick result)
-    // back to the owning GameObject, if the picked M2/WMO happens to be GameObject-spawned.
-    HGameObject getGameObjectByM2Id(M2ObjId id) const;
-    HGameObject getGameObjectByWmoId(WMOObjId id) const;
+    // Adds the custom M2s as candidates into m2CandidatesOut (e.g. exteriorView->m2List),
+    // mirroring how AdtObject registers ADT-placed doodads as candidates for the same container.
+    void cullAndCollect(M2ObjectListContainer &m2CandidatesOut);
 
     // The creature a CreatureSpawn row places: its model at the row's world position, turned about z by its facing and at its scale,
     // with the row's textures in the model's creature-skin slots 11 to 13. A batch whose first texture slot stays empty, or is a type
@@ -81,9 +66,8 @@ public:
                              const std::vector<std::shared_ptr<WmoObject>> &wmos, bool onlyWhereBounded);
 
     // ---------------- Custom user-placed M2s ----------------
-    // Custom M2s bypass the (build-once, non-refit-capable) GameObjectBVH and are
-    // submitted as exterior M2 candidates every frame; Map's per-object culling then
-    // does the exact frustum test. This keeps add/remove/move cheap (no BVH rebuild).
+    // Custom M2s are submitted as exterior M2 candidates every frame; Map's per-object
+    // culling then does the exact frustum test. This keeps add/remove/move cheap.
 
     // Spawns a new custom M2 and returns its manager-local id, or -1 on invalid input
     // (no api, or neither a model file name nor a valid FileDataID given).
@@ -105,18 +89,11 @@ public:
     int getCustomM2IdByM2ObjId(M2ObjId id) const;
 
 private:
-    std::vector<GameObject*> queryVisible(const MathHelper::FrustumCullingData &frustumData) const;
-
     void spawnCustomM2(CustomM2Object &object);
     void applyCustomM2Placement(CustomM2Object &object, bool updateAABB);
 
     HApiContainer m_api;
     int m_mapId;
-
-    std::unordered_map<int, HGameObject> m_gameObjectsById; // keyed by GameObjectRecord.ID
-    std::unordered_map<M2ObjId, GameObject*> m_gameObjectByM2Id;
-    std::unordered_map<WMOObjId, GameObject*> m_gameObjectByWmoId;
-    GameObjectBVH m_bvh;
 
     std::map<int, CustomM2Object> m_customM2s;
     std::unordered_map<M2ObjId, int> m_customIdByM2Id;

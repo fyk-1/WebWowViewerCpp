@@ -29,7 +29,7 @@ class WorldObjectManager;
 
 class SceneWindow : public std::enable_shared_from_this<SceneWindow> {
 public:
-    SceneWindow(const HApiContainer &api, bool renderToSwapChain, const std::shared_ptr<FrontendUIRenderer> &uiRenderer, bool forceForwardRendering);
+    SceneWindow(const HApiContainer &api, bool renderToSwapChain, const std::shared_ptr<FrontendUIRenderer> &uiRenderer);
     virtual ~SceneWindow();
 
     void openMapByIdAndFilename(int mapId, const std::string &mapName, float x, float y, float z, int timeOverride);
@@ -134,7 +134,6 @@ protected:
 
     std::shared_ptr<FrontendUIRenderer> m_uiRenderer;
 
-    bool m_forceForwardRendering = false;
 
     std::shared_ptr<IRenderView> m_renderView = nullptr;
     std::vector<std::tuple<std::string, std::array<std::shared_ptr<IUIMaterial>, IDevice::MAX_FRAMES_IN_FLIGHT>>> materials = {};

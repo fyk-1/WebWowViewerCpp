@@ -308,10 +308,6 @@ set(SOURCE_FILES
         src/engine/objects/liquid/liquidMaterials/LiquidAzerithe.cpp
         src/engine/objects/liquid/liquidMaterials/LiquidMercury.cpp
         src/engine/objects/liquid/liquidMaterials/LiquidFog.cpp
-        src/engine/objects/worldObject/GameObject.cpp
-        src/engine/objects/worldObject/GameObject.h
-        src/engine/objects/worldObject/GameObjectBVH.cpp
-        src/engine/objects/worldObject/GameObjectBVH.h
         src/engine/objects/worldObject/WorldObjectManager.cpp
         src/engine/objects/worldObject/WorldObjectManager.h
 )
@@ -341,12 +337,8 @@ if (LINK_VULKAN)
             src/gapi/vulkan/GFrameBufferVLK.h
             src/gapi/vulkan/GRenderPassVLK.cpp
             src/gapi/vulkan/GRenderPassVLK.h
-            src/renderer/mapScene/vulkan/MapSceneRenderForwardVLK.cpp
-            src/renderer/mapScene/vulkan/MapSceneRenderForwardVLK.h
             src/renderer/mapScene/vulkan/MapSceneRenderBindlessVLK.cpp
             src/renderer/mapScene/vulkan/MapSceneRenderBindlessVLK.h
-            src/renderer/mapScene/vulkan/MapSceneRenderDeferredVLK.h
-            src/renderer/mapScene/vulkan/MapSceneRenderDeferredVLK.cpp
             src/renderer/mapScene/vulkan/passes/FFXGlowPassVLK.h
             src/renderer/mapScene/vulkan/passes/FFXGlowPassVLK.cpp
             src/gapi/vulkan/buffers/GBufferVLK.cpp
@@ -405,8 +397,6 @@ if (LINK_VULKAN)
             src/gapi/vulkan/buffers/gpu/BufferGpuVLK.cpp
             src/gapi/vulkan/buffers/gpu/BufferGpuVLK.h
             src/gapi/vulkan/commandBuffer/commandBufferRecorder/CommandBufferRecorder_inline.h
-            src/renderer/mapScene/vulkan/view/RenderViewForwardVLK.cpp
-            src/renderer/mapScene/vulkan/view/RenderViewForwardVLK.h
             src/renderer/mapScene/vulkan/view/RenderViewDeferredVLK.cpp
             src/renderer/mapScene/vulkan/view/RenderViewDeferredVLK.h
             src/renderer/mapScene/vulkan/view/VideoRecordingContextVLK.h
@@ -418,16 +408,12 @@ if (LINK_VULKAN)
             src/gapi/vulkan/descriptorSets/bindless/BindlessTextureHolder.cpp
             src/gapi/vulkan/descriptorSets/bindless/BindlessTextureHolder.h
             src/renderer/mapScene/vulkan/view/IRenderViewVLK.h
-            src/renderer/mapScene/vulkan/meshCollectors/OpaqueMeshCollectorForward.h
-            src/renderer/mapScene/vulkan/meshCollectors/OpaqueMeshCollectorDeferred.h
             src/renderer/mapScene/vulkan/indirect/GpuIndirectDrawsVLK.h
             src/renderer/mapScene/vulkan/indirect/GpuIndirectDrawsVLK.cpp
             src/renderer/mapScene/vulkan/GpuM2AnimationVLK.h
             src/renderer/mapScene/vulkan/GpuM2AnimationVLK.cpp
             src/renderer/mapScene/vulkan/indirect/BindlessIndirectDrawsVLK.h
             src/renderer/mapScene/vulkan/indirect/BindlessIndirectDrawsVLK.cpp
-            src/renderer/mapScene/vulkan/liquidData/LiquidDataForwardVLK.cpp
-            src/renderer/mapScene/vulkan/liquidData/LiquidDataForwardVLK.h
             src/renderer/mapScene/vulkan/view/LiquidHiZVLK.h
             src/renderer/mapScene/vulkan/view/LiquidHiZVLK.cpp
             src/renderer/mapScene/vulkan/view/MotionVectorsVLK.h

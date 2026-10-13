@@ -12,7 +12,6 @@
 #include "../materials/IMaterialStructs.h"
 #include "passes/FFXGlowPassVLK.h"
 #include "../../../gapi/vulkan/materials/ISimpleMaterialVLK.h"
-#include "view/RenderViewForwardVLK.h"
 #include "../../../gapi/vulkan/descriptorSets/bindless/BindlessTextureHolder.h"
 #include "view/RenderViewDeferredVLK.h"
 #include "../../../../../wowViewerLib/src/gapi/vulkan/meshes/GMeshVLK.h"

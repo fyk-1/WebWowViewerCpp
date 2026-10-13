@@ -174,7 +174,7 @@ endmacro(configure_filesVLK)
 
 configure_filesVLK(
         "${PROJECT_SOURCE_DIR}/shaders/slang/"
-        "${PROJECT_SOURCE_DIR}/shaders/slang/common;${PROJECT_SOURCE_DIR}/shaders/slang/bindless;${PROJECT_SOURCE_DIR}/shaders/slang/forwardRendering"
+        "${PROJECT_SOURCE_DIR}/shaders/slang/common;${PROJECT_SOURCE_DIR}/shaders/slang/bindless"
         "."
         ".vert.slang;.frag.slang;.comp.slang"
         "slang"

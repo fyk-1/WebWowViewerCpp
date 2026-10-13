@@ -80,11 +80,6 @@ static std::vector<GBufferBinding> adtVertexBufferBinding = {{
     {+adtShader::Attribute::aVertexLighting, 4, GBindingType::GUNSIGNED_BYTE, true, sizeof(AdtVertex), offsetof(AdtVertex, mclv)},
 }};
 
-static std::vector<GBufferBinding> adtVertexBufferLODBinding = {{
-    {+adtLodShader::Attribute::aHeight, 1, GBindingType::GFLOAT, false, 8, 0 },
-    {+adtLodShader::Attribute::aIndex, 1, GBindingType::GFLOAT, false, 8, 4}
-}};
-
 static std::vector<GBufferBinding> drawPortalBindings = {{
      {+drawPortalShader::Attribute::aPosition, 3, GBindingType::GFLOAT, false, 12, 0}, // 0
  }};
@@ -112,22 +107,13 @@ public:
 
     std::shared_ptr<MapRenderPlan> processCulling(const std::shared_ptr<FrameInputParams<MapSceneParams>> &frameInputParams) override;
 
-    void collectMeshes(const std::shared_ptr<MapRenderPlan> &renderPlan,
-                       COpaqueMeshCollector &opaqueMeshCollector,
-                       const std::shared_ptr<framebased::vector<HGSortableMesh>> &htransparentMeshes,
-                       const std::shared_ptr<framebased::vector<HGMesh>> &hSkyMeshes);
-
     // Individual collection steps — renderers compose exactly what their draw path needs.
-    // E.g. the deferred (GPU-indirect) renderer collects view meshes without WMO transparents
+    // E.g. the bindless (GPU-indirect) renderer collects view meshes without WMO transparents
     // (those go through the indirect path), plus projective (decal) meshes and sky meshes.
     void collectViewMeshes(const std::shared_ptr<MapRenderPlan> &renderPlan,
                            COpaqueMeshCollector &opaqueMeshCollector,
                            framebased::vector<HGSortableMesh> &transparentMeshes,
                            bool includeWmoTransparents);
-
-    void collectM2MeshesCpu(const std::shared_ptr<MapRenderPlan> &renderPlan,
-                            COpaqueMeshCollector &opaqueMeshCollector,
-                            framebased::vector<HGSortableMesh> &transparentMeshes);
 
     // Decal/projective meshes aren't part of the GPU-indirect draw path, so GPU-indirect
     // renderers collect them through this CPU-side step.

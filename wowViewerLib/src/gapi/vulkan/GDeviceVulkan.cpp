@@ -220,8 +220,6 @@ std::set<std::string> get_supported_extensions() {
 
 bool vulkanEnableValidationLayers = false;
 
-extern bool forceDisableBindlessSupport = false;
-
 GDeviceVLK::GDeviceVLK(vkCallInitCallback * callback) : m_textureManager(std::make_shared<TextureManagerVLK>(*this)),
                                                         m_descriptorSetUpdater(std::make_shared<GDescriptorSetUpdater>()){
     _putenv("VK_LOADER_DRIVERS_DISABLE=*dzn*");
@@ -1089,11 +1087,13 @@ void GDeviceVLK::createLogicalDevice() {
             indexing_features.runtimeDescriptorArray &&
             indexing_features.descriptorBindingVariableDescriptorCount &&
             indexing_features.descriptorBindingPartiallyBound &&
-            ext_feature.shaderDrawParameters == VK_TRUE &&
-            !forceDisableBindlessSupport;
+            ext_feature.shaderDrawParameters == VK_TRUE;
+    }
 
-        if (!bindless_supported)
-            std::cout << "Bindless is not supported on this device" << std::endl;
+    // The only renderer is the bindless one, so a device without descriptor indexing cannot run it.
+    if (!bindless_supported) {
+        std::cerr << "bindless rendering unsupported: " << deviceProperties.deviceName << std::endl;
+        std::exit(1);
     }
 
     VkPhysicalDeviceFeatures deviceFeatures = {};
@@ -1216,10 +1216,8 @@ void GDeviceVLK::createLogicalDevice() {
 
     VkPhysicalDeviceFeatures2 physical_features2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 
-    // Feature chain used regardless of bindless support. shaderDrawParameters is
-    // required by every shader using gl_InstanceIndex / gl_BaseVertex / gl_DrawID
-    // (SPIR-V DrawParameters capability) — that covers most forward and light
-    // shaders, not only the bindless ones (VUID-VkShaderModuleCreateInfo-pCode-08740).
+    // shaderDrawParameters is required by every shader using gl_InstanceIndex / gl_BaseVertex / gl_DrawID
+    // (SPIR-V DrawParameters capability), which covers most scene shaders (VUID-VkShaderModuleCreateInfo-pCode-08740).
     void *featuresChain = nullptr;
     if (m_supportsConditionalRendering) {
         featuresChain = &conditionalRenderingFeatures;
@@ -1241,30 +1239,19 @@ void GDeviceVLK::createLogicalDevice() {
         featuresChain = &fsrSubgroupSizeFeatures;
     }
 
-    if ( bindless_supported ) {
-        // This should be already set to VK_TRUE, as we queried before.
-        indexing_features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
-        indexing_features.descriptorBindingVariableDescriptorCount = VK_TRUE;
-        indexing_features.descriptorBindingPartiallyBound = VK_TRUE;
-        indexing_features.runtimeDescriptorArray = VK_TRUE;
+    // This should be already set to VK_TRUE, as we queried before.
+    indexing_features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    indexing_features.descriptorBindingVariableDescriptorCount = VK_TRUE;
+    indexing_features.descriptorBindingPartiallyBound = VK_TRUE;
+    indexing_features.runtimeDescriptorArray = VK_TRUE;
 
-        indexing_features.pNext = featuresChain;
+    indexing_features.pNext = featuresChain;
 
-        physical_features2.pNext = &indexing_features;
-        physical_features2.features = deviceFeatures;
+    physical_features2.pNext = &indexing_features;
+    physical_features2.features = deviceFeatures;
 
-        createInfo.pEnabledFeatures = nullptr;
-        createInfo.pNext = &physical_features2;
-
-        m_supportsBindless = true;
-   } else if (featuresChain != nullptr) {
-        physical_features2.pNext = featuresChain;
-        physical_features2.features = deviceFeatures;
-        createInfo.pEnabledFeatures = nullptr;
-        createInfo.pNext = &physical_features2;
-    } else {
-        createInfo.pEnabledFeatures = &deviceFeatures;
-    }
+    createInfo.pEnabledFeatures = nullptr;
+    createInfo.pNext = &physical_features2;
 
     if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
         throw std::runtime_error("failed to create logical device!");

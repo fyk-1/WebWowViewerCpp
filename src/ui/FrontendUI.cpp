@@ -28,7 +28,7 @@ FrontendUI::FrontendUI(HApiContainer api, const std::string &databaseFile) {
     this->createDatabaseHandler();
     m_uiRenderer = FrontendUIRendererFactory::createForwardRenderer(m_api->hDevice);
 
-    m_backgroundScene = std::make_shared<SceneWindow>(api, true, m_uiRenderer, false);
+    m_backgroundScene = std::make_shared<SceneWindow>(api, true, m_uiRenderer);
 
     // Load the saved CASC storages, with the callback that opens one
     m_cascStorageDialog = std::make_shared<CascStorageDialog>(

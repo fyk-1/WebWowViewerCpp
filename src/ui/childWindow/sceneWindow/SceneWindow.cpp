@@ -114,8 +114,8 @@ inline HMapSceneParams createMapSceneParams(const HApiContainer &apiContainer,
     return result;
 }
 
-SceneWindow::SceneWindow(const HApiContainer &api, bool renderToSwapChain, const std::shared_ptr<FrontendUIRenderer> &uiRenderer, bool forceForwardRendering) :
-    m_api(api), m_renderToSwapChain(renderToSwapChain), m_uiRenderer(uiRenderer), m_forceForwardRendering(forceForwardRendering)
+SceneWindow::SceneWindow(const HApiContainer &api, bool renderToSwapChain, const std::shared_ptr<FrontendUIRenderer> &uiRenderer) :
+    m_api(api), m_renderToSwapChain(renderToSwapChain), m_uiRenderer(uiRenderer)
 {
 
 }
@@ -181,7 +181,7 @@ void SceneWindow::openMapByIdAndWDTId(int mapId, int wdtFileId, float x, float y
 
     m_mapId = mapId;
 
-    m_sceneRenderer = MapSceneRendererFactory::createForwardRenderer(m_api->hDevice, m_forceForwardRendering, m_api->getConfig());
+    m_sceneRenderer = MapSceneRendererFactory::createRenderer(m_api->hDevice, m_api->getConfig());
     auto mapScene = std::make_shared<Map>(createNewApiContainer(), mapId, wdtFileId);
     mapScene->setWorldObjectManager(std::make_shared<WorldObjectManager>(createNewApiContainer(), mapId));
     m_currentScene = mapScene;
@@ -197,7 +197,7 @@ void SceneWindow::openMapByIdAndWDTId(int mapId, int wdtFileId, float x, float y
 void SceneWindow::openM2SceneByfdid(int m2Fdid, const std::vector<int> &replacementTextureIds, float size) {
     unload();
 
-    m_sceneRenderer = MapSceneRendererFactory::createForwardRenderer(m_api->hDevice, m_forceForwardRendering, m_api->getConfig());
+    m_sceneRenderer = MapSceneRendererFactory::createRenderer(m_api->hDevice, m_api->getConfig());
     auto m2Scene = std::make_shared<M2Scene>(createNewApiContainer(), m2Fdid);
     m_currentScene = m2Scene;
     m2Scene->setReplaceTextureArray(m_sceneRenderer, replacementTextureIds);
@@ -222,7 +222,7 @@ void SceneWindow::openM2SceneByfdid(int m2Fdid, const std::vector<int> &replacem
 void SceneWindow::openM2SceneByName(const std::string &m2FileName, const std::vector<int> &replacementTextureIds) {
     unload();
 
-    m_sceneRenderer = MapSceneRendererFactory::createForwardRenderer(m_api->hDevice, m_forceForwardRendering, m_api->getConfig());
+    m_sceneRenderer = MapSceneRendererFactory::createRenderer(m_api->hDevice, m_api->getConfig());
 
     auto m2Scene = std::make_shared<M2Scene>(createNewApiContainer(), m2FileName);
     m_currentScene = m2Scene;
@@ -246,7 +246,7 @@ void SceneWindow::openM2SceneByName(const std::string &m2FileName, const std::ve
 void SceneWindow::openWMOSceneByfdid(int WMOFdid) {
     unload();
 
-    m_sceneRenderer = MapSceneRendererFactory::createForwardRenderer(m_api->hDevice, m_forceForwardRendering, m_api->getConfig());
+    m_sceneRenderer = MapSceneRendererFactory::createRenderer(m_api->hDevice, m_api->getConfig());
     m_currentScene = std::make_shared<WmoScene>(createNewApiContainer(), WMOFdid);
 
     m_camera = std::make_shared<FirstPersonCamera>();
@@ -255,7 +255,7 @@ void SceneWindow::openWMOSceneByfdid(int WMOFdid) {
 void SceneWindow::openWMOSceneByFilename(const std::string &wmoFileName) {
     unload();
 
-    m_sceneRenderer = MapSceneRendererFactory::createForwardRenderer(m_api->hDevice, m_forceForwardRendering, m_api->getConfig());
+    m_sceneRenderer = MapSceneRendererFactory::createRenderer(m_api->hDevice, m_api->getConfig());
     m_currentScene = std::make_shared<WmoScene>(createNewApiContainer(), wmoFileName);
 
     m_camera = std::make_shared<FirstPersonCamera>();
@@ -267,7 +267,7 @@ void SceneWindow::openMapByIdAndFilename(int mapId, const std::string &mapName, 
 
     m_mapId = mapId;
 
-    m_sceneRenderer = MapSceneRendererFactory::createForwardRenderer(m_api->hDevice, m_forceForwardRendering, m_api->getConfig());
+    m_sceneRenderer = MapSceneRendererFactory::createRenderer(m_api->hDevice, m_api->getConfig());
     auto mapScene = std::make_shared<Map>(createNewApiContainer(), mapId, mapName);
     mapScene->setWorldObjectManager(std::make_shared<WorldObjectManager>(createNewApiContainer(), mapId));
     m_currentScene = mapScene;

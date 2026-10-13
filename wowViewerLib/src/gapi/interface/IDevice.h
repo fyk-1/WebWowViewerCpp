@@ -172,7 +172,6 @@ class IDevice {
         virtual void initialize() = 0;
 
         virtual bool getIsAsynBuffUploadSupported() = 0;
-        virtual bool supportsBindless() {return false;};
         // Whether object-id selection (picking) is supported.
         // Vulkan: requires the independentBlend feature for the non-blended object-id attachment
         virtual bool supportsSelection() {return true;};

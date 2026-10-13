@@ -472,10 +472,6 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
         //Hack that is needed to get the current WMO the camera is in. Basically it does frustum culling over current ADT
         getPotentialEntities(frustumData, cameraPos, mapRenderPlan, potentialM2, potentialWmo);
 
-        if (m_worldObjectManager) {
-            m_worldObjectManager->getPotentialWmoCandidates(frustumData, potentialWmo);
-        }
-
         float bottomBorder = -99999;
 
         //Get bottom border from ADT
@@ -836,7 +832,7 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
 
     if (m_worldObjectManager) {
         ZoneScopedN("world objects candidates");
-        m_worldObjectManager->cullAndCollect(frustumData, exteriorView->m2List, mapRenderPlan->wmoArray);
+        m_worldObjectManager->cullAndCollect(exteriorView->m2List);
     }
 
     //Frustum cull
