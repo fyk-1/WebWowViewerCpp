@@ -782,6 +782,21 @@ void MapSceneRenderBindlessVLK::createWeatherMaterials() {
             })
             .toMaterial();
     };
+    // The road recorder's ghost line: two records for each segment, drawn as lines through the bolts' index buffer.
+    m_roadLinesBuffer = m_device->createSSBOBuffer("Scene_SSBO_RoadLines", sizeof(mathfu::vec4_packed) * 2 * RoadLines::MaxSegments,
+                                                   sizeof(mathfu::vec4_packed));
+    allBuffers.push_back(m_roadLinesBuffer);
+    static const PipelineTemplate s_roadLinePipeline = {
+        DrawElementMode::LINE,
+        false,
+        true,
+        EGxBlendEnum::GxBlend_Alpha,
+        true,
+        false,
+        0xFF
+    };
+    m_roadLineMat = build("roadLine", m_drawBoltVao, s_roadLinePipeline, m_roadLinesBuffer);
+
     m_weatherMat = build("weather", m_drawWeatherVao, s_particlePipeline, m_weatherBuffer);
     m_boltMat = build("lightningBolt", m_drawBoltVao, s_boltPipeline, m_lightningBuffer);
     m_flashMat = build("lightningFlash", m_drawWeatherVao, s_flashPipeline, m_lightningBuffer);
@@ -838,6 +853,19 @@ MapSceneRenderBindlessVLK::WeatherFrame MapSceneRenderBindlessVLK::updateWeather
     if (frame.flash || frame.boltLinks > 0) {
         m_lightningBuffer->uploadData(records.data(), (int) (records.size() * sizeof(mathfu::vec4_packed)));
     }
+
+    // The road recorder's ghost line: the baked roads within 500 yards of the camera, and the running take.
+    m_config->roadLines->gather(renderingMatricesAndSizes[0].renderingMat->cameraPos.xyz(), 500.0f, m_roadSegments);
+    if (!m_roadSegments.empty()) {
+        std::vector<mathfu::vec4_packed> lines;
+        lines.reserve(2 * m_roadSegments.size());
+        for (const auto &segment : m_roadSegments) {
+            lines.push_back(record(segment.from.x, segment.from.y, segment.from.z, segment.kind));
+            lines.push_back(record(segment.to.x, segment.to.y, segment.to.z, 0));
+        }
+        m_roadLinesBuffer->uploadData(lines.data(), (int) (lines.size() * sizeof(mathfu::vec4_packed)));
+        frame.roadSegments = (uint32_t) m_roadSegments.size();
+    }
     return frame;
 }
 
@@ -861,6 +889,11 @@ void MapSceneRenderBindlessVLK::drawWeather(CmdBufRecorder &frameBufCmd, const W
         frameBufCmd.bindVertexBindings(m_drawWeatherVao);
         frameBufCmd.bindMaterial(m_flashMat);
         frameBufCmd.drawIndexed(6, 1, 0, 0, 0);
+    }
+    if (weatherFrame.roadSegments > 0) {
+        frameBufCmd.bindVertexBindings(m_drawBoltVao);
+        frameBufCmd.bindMaterial(m_roadLineMat);
+        frameBufCmd.drawIndexed(2, weatherFrame.roadSegments, 0, 0, 0);
     }
 }
 
@@ -2763,7 +2796,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                         l_this->m_pickResultIsHoverPeek[pickFrameNum] = frameInputParams->frameParameters->pickIsHoverPeek;
                     }
 
-                    if (weatherFrame.particles > 0 || weatherFrame.boltLinks > 0 || weatherFrame.flash) {
+                    if (weatherFrame.particles > 0 || weatherFrame.boltLinks > 0 || weatherFrame.flash || weatherFrame.roadSegments > 0) {
                         auto debugHelper = frameBufCmd.beginDebugLabel("Weather Pass", {0.5f, 0.5f, 1.0f});
                         auto passHelper = currentView->beginForwardPass(frameBufCmd, false, false,
                                                                         frameInputParams->frameParameters->clearColor, false);

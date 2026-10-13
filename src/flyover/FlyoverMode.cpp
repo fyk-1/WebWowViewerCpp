@@ -496,6 +496,12 @@ void FlyoverMode::parseLine(const std::string &rawLine, CommandQueue &queue) {
         }
     } else if (word == "dump") {
         post(queue, {CommandType::Dump, "", rest});
+    } else if (word == "roadlines") {
+        post(queue, {CommandType::RoadLines, "", rest});
+    } else if (word == "take") {
+        post(queue, {CommandType::Take, "", rest});
+    } else if (word == "posinterval") {
+        post(queue, {CommandType::PosInterval, "", rest});
     } else if (word == "quit") {
         post(queue, {CommandType::Quit, "", ""});
     } else {
@@ -603,9 +609,62 @@ void FlyoverMode::apply(const Command &command) {
                 takeDump(command.text);
             }
             break;
+        case CommandType::RoadLines:
+            applyRoadLines(command.text);
+            break;
+        case CommandType::Take: {
+            auto &lines = *m_api->getConfig()->roadLines;
+            float x = 0, y = 0, z = 0;
+            if (command.text == "clear") {
+                lines.clearTake();
+            } else if (std::sscanf(command.text.c_str(), "%f %f %f", &x, &y, &z) != 3) {
+                emitError("take", "expected clear, or three numbers, a world x, y and z");
+            } else {
+                lines.addTakePoint(mathfu::vec3(x, y, z));
+            }
+            break;
+        }
+        case CommandType::PosInterval: {
+            char *end = nullptr;
+            double ms = std::strtod(command.text.c_str(), &end);
+            if (command.text.empty() || end != command.text.c_str() + command.text.size() || !(ms >= 20 && ms <= 5000)) {
+                emitError("posinterval", "expected milliseconds, 20 to 5000");
+            } else {
+                m_posInterval = ms / 1000.0;
+                m_nextPosReport = 0;
+            }
+            break;
+        }
         case CommandType::Quit:
             glfwSetWindowShouldClose(m_window, GLFW_TRUE);
             break;
+    }
+}
+
+void FlyoverMode::applyRoadLines(const std::string &file) {
+    auto &lines = *m_api->getConfig()->roadLines;
+    if (file == "none") {
+        lines.clearRoads();
+        return;
+    }
+    try {
+        std::ifstream in(file, std::ios::binary);
+        if (!in) {
+            emitError("roadlines", "cannot open " + file);
+            return;
+        }
+        json document = json::parse(in);
+        std::vector<std::vector<mathfu::vec3>> roads;
+        for (const auto &line : document.at("lines")) {
+            std::vector<mathfu::vec3> points;
+            for (size_t i = 0; i + 2 < line.size(); i += 3) {
+                points.emplace_back(line[i].get<float>(), line[i + 1].get<float>(), line[i + 2].get<float>());
+            }
+            roads.push_back(std::move(points));
+        }
+        lines.setRoads(roads);
+    } catch (const std::exception &e) {
+        emitError("roadlines", e.what());
     }
 }
 
@@ -801,6 +860,7 @@ void FlyoverMode::update() {
             m_readySent = true;
             m_nextAreaSample = now;
             m_nextDistanceReport = now + 0.5;
+            m_nextPosReport = now + 0.5;
         }
         return;
     }
@@ -820,6 +880,11 @@ void FlyoverMode::update() {
         char text[64];
         std::snprintf(text, sizeof(text), "flyover d %.1f", m_path ? m_path->getDistance() : 0.0f);
         emit(text);
+    }
+
+    if (now >= m_nextPosReport) {
+        m_nextPosReport = now + m_posInterval;
+        char text[64];
         // The camera in use, path or free, as world x and y, its heading over the ground, and its z.
         std::shared_ptr<ICamera> camera = m_isFree && m_free ? std::static_pointer_cast<ICamera>(m_free) : std::static_pointer_cast<ICamera>(m_path);
         if (camera) {

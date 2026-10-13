@@ -10,6 +10,11 @@
 // `--db <file>` (also `--db=<file>`) opens that SQLite file as the client database instead of `./export.db3`.
 // A file that is missing or fails to open exits 2 before any window exists.
 //
+// The road recorder's ghost line, on stdin: `roadlines <file.json>` replaces the baked roads drawn around the camera with the file's
+// `{"lines": [[x, y, z, x, y, z, ...], ...]}`, one flat polyline each, and `roadlines none` removes them; `take <x> <y> <z>` adds a
+// point to the take drawn in another colour, and `take clear` empties it. `posinterval <ms>` sets how often `pos` is sent, 500 at
+// the start. See RoadLines.h.
+//
 // `dump <file.png>` on stdin writes the next frame drawn to that PNG and answers with one `flyover dump {json}` line,
 // the viewer's side of a debug dump: see FlyoverMode.cpp. F12 in the viewer's window sends `flyover dumpkey`, which the
 // host answers with that command.
@@ -88,7 +93,7 @@ public:
     // The F12 key.
     void requestDump();
 private:
-    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, ModeToggle, Look, Move, FreeSpeed, Route, Config, ConfigDump, Dump, Quit };
+    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, ModeToggle, Look, Move, FreeSpeed, Route, Config, ConfigDump, Dump, RoadLines, Take, PosInterval, Quit };
     struct Command {
         CommandType type;
         std::string name;
@@ -113,6 +118,7 @@ private:
     bool sameRoute(const FlyoverRoute &route) const;
     void applyConfig(const std::string &name, const std::string &value);
     void setMode(bool free, bool announce);
+    void applyRoadLines(const std::string &file);
     void takeDump(const std::string &pngFile);
     void finishDump(const std::string &pngFile, FrameCapture &&capture);
 
@@ -140,6 +146,9 @@ private:
     int m_framesWithPlan = 0;
     double m_nextAreaSample = 0;
     double m_nextDistanceReport = 0;
+    double m_nextPosReport = 0;
+    // Seconds between `pos` lines.
+    double m_posInterval = 0.5;
     int m_lastAreaId = 0;
     int m_lastParentAreaId = 0;
     bool m_areaReported = false;

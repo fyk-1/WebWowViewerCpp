@@ -348,6 +348,8 @@ protected:
         uint32_t particles = 0;
         uint32_t boltLinks = 0;
         bool flash = false;
+        // The segments of the road recorder's ghost line, which the weather pass draws after the weather.
+        uint32_t roadSegments = 0;
     };
     WeatherSim m_weather;
     int m_weatherIndoors = -1;
@@ -360,6 +362,9 @@ protected:
     std::shared_ptr<ISimpleMaterialVLK> m_weatherMat;
     std::shared_ptr<ISimpleMaterialVLK> m_boltMat;
     std::shared_ptr<ISimpleMaterialVLK> m_flashMat;
+    HGBufferVLK m_roadLinesBuffer;
+    std::shared_ptr<ISimpleMaterialVLK> m_roadLineMat;
+    std::vector<RoadLines::Segment> m_roadSegments;
 
     void createWeatherMaterials();
     WeatherFrame updateWeather(const std::shared_ptr<MapRenderPlan> &framePlan,

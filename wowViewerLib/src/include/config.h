@@ -12,6 +12,7 @@
 #include <thread>
 #include <mathfu/glsl_mappings.h>
 #include "../renderer/mapScene/FrameDependentData.h"
+#include "../renderer/mapScene/roadLines/RoadLines.h"
 
 constexpr float DEFAULT_FOV_VALUE = 53.9726294579437f;
 
@@ -211,6 +212,8 @@ public:
     // How much of it falls, from 0 to 1: the share of the particles WoWee's weather draws at most, and in a storm how
     // often lightning strikes.
     float weatherIntensity = 0.5f;
+    // The road recorder's ghost line, drawn in the weather pass: the baked roads near the camera and the running take. Empty draws nothing.
+    std::shared_ptr<RoadLines> roadLines = std::make_shared<RoadLines>();
     // Set by the host when the camera jumps, so the next FSR dispatch drops its history. The renderer clears it.
     bool fsrResetRequested = false;
 
