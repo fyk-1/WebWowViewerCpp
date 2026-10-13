@@ -1,4 +1,4 @@
-# flyover-viewer
+# Wowely-Planet-Farseer
 
 A flyover-only build of [Deamon87/WebWowViewerCpp](https://github.com/Deamon87/WebWowViewerCpp), made for the Wowely Planet host. The branch `flyover-decruft` keeps the map renderer, the CASC and database readers, and the stdout protocol the host speaks. The model viewer, the map editor, the exporters, the OpenGL backends and the web build are gone.
 
@@ -6,7 +6,7 @@ Upstream ships no license file, and this fork adds none. The third-party code it
 
 ## Running
 
-The executable is `flyover-viewer.exe`. It needs `export.db3` (the client database) and `cascStorages.json` (the list of WoW installs, first entry wins) in its working directory, and prints its usage and exits without `--flyover`.
+The executable is `Wowely-Planet-Farseer.exe`. It needs `export.db3` (the client database) and `cascStorages.json` (the list of WoW installs, first entry wins) in its working directory, and prints its usage and exits without `--flyover`.
 
 | Argument | Effect |
 | --- | --- |
@@ -23,6 +23,6 @@ Prerequisites:
 - The Vulkan SDK, whose `slangc` compiles the shaders
 - Git, with the submodules fetched by `git submodule update --init --recursive`
 
-The host repository keeps three scripts for this fork in `Modules\Flyover\Viewer\`: `configure-decruft.bat`, `build-decruft.bat` and `run-decruft.ps1`. They configure into `build-decruft\`, build the `flyover-viewer` target, install into `install-decruft\`, and run a one-point route that passes when the viewer reports its first map area.
+The host repository keeps three scripts for this fork in `Modules\Flyover\Viewer\`: `configure-decruft.bat`, `build-decruft.bat` and `run-decruft.ps1`. They configure into `build-decruft\`, build the `Wowely-Planet-Farseer` target, install into `install-decruft\`, and run a one-point route that passes when the viewer reports its first map area.
 
 Tracy, the profiler, stays in the tree and is off by default. Configure with `-DFLYOVER_TRACY=ON` for a profiling build.

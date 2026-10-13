@@ -352,7 +352,7 @@ int main(int argc, char *argv[]) {
     }
     int exitCode = 0;
     if (!flyoverRequested) {
-        std::cerr << "usage: flyover-viewer --flyover <route.json> | --list-gpus" << std::endl;
+        std::cerr << "usage: Wowely-Planet-Farseer --flyover <route.json> | --list-gpus" << std::endl;
         return 2;
     }
 
@@ -386,7 +386,7 @@ std::ios_base::Init a;
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
-    auto window = glfwCreateWindow(windowWidth, windowHeight, "flyover-viewer", nullptr, nullptr);
+    auto window = glfwCreateWindow(windowWidth, windowHeight, "Wowely-Planet-Farseer", nullptr, nullptr);
 
 #ifdef LINK_VULKAN
     vkCallInitCallback callback;
