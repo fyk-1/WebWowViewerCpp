@@ -501,7 +501,31 @@ std::ios_base::Init a;
     }
 
 //try {
+    // The shortest a frame takes: a frame-rate cap sleeps out the rest of its frame time; uncapped keeps a 5 ms floor.
+    auto minFrameMs = [&]() {
+        double frameRateCap = apiContainer->getConfig()->frameRateCap;
+        return frameRateCap > 0 ? std::max(5.0, 1000.0 / frameRateCap) : 5.0;
+    };
+    bool resumedFromStill = false;
     while (!glfwWindowShouldClose(window)) {
+        /*
+        robots@Impl: A still viewer (FlyoverMode::isStill) draws, presents and sleeps on nothing: it waits on the window's events,
+        which the stdin thread also ends (FlyoverMode::post), and runs the mode's update for its commands and reports. The wait
+        is capped at STILL_WAIT_SECONDS so the reports keep their pace and a close request is seen. The resumed frame takes one
+        frame interval as its delta, not the time spent still, so animation and the free camera carry on from where they stood.
+        */
+        bool updated = false;
+        if (flyoverMode && flyoverMode->isStill()) {
+            constexpr double STILL_WAIT_SECONDS = 0.1;
+            glfwWaitEventsTimeout(STILL_WAIT_SECONDS);
+            if (windowSizeChanged) flyoverMode->wake();
+            flyoverMode->update();
+            updated = true;
+            lastFrame = glfwGetTime();
+            if (flyoverMode->isStill()) continue;
+            resumedFromStill = true;
+        }
+
         frontendUI->newFrame();
         stopMouse = frontendUI->getStopMouse();
         stopKeyboard = frontendUI->getStopKeyboard();
@@ -511,9 +535,13 @@ std::ios_base::Init a;
         // Render scene
         currentFrame = glfwGetTime(); // seconds
         double deltaTime = currentFrame - lastFrame;
+        if (resumedFromStill) {
+            deltaTime = minFrameMs() / 1000.0;
+            resumedFromStill = false;
+        }
 
         // The scene is the whole window, so the UI pass is an empty frame.
-        if (flyoverMode) flyoverMode->update();
+        if (flyoverMode && !updated) flyoverMode->update();
         frontendUI->composeFlyoverUI();
         auto sceneScenario = frontendUI->createFrameScenario(canvWidth, canvHeight, deltaTime);
 
@@ -522,15 +550,13 @@ std::ios_base::Init a;
 
         double currentDeltaAfterDraw = (glfwGetTime() - currentFrame)*(1000.0f);
         lastFrame = currentFrame;
-        // A frame-rate cap sleeps out the rest of its frame time; uncapped keeps the 5 ms floor.
-        double frameRateCap = apiContainer->getConfig()->frameRateCap;
-        double minFrameMs = frameRateCap > 0 ? std::max(5.0, 1000.0 / frameRateCap) : 5.0;
-        if (currentDeltaAfterDraw < minFrameMs) {
+        const double frameMs = minFrameMs();
+        if (currentDeltaAfterDraw < frameMs) {
             using namespace std::chrono_literals;
 #ifdef WIN32
-            sqlite3_sleep((int)(minFrameMs-currentDeltaAfterDraw));
+            sqlite3_sleep((int)(frameMs-currentDeltaAfterDraw));
 #else
-            std::this_thread::sleep_for(std::chrono::milliseconds((int)(minFrameMs-currentDeltaAfterDraw)));
+            std::this_thread::sleep_for(std::chrono::milliseconds((int)(frameMs-currentDeltaAfterDraw)));
 #endif
         }
 

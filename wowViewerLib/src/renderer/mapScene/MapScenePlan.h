@@ -47,6 +47,10 @@ struct MapRenderPlan {
     // The far terrain of the frame, which the renderer draws after the opaque scene. Empty while Config's farTerrain is off.
     FarTerrainFrame farTerrain;
 
+    // Set by Map::doPostLoad when the frame began: nothing the plan asked for was still loading and nothing waited to be finished.
+    // The flyover mode reads it for a still.
+    bool loadSettled = false;
+
     M2ObjectListContainer m2Array;
     WMOListContainer wmoArray;
     WMOGroupListContainer wmoGroupArray;

@@ -959,7 +959,12 @@ MapSceneRenderBindlessVLK::WeatherFrame MapSceneRenderBindlessVLK::updateWeather
     WeatherFrame frame;
     if (renderingMatricesAndSizes.empty()) return frame;
 
-    // Weather falls on the wall clock: the frame's own delta is zero while the animation is paused.
+    // Weather falls on the wall clock: the frame's own delta is zero while the animation is paused. A still stops no clock, so the
+    // frame that ends one starts the count again, and the weather resumes where it stood.
+    if (m_config->weatherClockResetRequested) {
+        m_config->weatherClockResetRequested = false;
+        m_weatherClock = {};
+    }
     const auto now = std::chrono::steady_clock::now();
     const float seconds = m_weatherClock.time_since_epoch().count() == 0 ? 0.0f : std::chrono::duration<float>(now - m_weatherClock).count();
     m_weatherClock = now;

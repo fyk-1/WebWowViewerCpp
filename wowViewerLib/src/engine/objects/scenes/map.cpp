@@ -1409,6 +1409,10 @@ was still loading when the frame began, and the finishing queue held nothing. Th
 pass, so a tile that finished this frame, whose models no plan has listed yet, does not count. A map whose WDT is one WMO has no
 tile to read, so it waits for its queue to have held work once and then to be empty. Until the WDT has loaded there is nothing
 to tell the two apart, so the map is not settled.
+
+The reading is made every frame, not only while the window is open, and the plan carries it as loadSettled: the flyover mode's
+still waits on it too. For the still, a frame that asks for no tile at all, the camera above the draw distance or the view swapped
+to the far land, has none loading, so it counts as settled once the queue is empty.
 */
 namespace {
 std::atomic<uint64_t> fastLoadGeneration{0};
@@ -1559,6 +1563,8 @@ void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRende
     }
 
     const bool settled = loadSettled(tilesAsked, tilesLoaded, queued);
+    const bool tilesMap = wdtLoaded() && !m_wdtfile->mphd->flags.wdt_uses_global_map_obj;
+    renderPlan->loadSettled = settled || (tilesMap && !tilesAsked && queued == 0);
     if (fastLoad && settled) closeFastLoad(m_fastLoadGeneration, "settled");
 
     if (skyMesh == nullptr) {

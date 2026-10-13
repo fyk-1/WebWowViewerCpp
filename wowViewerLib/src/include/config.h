@@ -233,6 +233,11 @@ public:
     std::shared_ptr<RoadLines> roadLines = std::make_shared<RoadLines>();
     // Set by the host when the camera jumps, so the next FSR dispatch drops its history. The renderer clears it.
     bool fsrResetRequested = false;
+    // In free flight, stops rendering once nothing drives the camera and the scene has settled, and leaves the last frame on
+    // screen. Any input or change that shows renders again. See FlyoverMode.cpp.
+    bool stillWhenIdle = true;
+    // Set by the flyover mode when a still ends, so the weather's next step is one frame long, not the whole still. The renderer clears it.
+    bool weatherClockResetRequested = false;
 
     float fogDensityIncreaser = 0;
     // Set when the database opens, from IClientDatabase::usesClassicFog: the map renderer then draws fog that rises from

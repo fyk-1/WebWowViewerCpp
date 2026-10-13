@@ -107,7 +107,40 @@ at a coordinate of several thousand loses a tenth of a degree to float precision
 reads them: a refresh of the same points, a switch of mode and a `look` leave the camera as it is.
 */
 
+/*
+robots@Impl: The still. In free flight with stillWhenIdle on, the main loop stops drawing and the last frame stays on screen,
+with the GPU idle: nothing is recorded, submitted or presented.
+
+Entering: kStillCalmFrames frames in a row in which nothing drives the camera (FirstPersonCamera::isMoving: no key held, no
+look or zoom waiting), the plan is settled (MapRenderPlan::loadSettled, the fast-load window's test read every frame) and the far
+terrain's full share is 0 or 1, not a fade. Any frame that fails one of them restarts the count. 24 is one jitter cycle of FSR 3.1 at
+the flyover's render scale, 8 * (display / render)^2 = 23 phases at 0.59, so the upscaler's history has converged on the picture it
+holds; with the 30 fps cap the still starts about 0.8 s after the camera stops. The count also covers a look or a key that ended a
+frame ago, so no separate idle timer exists. A route flight never stills, and neither does a free camera while the setting is off.
+
+Present path: none. The swapchain presents in mailbox mode and the window is flip-model, where the compositor keeps showing the
+last presented buffer until the next present, so a still needs no re-present. Re-presenting the same image would need a swapchain
+image that holds it again, which an acquire does not hand back.
+
+Leaving: a command that changes what a frame shows (everything except speed, pause, play, config dumps, posinterval, dump and
+`ambient`), the camera moving, the window changing size (the main loop calls wake), the setting turning off, or a switch out of free
+mode. `ambient` carries the host's clock and weather, which hold with the frame and show from the next frame drawn. The frame that
+leaves the still is the one the pipeline already holds, a scenario made before the still, so the picture does not move; the first
+scenario after it gets one frame interval as its delta (main.cpp), not the time spent still, so animations and the camera's own
+movement carry on from where they stood. Weather falls on the wall clock, so leaving also sets weatherClockResetRequested.
+
+Dump: a `dump` while still leaves the still, draws kDumpWarmFrames frames so the capture is of a frame made after the command, asks
+for the capture, and goes back to the still when finishDump has answered. The dump's `display.still` is true for that dump.
+
+Commands, `pos`, `d` and `area` lines keep working: update() runs on every pass of the main loop, which waits on the window's events
+for at most kStillWaitSeconds and is woken at once by the stdin thread (post) and by any window event.
+*/
+
 namespace {
+    // See the still, above.
+    constexpr int kStillCalmFrames = 24;
+    constexpr int kDumpWarmFrames = 2;
+
     FILE *g_protocolOut = nullptr;
     std::mutex g_outputMutex;
 
@@ -416,8 +449,12 @@ void FlyoverMode::requestDump() {
 }
 
 void FlyoverMode::post(CommandQueue &queue, Command command) {
-    std::lock_guard<std::mutex> lock(queue.mutex);
-    queue.items.push_back(std::move(command));
+    {
+        std::lock_guard<std::mutex> lock(queue.mutex);
+        queue.items.push_back(std::move(command));
+    }
+    // A still viewer waits on the window's events; this ends the wait.
+    glfwPostEmptyEvent();
 }
 
 void FlyoverMode::readStdin(std::shared_ptr<CommandQueue> queue) {
@@ -495,6 +532,11 @@ void FlyoverMode::parseLine(const std::string &rawLine, CommandQueue &queue) {
             std::string value = nameEnd == std::string::npos ? "" : trim(rest.substr(nameEnd));
             post(queue, {CommandType::Config, name, value});
         }
+    } else if (word == "ambient") {
+        size_t nameEnd = rest.find_first_of(" \t");
+        std::string name = rest.substr(0, nameEnd);
+        std::string value = nameEnd == std::string::npos ? "" : trim(rest.substr(nameEnd));
+        post(queue, {CommandType::Ambient, name, value});
     } else if (word == "dump") {
         post(queue, {CommandType::Dump, "", rest});
     } else if (word == "roadlines") {
@@ -511,6 +553,20 @@ void FlyoverMode::parseLine(const std::string &rawLine, CommandQueue &queue) {
 }
 
 void FlyoverMode::apply(const Command &command) {
+    switch (command.type) {
+        case CommandType::Speed:
+        case CommandType::Pause:
+        case CommandType::Play:
+        case CommandType::Ambient:
+        case CommandType::ConfigDump:
+        case CommandType::Dump:
+        case CommandType::PosInterval:
+        case CommandType::Quit:
+            break;
+        default:
+            wake();
+    }
+
     switch (command.type) {
         case CommandType::Speed: {
             char *end = nullptr;
@@ -594,8 +650,9 @@ void FlyoverMode::apply(const Command &command) {
             break;
         }
         case CommandType::Config:
+        case CommandType::Ambient:
             if (command.text.empty()) {
-                emitError("config " + command.name, "missing value");
+                emitError((command.type == CommandType::Ambient ? "ambient " : "config ") + command.name, "missing value");
             } else {
                 applyConfig(command.name, command.text);
             }
@@ -606,6 +663,11 @@ void FlyoverMode::apply(const Command &command) {
         case CommandType::Dump:
             if (command.text.empty()) {
                 emitError("dump", "expected a png path");
+            } else if (m_still) {
+                m_dumpPng = command.text;
+                m_dumpWarm = kDumpWarmFrames;
+                m_dumpHold = true;
+                leaveStill();
             } else {
                 takeDump(command.text);
             }
@@ -682,6 +744,13 @@ void FlyoverMode::takeDump(const std::string &pngFile) {
 }
 
 void FlyoverMode::finishDump(const std::string &pngFile, FrameCapture &&capture) {
+    // A dump taken while still reports the still it returns to; the frame count then lets the next pass settle straight back.
+    const bool still = m_still || m_dumpHold;
+    if (m_dumpHold) {
+        m_dumpHold = false;
+        m_calmFrames = kStillCalmFrames;
+    }
+
     json dump;
     dump["png"] = pngFile;
 
@@ -748,6 +817,7 @@ void FlyoverMode::finishDump(const std::string &pngFile, FrameCapture &&capture)
         {"cameraAltitude", config.cameraAltitude},
         {"fsrEngaged", config.effectiveFsrUpscaling()},
         {"fov", config.fov},
+        {"still", still},
         {"farTerrain", {
             {"on", config.farTerrain},
             {"swapped", plan && plan->farTerrain.swapped},
@@ -910,4 +980,42 @@ void FlyoverMode::update() {
             emit(text);
         }
     }
+
+    settleStill(plan.get());
+}
+
+void FlyoverMode::settleStill(const MapRenderPlan *plan) {
+    if (m_dumpWarm > 0 && --m_dumpWarm == 0) takeDump(m_dumpPng);
+
+    const bool allowed = m_api->getConfig()->stillWhenIdle && m_isFree && m_free;
+    const bool driven = m_free && m_free->isMoving();
+
+    if (m_still) {
+        if (!allowed || driven) wake();
+        return;
+    }
+    // The viewer returns to the still when the dump's capture has finished.
+    if (m_dumpHold) return;
+
+    const bool calm = allowed && !driven && plan && plan->loadSettled &&
+                      (plan->farTerrain.fullShare <= 0.0f || plan->farTerrain.fullShare >= 1.0f);
+    m_calmFrames = calm ? m_calmFrames + 1 : 0;
+    if (m_calmFrames >= kStillCalmFrames) enterStill();
+}
+
+void FlyoverMode::enterStill() {
+    m_still = true;
+    m_calmFrames = 0;
+    emit("flyover still 1");
+}
+
+void FlyoverMode::leaveStill() {
+    m_still = false;
+    m_api->getConfig()->weatherClockResetRequested = true;
+    emit("flyover still 0");
+}
+
+void FlyoverMode::wake() {
+    m_calmFrames = 0;
+    if (m_still) leaveStill();
 }

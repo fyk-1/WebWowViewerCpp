@@ -67,7 +67,7 @@ namespace {
     X(Bool, drawM2BB) \
     X(Bool, enableObjectPicking) \
     X(Bool, enableFXAA) \
-    X(Bool, fsrUpscaling) \
+    X(Bool, fsrUpscaling)     X(Bool, stillWhenIdle) \
     X(Bool, enableLightBuffer) \
 \
     X(Bool, disableGlow) \
