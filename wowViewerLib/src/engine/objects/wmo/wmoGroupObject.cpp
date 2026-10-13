@@ -9,6 +9,8 @@
 #include "../../persistance/header/wmoFileHeader.h"
 #include "../../../gapi/interface/materials/IMaterial.h"
 #include <algorithm>
+#include <cstdio>
+#include <cstring>
 
 bool WmoGroupObject::getIsLoaded() {
     return m_loaded && m_wmoColorsIgnored == m_api->getConfig()->ignoreWMOColoring;
@@ -769,6 +771,61 @@ std::array<mathfu::vec3, 3> WmoGroupObject::getAmbientColors() {
         return ambColors;
     }
     return ambColors;
+}
+
+std::string WmoGroupObject::describeLighting() {
+    const MOGP *mogp = m_geom->mogp;
+    uint32_t flags;
+    memcpy(&flags, &mogp->flags, sizeof(flags));
+    uint32_t infoFlags;
+    memcpy(&infoFlags, &m_main_groupInfo->flags, sizeof(infoFlags));
+    uint16_t headerFlags;
+    memcpy(&headerFlags, &m_wmoApi->getWmoHeader()->flags, sizeof(headerFlags));
+    const CAaBox &aabb = getWorldAABB();
+
+    //The vertex alpha range the shader reads for the batches [from, to), after the load-time fix-up
+    auto alphaRange = [&](int from, int to) -> std::string {
+        int lo = 255, hi = 0, count = 0;
+        long long sum = 0;
+        for (int j = from; j < to && j < m_geom->batchesLen; j++) {
+            for (int v = m_geom->batches[j].first_vertex; v <= m_geom->batches[j].last_vertex && v < m_geom->cvLen; v++) {
+                lo = std::min<int>(lo, m_geom->colorArray[v].a);
+                hi = std::max<int>(hi, m_geom->colorArray[v].a);
+                sum += m_geom->colorArray[v].a;
+                count++;
+            }
+        }
+        return count == 0 ? "-" : std::to_string(lo) + ".." + std::to_string(hi) + "~" + std::to_string(sum / count);
+    };
+    int trans = mogp->transBatchCount, ints = mogp->intBatchCount, exts = mogp->extBatchCount;
+
+    char line[640];
+    snprintf(line, sizeof(line),
+        "wmoLight file=%d name=%s group=%d flags=0x%08X mogi=0x%08X mohd=0x%04X%s%s%s batches trans=%d int=%d ext=%d "
+        "alpha trans=%s int=%s ext=%s extLit=%d mode=%s center=(%.1f %.1f %.1f)",
+        m_modelFileId, m_fileName.c_str(), m_groupNumber, flags, infoFlags, headerFlags,
+        mogp->flags.EXTERIOR ? " EXT" : "", mogp->flags.INTERIOR ? " INT" : "", mogp->flags.EXTERIOR_LIT ? " EXTLIT" : "",
+        trans, ints, exts,
+        alphaRange(0, trans).c_str(), alphaRange(trans, trans + ints).c_str(), alphaRange(trans + ints, trans + ints + exts).c_str(),
+        isInteriorLightingLit() ? 0 : 1,
+        isInteriorLightingLit() ? "interior" : "exterior",
+        (aabb.min.x + aabb.max.x) * 0.5f, (aabb.min.y + aabb.max.y) * 0.5f, (aabb.min.z + aabb.max.z) * 0.5f);
+
+    //One line per batch: its class, its material's lighting flags and shader, and its vertex alpha
+    std::string result = line;
+    for (int j = 0; j < m_geom->batchesLen; j++) {
+        const SMOBatch &batch = m_geom->batches[j];
+        int materialIndex = batch.flag_use_material_id_large ? batch.postLegion.material_id_large : batch.material_id;
+        const SMOMaterial &material = m_wmoApi->getMaterials()[materialIndex];
+        char batchLine[256];
+        snprintf(batchLine, sizeof(batchLine), "\n  batch %d %s mat=%d%s%s%s%s shader=%u blend=%u alpha=%s",
+            j, j < trans ? "trans" : (j < trans + ints ? "int" : "ext"), materialIndex,
+            material.flags.F_UNLIT ? " UNLIT" : "", material.flags.F_EXTLIGHT ? " EXTLIGHT" : "",
+            material.flags.F_UNCULLED ? " UNCULLED" : "", material.flags.F_SIDN ? " SIDN" : "",
+            material.shader, material.blendMode, alphaRange(j, j + 1).c_str());
+        result += batchLine;
+    }
+    return result;
 }
 
 void AdjustLighting(const mathfu::vec3 color_in, mathfu::vec3 &color_out_0, uint8_t brightnessThreshold, mathfu::vec3 &color_out_1, uint8_t saturationLimit)

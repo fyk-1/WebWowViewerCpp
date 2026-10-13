@@ -116,7 +116,7 @@ void main() {
             spec,
             emissive
         );
-    } else {
+    } else if (currentInteriorData.uAmbientColorAndIsExteriorLit.w != 0.0) {
         litColor = calcLight(
             matDiffuse,
             normal,
@@ -132,6 +132,45 @@ void main() {
             emissive,
             1.0 /* ao */
         );
+    } else {
+        // An interior group. The client lights its interior batches by the baked vertex colour alone: wowdev.wiki's WMO page
+        // (MOCV: an INDOOR group "uses only MOCV") and WMO/Rendering (lighting mode 3: the MOHD ambient, no directional light,
+        // the vertex colour doubled). fixColorVertexAlpha took the MOHD ambient out of MOCV and halved it, so the doubled vertex
+        // colour plus the ambient is the baked colour again, flat on every face. calcLight's sky-to-ground split and its interior
+        // sun are a later client's look and are left out. The exterior side a transition vertex blends toward is calcLight as
+        // before, minus the direct sun: the viewer has no sun shadows, so the arch that shades a doorway in the game does not here.
+        bool applyLight = wmoMeshWide.UseLitColor_EnableAlpha_PixelShader_BlendMode.x == 1;
+        vec3 litInterior = matDiffuse;
+        if (applyLight) {
+            vec3 baked = currentInteriorData.uAmbientColorAndIsExteriorLit.xyz + vColor.rgb * 2.0;
+            vec3 gammaDiffTerm = matDiffuse * baked;
+            vec3 linearDiffTerm = (matDiffuse * matDiffuse) * accumLight;
+            litInterior = sqrt(gammaDiffTerm * gammaDiffTerm + linearDiffTerm) + emissive;
+        }
+        litInterior += spec;
+
+        litColor = litInterior;
+        if (interiorExteriorBlend > 0.0) {
+            SceneWideParams litScene = scene;
+            litScene.extLight.uExteriorDirectColor = vec4(0.0);
+            InteriorLightParam extLight = intLight;
+            extLight.uInteriorAmbientColorAndInteriorExteriorBlend.w = 1.0;
+
+            vec3 litExterior = calcLight(
+                matDiffuse,
+                normal,
+                vPosition.xyz,
+                applyLight,
+                litScene,
+                extLight,
+                accumLight,
+                vColor.rgb * 2.0,
+                spec,
+                emissive,
+                1.0 /* ao */
+            );
+            litColor = mix(litInterior, litExterior, interiorExteriorBlend);
+        }
     }
     finalColor = vec4(litColor, finalOpacity);
 #endif

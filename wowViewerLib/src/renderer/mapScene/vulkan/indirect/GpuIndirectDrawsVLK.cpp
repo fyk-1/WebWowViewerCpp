@@ -279,6 +279,7 @@ void GpuIndirectDrawsVLK::collectWmoGroups(const std::shared_ptr<MapRenderPlan> 
     ZoneScoped;
     m_drawnWmoGroups.clear();
     const uint32_t thisFrame = m_frameCounter++;
+    static const bool wmoLightLog = getenv("FLYOVER_WMO_LIGHT_LOG") != nullptr;
 
     auto addWmoGroupsFromView = [&](const std::shared_ptr<GeneralView> &view) {
         if (!view) return;
@@ -310,6 +311,11 @@ void GpuIndirectDrawsVLK::collectWmoGroups(const std::shared_ptr<MapRenderPlan> 
                 entry.aabbWritten = true;
                 m_wmoAabbDirtyMin = std::min(m_wmoAabbDirtyMin, entry.slot);
                 m_wmoAabbDirtyMax = std::max(m_wmoAabbDirtyMax, entry.slot);
+            }
+
+            if (wmoLightLog && !entry.lightLogged && ptr->getIsLoaded()) {
+                entry.lightLogged = true;
+                std::cout << ptr->describeLighting() << std::endl;
             }
 
             if (entry.lastSeenFrame != thisFrame) {

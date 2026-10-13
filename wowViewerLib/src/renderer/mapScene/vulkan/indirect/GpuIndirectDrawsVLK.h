@@ -134,6 +134,7 @@ public:
         std::weak_ptr<WmoGroupObject> weak; // for sweeping dead groups
         bool aabbWritten = false;        // group AABB uploaded (groups load async)
         uint32_t lastSeenFrame = UINT32_MAX; // per-frame dedup of the drawn-group list
+        bool lightLogged = false;        // the group's FLYOVER_WMO_LIGHT_LOG line is written
     };
     const std::unordered_map<WmoGroupObject*, WmoGroupCullEntry> &wmoGroupCullIndexMap() const { return m_wmoGroupRegistry; }
 

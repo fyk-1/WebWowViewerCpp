@@ -77,6 +77,8 @@ public:
     void uploadGeneratorBuffers(const HFrameDependantData &frameDependantData, animTime_t mapCurrentTime);
 
     std::array<mathfu::vec3, 3> getAmbientColors();
+    //One line for the FLYOVER_WMO_LIGHT_LOG log: the group's flags and batch split, and what the bindless WMO shader does with them
+    std::string describeLighting();
 
     bool checkIfInsideGroup(mathfu::vec4 &cameraVec4,
                             mathfu::vec4 &cameraLocal,
