@@ -326,9 +326,6 @@ void GpuIndirectDrawsVLK::collectWmoGroups(const std::shared_ptr<MapRenderPlan> 
     };
 
     addWmoGroupsFromView(framePlan->viewsHolder.getExterior());
-    for (auto &view : framePlan->viewsHolder.getInteriorViews()) {
-        addWmoGroupsFromView(view);
-    }
 
     // Sweep slots of dead groups occasionally (groups die with their WMO)
     if ((thisFrame % 300) == 0) {

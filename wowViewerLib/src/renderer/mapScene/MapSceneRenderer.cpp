@@ -51,11 +51,6 @@ void MapSceneRenderer::collectViewMeshes(const std::shared_ptr<MapRenderPlan> &r
     bool renderADT = m_config->renderAdt;
     bool renderWMO = m_config->renderWMO;
 
-    for (auto &view : renderPlan->viewsHolder.getInteriorViews()) {
-        ZoneScopedN("Collect interiors");
-        view->collectMeshes(renderADT, true, renderWMO, opaqueMeshCollector, transparentMeshes, includeWmoTransparents);
-    }
-
     {
         auto exteriorView = renderPlan->viewsHolder.getExterior();
         if (exteriorView != nullptr) {

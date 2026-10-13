@@ -41,38 +41,6 @@ public:
 
 	~WmoObject();
 private:
-    //One unit of portal-traversal work: a group plus the (possibly portal-clipped) frustum it
-    //was reached with. Processed FIFO → breadth-first, so a group's first arrival is always a
-    //shortest portal path.
-    struct PortalTraversalWorkItem {
-        int groupId;
-        framebased::vector<mathfu::vec4> frustumPlanes;
-        int globalLevel;
-        int localLevel;
-    };
-
-    struct PortalTraverseTempData {
-        FrameViewsHolder &viewsHolder;
-        bool exteriorWasCreatedBeforeTraversing;
-        mathfu::vec4 farPlane;
-        framebased::vector<HInteriorView> &ivPerWMOGroup;
-        mathfu::vec4 &cameraVec4;
-        mathfu::vec4 &cameraLocal;
-        mathfu::mat4 &transposeInverseModelMat;
-        mathfu::mat4 &MVPMat;
-        mathfu::mat4 &MVPMatInv;
-        //BFS worklist; seeded by startTraversingWMOGroup, drained by drainPortalTraversal
-        framebased::vector<PortalTraversalWorkItem> &portalWorkList;
-        //Per portal: the last frustum contribution propagated through it. Used to suppress
-        //duplicate contributions on cyclic portal paths (see drainPortalTraversal)
-        framebased::vector<framebased::vector<mathfu::vec4>> &portalCrossedFrustums;
-        //Batch-cull results for m_groupWorldBorders (0 = group incl. doodads is outside the
-        //global frustum). Portal traversal skips descending into culled groups.
-        const std::vector<uint32_t> &groupWorldVisible;
-
-        bool atLeastOneGroupIsDrawn = false;
-    };
-
     HApiContainer m_api;
 
     HWmoMainGeom mainGeom = nullptr;
@@ -91,7 +59,7 @@ private:
     std::vector<uint32_t> m_groupVolumeVisScratch;
 
     //Precomputed at doPostLoad from mainGeom->groups flags. Used by Map::checkExterior to decide
-    //whether a frustum-culled WMO must still be traversed for its unconditional side effects.
+    //whether a frustum-culled WMO must still be collected for its unconditional side effects.
     bool m_hasAlwaysDrawGroups = false;
     bool m_hasAntiportalGroups = false;
 
@@ -251,9 +219,10 @@ public:
     const CAaBox &getGroupVolumeWorldBorder(int groupId) override { return m_groupVolumeWorldBorders[groupId]; }
     void recalcGroupBorders(int groupId) override;
 
-    //Queues not-yet-loaded exterior groups for loading without doing any culling work.
-    //Used when the whole WMO was culled at the WMO bbox level: mirrors the load-trigger
-    //side effects startTraversingWMOGroup has for such groups.
+    //A group that loads before the camera turns to it: one open to the outside or drawn unconditionally
+    bool isGroupPreloaded(int groupId);
+    //Queues the not-yet-loaded preloaded groups for loading without doing any culling work.
+    //Used when the whole WMO was culled at the WMO bbox level.
     void triggerExteriorGroupLoads(WMOGroupListContainer &wmoGroupArray);
 
     //A creature standing at the position, which may be inside one of this WMO's interior groups. The WMO decides once the
@@ -266,15 +235,11 @@ public:
     void homeCreaturesIfChanged();
 
 public:
-    //Portal culling
-    bool startTraversingWMOGroup(
+    //Adds every group the frustum reaches to the view's draw, doodad and load lists; true when one draws
+    bool collectGroups(
         mathfu::vec4 &cameraVec4,
         const MathHelper::FrustumCullingData &frustumData,
-        int groupId,
-        int globalLevel,
-        int &renderOrder,
-        bool traversingFromInterior,
-        FrameViewsHolder &viewsHolder
+        GeneralView &exteriorView
     );
 
     void checkGroupDoodads(
@@ -282,17 +247,6 @@ public:
         mathfu::vec4 &cameraVec4,
         std::vector<mathfu::vec4> &frustumPlanes,
         M2ObjectListContainer &m2Candidates);
-
-    void addSplitChildWMOsToView(InteriorView &interiorView, int groupId);
-
-
-    //Breadth-first portal traversal: drains traverseTempData.portalWorkList. A group re-entered
-    //through a second visible portal path gets its outgoing portals re-evaluated with the new
-    //frustum, so contributions are not lost on diamond paths (1->2 and 1->3->2 both visible).
-    void drainPortalTraversal (
-        bool traversingStartedFromInterior,
-        PortalTraverseTempData &traverseTempData
-    );
 
     bool getGroupWmoThatCameraIsInside(mathfu::vec4 cameraVec4, WmoGroupResult &result, float &bottomBorder);
 

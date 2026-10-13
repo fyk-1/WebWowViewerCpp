@@ -832,37 +832,25 @@ void WmoObject::checkGroupDoodads(int groupId, mathfu::vec4 &cameraVec4,
     }
 }
 
-bool WmoObject::startTraversingWMOGroup(
+/*
+robots@Impl: Which groups of a WMO draw.
+
+Every group is culled by its own box against the frustum, the far plane among its planes, and by that alone: no portal is
+walked, so a camera in a wall, between groups or in a group the box lookup got wrong still sees every group around it. The
+group box without its doodads decides the group, and the box with them decides the doodads. A group not loaded yet is queued
+for load when either box is in view, or when isGroupPreloaded names it, which keeps the groups open to the outside loading
+before the camera turns to them. A group flagged ALWAYSDRAW draws whatever the boxes say. The camera's own group is looked up
+elsewhere, for lighting, fog, sky and area name only.
+*/
+bool WmoObject::collectGroups(
     mathfu::vec4 &cameraVec4,
     const MathHelper::FrustumCullingData &frustumDataGlobal,
-    int groupId,
-    int globalLevel,
-    int &renderOrder,
-    bool traversingFromInterior,
-    FrameViewsHolder &viewsHolder
+    GeneralView &exteriorView
 ) {
     ZoneScoped;
     if (!m_loaded)
         return false;
 
-    uint32_t portalCount = (uint32_t) std::max(0, this->mainGeom->portalsLen);
-
-    //Camera inside a portal-less interior group: no culling work is needed at all
-    if (portalCount == 0 && groupId > -1 && groupId < mainGeom->groupsLen &&
-        mainGeom->groups[groupId].flags.INTERIOR && !mainGeom->groups[groupId].flags.EXTERIOR_CULL && !mainGeom->groups[groupId].flags.ALWAYSDRAW)
-    {
-        auto nextGroupObject = groupObjects[groupId];
-
-        auto interiorView = viewsHolder.createInterior(frustumDataGlobal);
-        interiorView->ownerGroupWMO = groupObjects[groupId];
-        interiorView->wmoGroupArray.addToDraw(nextGroupObject);
-        interiorView->wmoGroupArray.addToCheckM2(nextGroupObject);
-
-        return true;
-    }
-
-    //Batch-cull per-group world bounding boxes against the global frustum. The results drive
-    //the per-group exterior loops below and gate the portal traversal descent.
     const int groupsLen = mainGeom->groupsLen;
     m_groupWorldVisScratch.resize(groupsLen);
     m_groupVolumeVisScratch.resize(groupsLen);
@@ -874,183 +862,44 @@ bool WmoObject::startTraversingWMOGroup(
     AabbArrayCulling::cull(frustumDataGlobal, cameraVec4, m_groupVolumeWorldBorders.data(), groupsLen, m_groupVolumeVisScratch.data());
 #endif
 
-    auto resolveGroupVisibility = [&](int i, bool &drawDoodads, bool &drawGroup) {
-        if (!this->groupObjects[i]->getIsLoaded()) {
-            //Not loaded yet: force draw so the group gets queued for load
-            //(same as WmoGroupObject::checkGroupFrustum did for this case)
-            drawDoodads = true;
-            drawGroup = true;
-        } else {
-            drawDoodads = m_groupWorldVisScratch[i] != AabbArrayCulling::CULLED;
-            drawGroup = m_groupVolumeVisScratch[i] != AabbArrayCulling::CULLED;
-        }
-    };
+    bool result = false;
+    const bool renderAntiPortals = m_api->getConfig()->renderAntiPortals;
+    for (int i = 0; i < groupsLen; i++) {
+        auto &groupObject = this->groupObjects[i];
+        if (groupObject == nullptr) continue;
+        auto &flags = mainGeom->groups[i].flags;
 
-    if (portalCount == 0) {
-        auto exteriorView = viewsHolder.getOrCreateExterior(frustumDataGlobal);
-        bool result = false;
-        for (int i = 0; i< groupsLen; i++) {
-            if (isGroupSkipped(i)) continue;
-            if ((mainGeom->groups[i].flags.EXTERIOR) > 0 || (mainGeom->groups[i].flags.EXTERIOR_CULL) > 0 || mainGeom->groups[i].flags.ALWAYSDRAW || !m_api->getConfig()->usePortalCulling) { //exterior
-                if (this->groupObjects[i] != nullptr) {
-                    bool drawDoodads, drawGroup;
-                    resolveGroupVisibility(i, drawDoodads, drawGroup);
-                    if (drawDoodads) {
-                        exteriorView->wmoGroupArray.addToCheckM2(this->groupObjects[i]);
-                    }
-                    if (drawGroup) {
-                        exteriorView->wmoGroupArray.addToDraw(this->groupObjects[i]);
-                    }
-                    result |= drawGroup;
-                }
+        if (renderAntiPortals) {
+            if (!groupObject->getIsLoaded()) {
+                exteriorView.wmoGroupArray.addToLoad(groupObject);
+            } else if (flags.ANTIPORTAL > 0) {
+                exteriorView.worldAntiPortalVertices.emplace_back() =
+                    createAntiPortal(groupObject->getWmoGroupGeom(), m_placementMatrix);
             }
         }
-        return result;
-    }
-    framebased::vector<HInteriorView> ivPerWMOGroup = framebased::vector<HInteriorView>(groupsLen);
 
-    framebased::vector<PortalTraversalWorkItem> portalWorkList;
-    framebased::vector<framebased::vector<mathfu::vec4>> portalCrossedFrustums =
-        framebased::vector<framebased::vector<mathfu::vec4>>(portalCount);
+        if (isGroupSkipped(i)) continue;
 
-    //CurrentVisibleM2 and visibleWmo is array of global m2 objects, that are visible after frustum
-    mathfu::vec4 cameraLocal = this->m_placementInvertMatrix * cameraVec4;
-    mathfu::mat4 transposeInverseModelMat = m_placementInvertMatrix.Transpose();
+        const bool drawDoodads = m_groupWorldVisScratch[i] != AabbArrayCulling::CULLED;
+        const bool drawGroup = m_groupVolumeVisScratch[i] != AabbArrayCulling::CULLED;
 
-    //For interior cull
-    mathfu::mat4 MVPMat = frustumDataGlobal.perspectiveMat*frustumDataGlobal.viewMat*this->m_placementMatrix;
-    mathfu::mat4 MVPMatInv = MVPMat.Inverse();
-
-    framebased::vector<mathfu::vec4> frustumPlanesLocal = MathHelper::getFrustumClipsFromMatrix(MVPMat);
-
-    auto globalPlane = frustumDataGlobal.frustums[0].planes[frustumDataGlobal.frustums[0].planes.size() - 2];
-    // auto altFarPlane = this->m_placementMatrix.Transpose() * globalPlane;
-    PortalTraverseTempData traverseTempData = {
-        viewsHolder,
-        viewsHolder.getExterior() != nullptr,
-        frustumPlanesLocal[frustumPlanesLocal.size() - 1], //farPlane is always last one,
-        ivPerWMOGroup,
-        cameraVec4,
-        cameraLocal,
-        transposeInverseModelMat,
-        MVPMat,
-        MVPMatInv,
-        portalWorkList,
-        portalCrossedFrustums,
-        m_groupWorldVisScratch
-    };
-
-    if (traversingFromInterior && m_api->getConfig()->usePortalCulling) {
-        traverseTempData.atLeastOneGroupIsDrawn = true;
-
-        std::shared_ptr<WmoGroupObject> nextGroupObject = groupObjects[groupId];
-        if (nextGroupObject->getIsLoaded() && nextGroupObject->getWmoGroupGeom()->mogp->flags2.isSplitGroupChild) {
-            groupId = nextGroupObject->getWmoGroupGeom()->mogp->parentSplitOrFirstChildGroupIndex;
-            nextGroupObject = groupObjects[groupId];
-        }
-
-        auto interiorView = ivPerWMOGroup[groupId];
-        //5.1 The portal is into interior wmo group. So go on.
-        if (interiorView == nullptr) {
-            interiorView = viewsHolder.createInterior(frustumDataGlobal);
-            ivPerWMOGroup[groupId] = interiorView;
-            interiorView->ownerGroupWMO = groupObjects[groupId];
-            interiorView->wmoGroupArray.addToDraw(nextGroupObject);
-            interiorView->wmoGroupArray.addToCheckM2(nextGroupObject);
-        }
-
-        if (nextGroupObject->getIsLoaded() && nextGroupObject->getWmoGroupGeom()->mogp->flags2.isSplitGroupParent) {
-            this->addSplitChildWMOsToView(*interiorView, groupId);
-        }
-
-        if (globalLevel+1 >= interiorView->level) {
-            interiorView->level = globalLevel + 1;
-        } else {
-            assert("BVH is not working. Something is wrong!");
-        }
-
-        portalWorkList.push_back({groupId, frustumPlanesLocal, globalLevel, 0});
-    } else {
-        auto exteriorView = viewsHolder.getOrCreateExterior(frustumDataGlobal);
-
-        if (globalLevel+1 >= exteriorView->level) {
-            exteriorView->level = globalLevel + 1;
-        } else {
-            assert("BVH is not working. Something is wrong!");
-        }
-
-        for (int i = 0; i< mainGeom->groupsLen; i++) {
-            //Interior groups lit from outside are open to the sky: Stormwind (107243) is 305 of them behind one EXTERIOR group
-            //whose four portals are all walls, so from above the portal walk reached none of the city. They start the walk too.
-            if (isGroupSkipped(i)) continue;
-            if ((mainGeom->groups[i].flags.EXTERIOR) > 0 || (mainGeom->groups[i].flags.EXTERIOR_LIT) > 0 || !m_api->getConfig()->usePortalCulling) { //exterior
-                if (this->groupObjects[i] != nullptr) {
-                    bool drawDoodads, drawGroup;
-                    resolveGroupVisibility(i, drawDoodads, drawGroup);
-                    if (drawDoodads) {
-                        exteriorView->wmoGroupArray.addToCheckM2(this->groupObjects[i]);
-                    }
-                    if (drawGroup) {
-                        exteriorView->wmoGroupArray.addToDraw(this->groupObjects[i]);
-                        traverseTempData.atLeastOneGroupIsDrawn = true;
-                        if (m_api->getConfig()->usePortalCulling && portalCount > 0) {
-                            portalWorkList.push_back({i, frustumPlanesLocal, globalLevel, 0});
-                        }
-                    }
-                }
+        if (!groupObject->getIsLoaded()) {
+            if (drawDoodads || drawGroup || isGroupPreloaded(i)) {
+                exteriorView.wmoGroupArray.addToLoad(groupObject);
             }
+            continue;
         }
+
+        if (drawDoodads) {
+            exteriorView.wmoGroupArray.addToCheckM2(groupObject);
+        }
+        if (drawGroup || flags.ALWAYSDRAW > 0) {
+            exteriorView.wmoGroupArray.addToDraw(groupObject);
+        }
+        result |= drawGroup;
     }
 
-    drainPortalTraversal(traversingFromInterior, traverseTempData);
-
-    //Add all ALWAYSRENDER to Exterior
-    for (int i = 0; i< mainGeom->groupsLen; i++) {
-        if ((mainGeom->groups[i].flags.ALWAYSDRAW) > 0 && !isGroupSkipped(i)) { //exterior
-            auto exteriorView = viewsHolder.getOrCreateExterior(frustumDataGlobal);
-            exteriorView->wmoGroupArray.addToDraw(this->groupObjects[i]);
-        }
-
-        if (m_api->getConfig()->renderAntiPortals) {
-            auto exteriorView = viewsHolder.getOrCreateExterior(frustumDataGlobal);
-            if (!this->groupObjects[i]->getIsLoaded()) {
-                exteriorView->wmoGroupArray.addToLoad(this->groupObjects[i]);
-            } else {
-                if ((mainGeom->groups[i].flags.ANTIPORTAL) > 0) { //ANTIPORTAL
-                    if (this->groupObjects[i]->getIsLoaded()) {
-                        exteriorView->worldAntiPortalVertices.emplace_back() =
-                            createAntiPortal(this->groupObjects[i]->getWmoGroupGeom(), m_placementMatrix);
-                    }
-                }
-            }
-        }
-    }
-
-    //Process results
-    ivPerWMOGroup.erase(std::remove(ivPerWMOGroup.begin(), ivPerWMOGroup.end(), nullptr), ivPerWMOGroup.end());
-    std::sort(ivPerWMOGroup.begin(), ivPerWMOGroup.end(), [](const HInteriorView &a, const HInteriorView &b) -> bool {
-        if (a->level != b->level) {
-            return a->level < b->level;
-        }
-        return false;
-    });
-
-    for (auto &createdInteriorView : ivPerWMOGroup) {
-        createdInteriorView->renderOrder = renderOrder++;
-    }
-
-    bool result = ivPerWMOGroup.size() > 0;
-    {
-        auto exterior = viewsHolder.getExterior();
-
-        if (exterior != nullptr) {
-            exterior->renderOrder = renderOrder++;
-            result = true;
-        }
-    }
-
-    //M2s will be collected later from separate function call
-    return traverseTempData.atLeastOneGroupIsDrawn;
+    return result;
 }
 
 /*
@@ -1210,295 +1059,18 @@ void WmoObject::applyInteriorLightingToCreature(M2Object &creature, int groupInd
     }
 }
 
-void WmoObject::triggerExteriorGroupLoads(WMOGroupListContainer &wmoGroupArray) {
-    const bool portalCullingOff = !m_api->getConfig()->usePortalCulling;
-    const bool hasPortals = mainGeom->portalsLen > 0;
+bool WmoObject::isGroupPreloaded(int groupId) {
+    auto &flags = mainGeom->groups[groupId].flags;
+    return flags.EXTERIOR > 0 || flags.EXTERIOR_LIT > 0 || flags.EXTERIOR_CULL > 0 || flags.ALWAYSDRAW > 0;
+}
 
+void WmoObject::triggerExteriorGroupLoads(WMOGroupListContainer &wmoGroupArray) {
     for (int i = 0; i < mainGeom->groupsLen; i++) {
-        auto &flags = mainGeom->groups[i].flags;
-        //Same group filters as the exterior branches of startTraversingWMOGroup
-        bool groupIsLoadTriggered = hasPortals
-            ? ((flags.EXTERIOR > 0) || (flags.EXTERIOR_LIT > 0) || portalCullingOff)
-            : ((flags.EXTERIOR > 0) || (flags.EXTERIOR_CULL > 0) || (flags.ALWAYSDRAW > 0) || portalCullingOff);
-        if (!groupIsLoadTriggered) continue;
+        if (!isGroupPreloaded(i)) continue;
 
         auto &groupObject = this->groupObjects[i];
         if (groupObject != nullptr && !groupObject->getIsLoaded()) {
-            //addToDraw routes not-loaded groups to the load list, same as the force-drawn
-            //path of WmoGroupObject::checkGroupFrustum for unloaded groups
-            wmoGroupArray.addToDraw(groupObject);
-        }
-    }
-}
-void WmoObject::addSplitChildWMOsToView(InteriorView &interiorView, int groupId) {
-    if (!groupObjects[groupId]->getIsLoaded())
-        return;
-
-    auto &parentMogp = groupObjects[groupId]->getWmoGroupGeom()->mogp;
-    if (!parentMogp->flags2.isSplitGroupParent)
-        return;
-
-    int nextChildGroupIndex = parentMogp->parentSplitOrFirstChildGroupIndex;
-    while (nextChildGroupIndex != -1) {
-        auto &groupWmo = groupObjects[nextChildGroupIndex];
-        if (!groupWmo->getIsLoaded()) {
-            interiorView.wmoGroupArray.addToLoad(groupWmo);
-            return;
-        }
-
-        auto &mogp = groupWmo->getWmoGroupGeom()->mogp;
-        if (!mogp->flags2.isSplitGroupChild)
-            break;
-
-        interiorView.wmoGroupArray.addToDraw(groupWmo);
-        interiorView.wmoGroupArray.addToCheckM2(groupWmo);
-
-        nextChildGroupIndex = mogp->nextSplitGroupChildIndex;
-    }
-
-}
-
-
-static const float dotepsilon = pow(1.5f, 2.0f);
-static bool frustumPlanesAlmostEqual(const framebased::vector<mathfu::vec4> &a,
-                                     const framebased::vector<mathfu::vec4> &b) {
-    if (a.size() != b.size()) return false;
-    for (size_t i = 0; i < a.size(); i++) {
-        for (int c = 0; c < 4; c++) {
-            float av = a[i][c], bv = b[i][c];
-            float scale = std::max(std::max(std::fabs(av), std::fabs(bv)), 1.0f);
-            if (std::fabs(av - bv) > 1e-3f * scale) return false;
-        }
-    }
-    return true;
-}
-
-void WmoObject::drainPortalTraversal(
-    bool traversingStartedFromInterior,
-    PortalTraverseTempData &traverseTempData
-) {
-    auto &portalWorkList = traverseTempData.portalWorkList;
-
-    //Breadth-first over the portal graph: items are processed in arrival order, so a group's
-    //first arrival is always a shortest portal path (keeps interiorView->level bookkeeping
-    //consistent). A group may be enqueued several times with different frustums (diamond paths
-    //like 1->2 and 1->3->2); every distinct frustum contribution is propagated onward exactly
-    //once, duplicates are suppressed by portalCrossedFrustums.
-    for (size_t workIndex = 0; workIndex < portalWorkList.size(); workIndex++) {
-        //Copy the item out: the worklist grows inside the loop
-        PortalTraversalWorkItem workItem = portalWorkList[workIndex];
-
-        //Only a runaway guard: duplicates are portalCrossedFrustums' job. Stormwind (107243) nests its
-        //groups up to 28 portals deep from its one EXTERIOR group, and a cap of 8 left most of the city out.
-        if (workItem.localLevel > 64) continue;
-
-        int groupId = workItem.groupId;
-        auto &localFrustumPlanes = workItem.frustumPlanes;
-        int globalLevel = workItem.globalLevel;
-
-        if (groupObjects[groupId] == nullptr || !groupObjects[groupId]->getIsLoaded()) {
-            //The group has not been loaded yet
-            continue;
-        }
-
-        //2. Loop through portals of current group
-
-        int moprIndex = groupObjects[groupId]->getWmoGroupGeom()->mogp->moprIndex;
-        int numItems = groupObjects[groupId]->getWmoGroupGeom()->mogp->moprCount;
-
-        if (groupObjects[groupId]->getWmoGroupGeom()->mogp->flags.showSkyBox) {
-            if (groupObjects[groupId]->getWmoGroupGeom()->mogp->flags.INTERIOR > 0 || !m_api->getConfig()->usePortalCulling) {
-                if (traversingStartedFromInterior && skyBox != nullptr) {
-                    traverseTempData.viewsHolder.getSkybox()->m2List.addToDraw(skyBox);
-                }
-            } else {
-                //TODO: WHAT ????
-                //Example: main wmo: 850548, group WMO 901743
-            }
-        }
-
-        for (int j = moprIndex; j < moprIndex+numItems; j++) {
-            //Deeper walks reach groups the depth cap of 8 never did: a reference, portal or group out of range is skipped.
-            if (j >= mainGeom->portalReferencesLen) break;
-            const SMOPortalRef * relation = &mainGeom->portalReferences[j];
-            if (relation->portal_index >= mainGeom->portalsLen) continue;
-            const SMOPortal * portalInfo = &mainGeom->portals[relation->portal_index];
-
-            int nextGroup = relation->group_index;
-            const C4Plane &plane = portalInfo->plane;
-
-            if (nextGroup < 0 || nextGroup >= mainGeom->groupsLen || groupObjects[nextGroup] == nullptr) continue;
-            if (isGroupSkipped(nextGroup)) continue;
-
-            //Skip portals into groups whose world box (incl. doodads) is outside the global
-            //frustum: the portal lies on the group's boundary, so it cannot be visible either.
-            //Saves the planeCull and portal-frustum construction work below.
-            if (nextGroup >= 0 && nextGroup < traverseTempData.groupWorldVisible.size() &&
-                traverseTempData.groupWorldVisible[nextGroup] == AabbArrayCulling::CULLED) continue;
-
-            //Local coordinanes plane DOT local camera
-            const mathfu::vec4 planeV4 = mathfu::vec4(plane.planeVector);
-            float dotResult = mathfu::vec4::DotProduct(planeV4, traverseTempData.cameraLocal);
-            //dotResult = dotResult + relation.side * 0.01;
-            bool isInsidePortalThis = (relation->side < 0) ? (dotResult <= 0) : (dotResult >= 0);
-
-            //This condition checks if camera is very close to the portal. In this case the math doesnt work very properly
-            //So I need to make this hack exactly for this case.z
-
-            bool hackCondition = (fabs(dotResult) > dotepsilon);
-
-            if (!isInsidePortalThis && hackCondition) continue;
-
-            //2.1 If portal has less than 4 vertices - skip it(invalid?)
-            if (portalInfo->index_count < 4) continue;
-
-            //2.2 Check if Portal BB made from portal vertexes intersects frustum
-            auto &portalSortedVertices = geometryPerPortal[relation->portal_index].sortedVericles;
-            framebased::vector<mathfu::vec3> portalVerticesVec;
-            portalVerticesVec.reserve(portalSortedVertices.size());
-
-            std::transform(
-                portalSortedVertices.begin(),
-                portalSortedVertices.end(),
-                std::back_inserter(portalVerticesVec),
-                [](mathfu::vec3 &d) -> mathfu::vec3 { return d;}
-                );
-
-            bool visible = MathHelper::planeCull(portalVerticesVec, localFrustumPlanes);
-
-            if (!visible && hackCondition) continue;
-
-            int lastFrustumPlanesLen = localFrustumPlanes.size();
-
-            //3. Construct frustum planes for this portal
-            framebased::vector<mathfu::vec4> thisPortalPlanes;
-            thisPortalPlanes.reserve(lastFrustumPlanesLen);
-
-            if (hackCondition) {
-                //Transform portal vertexes into clip space (this code should allow to use this logic with both Perspective and Ortho)
-                framebased::vector<mathfu::vec4> portalVerticesClip(portalVerticesVec.size());
-                framebased::vector<mathfu::vec4> portalVerticesClipNearPlane(portalVerticesVec.size());
-
-                for (int i = 0; i < portalVerticesVec.size(); i++) {
-                    portalVerticesClip[i] = traverseTempData.MVPMat * mathfu::vec4(portalVerticesVec[i], 1.0f);
-                    portalVerticesClip[i] /= portalVerticesClip[i].w;
-                }
-
-
-
-                for (int i = 0; i < portalVerticesVec.size(); i++) {
-                    //Project Portal vertex to near plane in clip space
-                    portalVerticesClipNearPlane[i] = portalVerticesClip[i];
-                    portalVerticesClipNearPlane[i].z = -1;
-                    //Transform back to local space
-                    portalVerticesClipNearPlane[i] = traverseTempData.MVPMatInv * portalVerticesClipNearPlane[i];
-                    portalVerticesClipNearPlane[i] /= portalVerticesClipNearPlane[i].w;
-                }
-
-                //This condition works, bcuz earlier it's verified we are inside the portal using the
-                //dot product AND `relation->side`
-                bool flip = (relation->side > 0);
-
-                int vertexCnt = portalVerticesVec.size();
-                for (int i = 0; i < vertexCnt; ++i) {
-                    int i2 = (i + 1) % vertexCnt;
-
-                    mathfu::vec4 n = MathHelper::createPlaneFromEyeAndVertexes(portalVerticesClipNearPlane[i].xyz(),
-                                                                               portalVerticesVec[i],
-                                                                               portalVerticesVec[i2]);
-
-                    if (flip) {
-                        n *= -1.0f;
-                    }
-
-                    thisPortalPlanes.emplace_back() = n;
-                }
-                //The portalPlanes do not have far and near plane. So we need to add them
-                //Near plane is this portal's plane, far plane is a global one
-                auto nearPlane = mathfu::vec4(portalInfo->plane.planeVector);
-                if (flip)
-                    nearPlane *= -1.0f;
-
-                auto &farPlane = traverseTempData.farPlane;
-                thisPortalPlanes.emplace_back() = nearPlane;
-                thisPortalPlanes.emplace_back() = farPlane;
-            } else {
-                // If camera is too close - just use usual frustums
-                thisPortalPlanes = localFrustumPlanes;
-            }
-
-            //Suppress duplicate contributions on cyclic portal paths: if this portal already
-            //produced an equivalent frustum, propagating it again adds nothing new
-            if (frustumPlanesAlmostEqual(traverseTempData.portalCrossedFrustums[relation->portal_index], thisPortalPlanes))
-                continue;
-            traverseTempData.portalCrossedFrustums[relation->portal_index] = thisPortalPlanes;
-
-            //Transform local planes into world planes to use with frustum culling of M2Objects
-            MathHelper::PlanesUndPoints worldSpaceFrustum;
-            worldSpaceFrustum.planes = framebased::vector<mathfu::vec4>(thisPortalPlanes.size());
-            worldSpaceFrustum.points = framebased::vector<mathfu::vec3>();
-            worldSpaceFrustum.points.reserve(thisPortalPlanes.size());
-
-            for (int x = 0; x < thisPortalPlanes.size(); x++) {
-                worldSpaceFrustum.planes[x] = traverseTempData.transposeInverseModelMat * thisPortalPlanes[x];
-            }
-
-            {
-                worldSpaceFrustum.points = MathHelper::getIntersectionPointsFromPlanes(worldSpaceFrustum.planes);
-                //worldSpaceFrustum.hullLines = MathHelper::getHullLines(worldSpaceFrustum.points);
-            }
-
-            std::vector<mathfu::vec3> worldSpacePortalVertices;
-            worldSpacePortalVertices.reserve(thisPortalPlanes.size());
-            std::transform(portalVerticesVec.begin(), portalVerticesVec.end(),
-                           std::back_inserter(worldSpacePortalVertices),
-                           [&](mathfu::vec3 &p) -> mathfu::vec3 {
-                               return (this->m_placementMatrix * mathfu::vec4(p, 1.0f)).xyz();
-                           }
-            );
-
-            //5. Traverse next
-            std::shared_ptr<WmoGroupObject> &nextGroupObject = groupObjects[nextGroup];
-            const SMOGroupInfo &nextGroupInfo = mainGeom->groups[nextGroup];
-            if ((nextGroupInfo.flags.EXTERIOR) == 0) {
-                auto &interiorView = traverseTempData.ivPerWMOGroup[nextGroup];
-                //5.1 The portal is into interior wmo group. So go on.
-                if (interiorView == nullptr) {
-                    interiorView = traverseTempData.viewsHolder.createInterior({});
-                    traverseTempData.ivPerWMOGroup[nextGroup] = interiorView;
-
-                    interiorView->ownerGroupWMO = nextGroupObject;
-                    interiorView->wmoGroupArray.addToDraw(nextGroupObject);
-                    interiorView->wmoGroupArray.addToCheckM2(nextGroupObject);
-                    interiorView->portalIndexes.emplace_back() = relation->portal_index;
-                }
-
-                interiorView->worldPortalVertices.emplace_back() = worldSpacePortalVertices;
-                interiorView->frustumData.frustums.emplace_back() = worldSpaceFrustum;
-                //BFS processes groups in non-decreasing level order, so the first (smallest)
-                //level wins; later arrivals only grow it
-                if (globalLevel+1 >= interiorView->level) {
-                    interiorView->level = globalLevel + 1;
-                }
-
-                if (nextGroupObject->getIsLoaded() && nextGroupObject->getWmoGroupGeom()->mogp->flags2.isSplitGroupParent) {
-                    this->addSplitChildWMOsToView(*interiorView, nextGroup);
-                }
-
-                //A bound on the walk as a whole, against diamond and cyclic paths multiplying past the depth cap
-                if (portalWorkList.size() < 8192)
-                    portalWorkList.push_back({nextGroup, thisPortalPlanes, globalLevel + 1, workItem.localLevel + 1});
-
-            } else if (((nextGroupInfo.flags.EXTERIOR) > 0) && traversingStartedFromInterior) {
-                //5.2 The portal is from interior into exterior wmo group.
-                //Makes sense to try to create or get only if exterior was not already created before traversing this entire WMO
-                if (!traverseTempData.exteriorWasCreatedBeforeTraversing) {
-                    auto exteriorView = traverseTempData.viewsHolder.getOrCreateExterior({});
-                    exteriorView->level = globalLevel + 1;
-                    exteriorView->worldPortalVertices.emplace_back() = worldSpacePortalVertices;
-                    exteriorView->frustumData.frustums.emplace_back() = worldSpaceFrustum;
-                }
-            }
+            wmoGroupArray.addToLoad(groupObject);
         }
     }
 }

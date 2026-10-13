@@ -9,13 +9,11 @@
 
 class SkyView;
 class GeneralView;
-class InteriorView;
 class ExteriorView;
 class ADTObjRenderRes;
 class FrameViewsHolder;
 
 typedef std::shared_ptr<GeneralView> HGeneralView;
-typedef std::shared_ptr<InteriorView> HInteriorView;
 typedef std::shared_ptr<ExteriorView> HExteriorView;
 typedef std::shared_ptr<SkyView> HSkyView;
 
@@ -37,12 +35,9 @@ public:
     WMOGroupListContainer wmoGroupArray;
     M2ObjectListContainer m2List;
 
-    //Support several frustum planes because of how portal culling works
-    std::vector<std::vector<mathfu::vec3>> worldPortalVertices = {};
     std::vector<std::vector<mathfu::vec3>> worldAntiPortalVertices = {};
     MathHelper::FrustumCullingData frustumData;
 
-    int level = -1;
     int renderOrder = -1;
     struct PortalPointsFrame {
         HGIndexBuffer m_indexVBO;
@@ -62,12 +57,6 @@ public:
                                         const std::vector<std::vector<mathfu::vec3>> &portalsVerts, bool isAntiportal = false);
     // Culls the view's candidates, its groups' doodads among them, by the frustum and by config's minM2ScreenPercent.
     void addM2FromGroups(const MathHelper::FrustumCullingData &frustumData, mathfu::vec4 &cameraPos, const Config *config);
-};
-
-class InteriorView : public GeneralView {
-public:
-    std::vector<int> portalIndexes;
-    std::shared_ptr<WmoGroupObject> ownerGroupWMO = {}; //Wmos which portals belong to
 };
 
 class ExteriorView : public GeneralView {
@@ -93,17 +82,9 @@ public:
     HExteriorView getOrCreateExterior(const MathHelper::FrustumCullingData &frustumData);
     HExteriorView getExterior();
     HSkyView getSkybox();
-
-    HInteriorView createInterior(const  MathHelper::FrustumCullingData &frustumData);
-
-    const std::vector<HInteriorView> &getInteriorViews() {
-        return interiorViews;
-    }
 private:
     HExteriorView exteriorView = nullptr ;
     HSkyView skyBoxView = nullptr ;
-    std::vector<HInteriorView> interiorViews = {};
-
 
 };
 

@@ -2439,9 +2439,6 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
             {
                 ZoneScopedN("Collect Portal Meshes");
                 //And add portal meshes
-                for (auto const &view: framePlan->viewsHolder.getInteriorViews()) {
-                    view->collectPortalMeshes(*transparentMeshes);
-                }
                 {
                     auto const &exteriorView = framePlan->viewsHolder.getExterior();
                     if (exteriorView != nullptr) {

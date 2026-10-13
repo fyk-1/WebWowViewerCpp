@@ -456,8 +456,6 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
     frustumData.cameraPos = cameraVec3;
     frustumData.farPlane = planesUndPoints.planes[planesUndPoints.planes.size() - 2]; //farPlane is always one before last
 
-    m_viewRenderOrder = 0;
-
     mapRenderPlan->m_currentInteriorGroups = {};
     mapRenderPlan->m_currentWMO = emptyWMO;
 
@@ -598,32 +596,17 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
     auto lcurrentWMO = wmoFactory->getObjectById<0>(mapRenderPlan->m_currentWMO);
     auto currentWmoGroup = mapRenderPlan->m_currentWmoGroup;
 
+    //The camera's group lights and fogs the frame and picks its sky, and draws nothing: every WMO group is culled by
+    //checkExterior, whichever group the camera is in
     if ((lcurrentWMO != nullptr) && (!mapRenderPlan->m_currentInteriorGroups.empty()) && (lcurrentWMO->isLoaded())) {
-        lcurrentWMO->queueCreatureGroupLoads(mapRenderPlan->wmoGroupArray);
-        if (lcurrentWMO->startTraversingWMOGroup(
-            cameraPos,
-            frustumData,
-            mapRenderPlan->m_currentInteriorGroups[0].groupIndex,
-            0,
-            m_viewRenderOrder,
-            true,
-            mapRenderPlan->viewsHolder)) {
-            mapRenderPlan->wmoArray.addToDrawn(lcurrentWMO);
+        if (auto wmoSkyBox = lcurrentWMO->getSkyBoxForGroup(mapRenderPlan->m_currentInteriorGroups[0].groupIndex)) {
+            mapRenderPlan->viewsHolder.getSkybox()->m2List.addToDraw(wmoSkyBox);
         }
+    }
 
-        auto exterior = mapRenderPlan->viewsHolder.getExterior();
-        if ( exterior != nullptr ) {
-            //Fix FrustumData for exterior was created after WMO traversal. So we need to fix it
-            exterior->frustumData.perspectiveMat = frustumData.perspectiveMat;
-            exterior->frustumData.viewMat = frustumData.viewMat;
-            exterior->frustumData.farPlane = frustumData.farPlane;
-
-            checkExterior(cameraPos, exterior->frustumData, m_viewRenderOrder, mapRenderPlan);
-        }
-    } else {
-        //Cull exterior
+    {
         auto exteriorView = mapRenderPlan->viewsHolder.getOrCreateExterior(frustumData);
-        checkExterior(cameraPos, exteriorView->frustumData, m_viewRenderOrder, mapRenderPlan);
+        checkExterior(cameraPos, exteriorView->frustumData, mapRenderPlan);
     }
 
     //After every visible tile has been requested, so the visible ones are first in line
@@ -707,21 +690,6 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
             exteriorView->collectLights(mapRenderPlan->pointLights, mapRenderPlan->spotLights, newWmoLights);
         }
     }
-
-    //Fill and collect M2 objects for views from WmoGroups
-    {
-        ZoneScopedN("collect from interiors");
-        auto &interiorViews = mapRenderPlan->viewsHolder.getInteriorViews();
-
-        for (auto &interiorView: interiorViews) {
-            interiorView->addM2FromGroups(frustumData, cameraPos, m_api->getConfig());
-            mapRenderPlan->m2Array.addDrawnAndToLoad(interiorView->m2List);
-            mapRenderPlan->wmoGroupArray.addToLoadAndDraw(interiorView->wmoGroupArray);
-
-            interiorView->collectLights(mapRenderPlan->pointLights, mapRenderPlan->spotLights, newWmoLights);
-        }
-    }
-
 
     {
         ZoneScopedN("process new lights");
@@ -841,7 +809,6 @@ void Map::getAdtAreaId(const mathfu::vec4 &cameraPos, int &areaId, int &parentAr
 
 void Map::checkExterior(mathfu::vec4 &cameraPos,
                         const MathHelper::FrustumCullingData &frustumData,
-                        int viewRenderOrder,
                         const HMapRenderPlan &mapRenderPlan
 ) {
     ZoneScoped ;
@@ -879,7 +846,7 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
     oneapi::tbb::task_arena cullingArena(m_api->getConfig()->hardwareThreadCount(), 1);
 
     //Batch frustum-cull WMO candidates by their world bounding boxes, so that off-frustum WMOs
-    //don't pay for the portal traversal setup. The WMO bbox contains all of its groups (loaded
+    //don't pay for the per-group culling. The WMO bbox contains all of its groups (loaded
     //or not), so this only rejects WMOs whose groups would all be culled downstream anyway.
     if (!wmoCandidates.empty()) {
         ZoneScopedN("Cull WMO");
@@ -902,8 +869,8 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
 
         if (wmoCullResults[wmoCandInd] != 0) {
             //WMO bbox is outside the frustum. WMOs with unconditional per-group handling still
-            //need the full traversal; for the rest only the load triggers of not-yet-loaded
-            //exterior groups have to be preserved.
+            //need the full group pass; for the rest only the load triggers of not-yet-loaded
+            //preloaded groups have to be preserved.
             if (!wmoCandidate->hasAlwaysDrawGroups() &&
                 !(renderAntiPortals && wmoCandidate->hasAntiportalGroups())) {
                 wmoCandidate->triggerExteriorGroupLoads(exteriorView->wmoGroupArray);
@@ -911,15 +878,7 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
             }
         }
 
-        if (wmoCandidate->startTraversingWMOGroup(
-            cameraPos,
-            frustumData,
-            -1,
-            0,
-            viewRenderOrder,
-            false,
-            mapRenderPlan->viewsHolder)) {
-
+        if (wmoCandidate->collectGroups(cameraPos, frustumData, *exteriorView)) {
             mapRenderPlan->wmoArray.addToDrawn(wmoCandidate);
         }
     }
@@ -1390,15 +1349,7 @@ void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRende
             }
         }
     }
-    bool renderPortals = m_api->getConfig()->renderPortals;
     bool renderAntiPortals = m_api->getConfig()->renderAntiPortals;
-
-    if (renderPortals) {
-        for (auto &view : renderPlan->viewsHolder.getInteriorViews()) {
-                view->produceTransformedPortalMeshes(sceneRenderer, m_api, view->worldPortalVertices);
-        }
-    }
-
 
     if (renderAntiPortals) {
         if(auto const &exterior = renderPlan->viewsHolder.getExterior()) {

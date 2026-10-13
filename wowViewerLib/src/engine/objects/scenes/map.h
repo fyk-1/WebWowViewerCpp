@@ -72,8 +72,6 @@ protected:
     std::shared_ptr<WdlObject> m_wdlObject = nullptr;
     std::shared_ptr<WdtLightsObject> m_wdtLightObject = nullptr;
 
-    int m_viewRenderOrder = 0;
-
     HGMesh skyMesh = nullptr;
     std::shared_ptr<ISkyMeshMaterial> skyMeshMat = nullptr;
 
@@ -202,7 +200,6 @@ public:
 private:
     void checkExterior(mathfu::vec4 &cameraPos,
                        const MathHelper::FrustumCullingData &frustumData,
-                       int viewRenderOrder,
                        const HMapRenderPlan &mapRenderPlan);
 
 //    HDrawStage doGaussBlur(const HDrawStage &parentDrawStage, std::vector<HGUniformBufferChunk> &uniformBufferChunks) const;

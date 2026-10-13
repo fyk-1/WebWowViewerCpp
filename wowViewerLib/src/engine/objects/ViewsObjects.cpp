@@ -223,15 +223,6 @@ HExteriorView FrameViewsHolder::getOrCreateExterior(const MathHelper::FrustumCul
     return exteriorView;
 }
 
-HInteriorView FrameViewsHolder::createInterior(const MathHelper::FrustumCullingData &frustumData) {
-    auto interior = std::make_shared<InteriorView>();
-    interior->frustumData = frustumData;
-
-    interiorViews.push_back(interior);
-
-    return interior;
-}
-
 HExteriorView FrameViewsHolder::getExterior() {
     return exteriorView;
 }
