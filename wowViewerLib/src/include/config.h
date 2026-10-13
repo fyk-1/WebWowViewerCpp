@@ -206,6 +206,13 @@ public:
     // modelled stops showing through from the air. A back face is lit as its own side. Terrain, liquids, particles, ribbons
     // and the sky keep their culling. A material builds its pipeline once, so a change takes effect from the next flight.
     bool drawBackFaces = true;
+    // Particles of weather around the camera, as WoWee draws them: 0 clear, 1 rain, 2 snow, 3 storm, which is rain with
+    // lightning. They fall after the opaque pass and are depth-tested, and none fall while the camera is inside a WMO
+    // interior. Any other value counts as clear. A change shows from the next frame.
+    int weatherType = 0;
+    // How much of it falls, from 0 to 1: the share of the particles WoWee's weather draws at most, and in a storm how
+    // often lightning strikes.
+    float weatherIntensity = 0.5f;
     // Set by the host when the camera jumps, so the next FSR dispatch drops its history. The renderer clears it.
     bool fsrResetRequested = false;
 

@@ -229,6 +229,17 @@ static const ShaderConfig aabbDebugShaderConfig = {
     }
 };
 
+static const ShaderConfig weatherShaderConfig = {
+    "bindless/weather",
+    "bindless/weather",
+    {
+        {0, SceneDataSetConfig},
+        {1, {
+            {0, {VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, false, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT}},
+        }},
+    }
+};
+
 auto bindlessMeshFactoryVlk = std::make_shared<EntityFactory<10000, GMeshId, GMeshVLK>>();
 
 MapSceneRenderBindlessVLK::MapSceneRenderBindlessVLK(const HGDeviceVLK &hDevice, Config *config) :
@@ -626,6 +637,7 @@ MapSceneRenderBindlessVLK::MapSceneRenderBindlessVLK(const HGDeviceVLK &hDevice,
     createWaterGlobalMaterialData();
 
     createAABBDebugMaterials();
+    createWeatherMaterials();
     setupObjectPicking();
 }
 
@@ -704,6 +716,152 @@ void MapSceneRenderBindlessVLK::drawAABBDebug(CmdBufRecorder &frameBufCmd, const
     if (drawSelected) {
         frameBufCmd.bindMaterial(m_selectedAABBMat);
         frameBufCmd.drawIndexed(24, 1, 0, 0, 0);
+    }
+}
+
+void MapSceneRenderBindlessVLK::createWeatherMaterials() {
+    // Particles and the flash are quads from the quad index buffer, a bolt link is a line from two indices.
+    m_drawWeatherVao = m_device->createVertexBufferBindings();
+    m_drawWeatherVao->setIndexBuffer(m_iboQuad);
+    m_drawWeatherVao->save();
+
+    const std::array<uint16_t, 2> linkIndices = {0, 1};
+    m_iboBoltLink = m_device->createIndexBuffer("Scene_IBO_BoltLink", linkIndices.size() * sizeof(uint16_t));
+    m_iboBoltLink->uploadData(linkIndices.data(), linkIndices.size() * sizeof(uint16_t));
+    allBuffers.push_back(m_iboBoltLink);
+
+    m_drawBoltVao = m_device->createVertexBufferBindings();
+    m_drawBoltVao->setIndexBuffer(m_iboBoltLink);
+    m_drawBoltVao->save();
+
+    // Two records of the look, and two for each particle.
+    m_weatherBuffer = m_device->createSSBOBuffer("Scene_SSBO_Weather", sizeof(mathfu::vec4_packed) * (2 + 2 * WeatherSim::MaxParticles),
+                                                 sizeof(mathfu::vec4_packed));
+    allBuffers.push_back(m_weatherBuffer);
+    // The flash, then two records for each link of the bolts.
+    m_lightningBuffer = m_device->createSSBOBuffer("Scene_SSBO_Lightning",
+                                                   sizeof(mathfu::vec4_packed) * (1 + 2 * WeatherSim::MaxBolts * WeatherSim::MaxBoltLinks),
+                                                   sizeof(mathfu::vec4_packed));
+    allBuffers.push_back(m_lightningBuffer);
+
+    static const PipelineTemplate s_particlePipeline = {
+        DrawElementMode::TRIANGLES,
+        false,
+        true,
+        EGxBlendEnum::GxBlend_Alpha,
+        true, // depthCulling
+        false, // depthWrite
+        0xFF
+    };
+    static const PipelineTemplate s_boltPipeline = {
+        DrawElementMode::LINE,
+        false,
+        true,
+        EGxBlendEnum::GxBlend_Add,
+        true,
+        false,
+        0xFF
+    };
+    static const PipelineTemplate s_flashPipeline = {
+        DrawElementMode::TRIANGLES,
+        false,
+        true,
+        EGxBlendEnum::GxBlend_Alpha,
+        false,
+        false,
+        0xFF
+    };
+
+    auto build = [this](const char *shader, const HGVertexBufferBindings &vao, const PipelineTemplate &pipeline, const HGBufferVLK &buffer) {
+        return MaterialBuilderVLK::fromShader(m_device, {shader, shader}, weatherShaderConfig)
+            .createPipeline(vao, m_forwardRenderPass, pipeline)
+            .bindDescriptorSet(0, sceneWideDS)
+            .createDescriptorSet(1, [buffer](std::shared_ptr<GDescriptorSet> &ds) {
+                ds->beginUpdate()
+                    .ssbo(0, buffer)
+                    .delayUpdate();
+            })
+            .toMaterial();
+    };
+    m_weatherMat = build("weather", m_drawWeatherVao, s_particlePipeline, m_weatherBuffer);
+    m_boltMat = build("lightningBolt", m_drawBoltVao, s_boltPipeline, m_lightningBuffer);
+    m_flashMat = build("lightningFlash", m_drawWeatherVao, s_flashPipeline, m_lightningBuffer);
+}
+
+MapSceneRenderBindlessVLK::WeatherFrame MapSceneRenderBindlessVLK::updateWeather(
+    const std::shared_ptr<MapRenderPlan> &framePlan,
+    const std::vector<RenderingMatAndSceneSize> &renderingMatricesAndSizes) {
+    WeatherFrame frame;
+    if (renderingMatricesAndSizes.empty()) return frame;
+
+    // Weather falls on the wall clock: the frame's own delta is zero while the animation is paused.
+    const auto now = std::chrono::steady_clock::now();
+    const float seconds = m_weatherClock.time_since_epoch().count() == 0 ? 0.0f : std::chrono::duration<float>(now - m_weatherClock).count();
+    m_weatherClock = now;
+
+    // The interior check is the culling's: the camera stands in a group of a WMO that is not open to the outside.
+    const bool indoors = !framePlan->m_currentInteriorGroups.empty();
+    if (m_weatherIndoors != (indoors ? 1 : 0)) {
+        m_weatherIndoors = indoors ? 1 : 0;
+        std::cout << "Weather: the camera is " << (indoors ? "inside" : "outside") << " an interior" << std::endl;
+    }
+    m_weather.update(renderingMatricesAndSizes[0].renderingMat->cameraPos.xyz(), seconds,
+                     m_config->weatherType, m_config->weatherIntensity, indoors);
+
+    auto record = [](float x, float y, float z, float w) { return mathfu::vec4_packed(mathfu::vec4(x, y, z, w)); };
+
+    const auto &particles = m_weather.particles();
+    if (!particles.empty()) {
+        const auto look = m_weather.look();
+        std::vector<mathfu::vec4_packed> records;
+        records.reserve(2 + 2 * particles.size());
+        records.push_back(mathfu::vec4_packed(look.color));
+        records.push_back(record(look.size, look.streakSeconds, 0, 0));
+        for (const auto &particle : particles) {
+            records.push_back(record(particle.position.x, particle.position.y, particle.position.z, 0));
+            records.push_back(record(particle.velocity.x, particle.velocity.y, particle.velocity.z, 0));
+        }
+        m_weatherBuffer->uploadData(records.data(), (int) (records.size() * sizeof(mathfu::vec4_packed)));
+        frame.particles = (uint32_t) particles.size();
+    }
+
+    std::vector<mathfu::vec4_packed> records;
+    records.push_back(record(m_weather.flash(), 0, 0, 0));
+    for (const auto &bolt : m_weather.bolts()) {
+        if (!bolt.active) continue;
+        for (const auto &link : bolt.links) {
+            records.push_back(record(link.from.x, link.from.y, link.from.z, bolt.brightness));
+            records.push_back(record(link.to.x, link.to.y, link.to.z, 0));
+            frame.boltLinks++;
+        }
+    }
+    frame.flash = m_weather.flash() > 0.01f;
+    if (frame.flash || frame.boltLinks > 0) {
+        m_lightningBuffer->uploadData(records.data(), (int) (records.size() * sizeof(mathfu::vec4_packed)));
+    }
+    return frame;
+}
+
+void MapSceneRenderBindlessVLK::drawWeather(CmdBufRecorder &frameBufCmd, const WeatherFrame &weatherFrame) {
+    VkZone(frameBufCmd, "Weather");
+
+    frameBufCmd.setViewPort(CmdBufRecorder::ViewportType::vp_usual);
+    frameBufCmd.setDefaultScissors();
+
+    if (weatherFrame.particles > 0) {
+        frameBufCmd.bindVertexBindings(m_drawWeatherVao);
+        frameBufCmd.bindMaterial(m_weatherMat);
+        frameBufCmd.drawIndexed(6, weatherFrame.particles, 0, 0, 0);
+    }
+    if (weatherFrame.boltLinks > 0) {
+        frameBufCmd.bindVertexBindings(m_drawBoltVao);
+        frameBufCmd.bindMaterial(m_boltMat);
+        frameBufCmd.drawIndexed(2, weatherFrame.boltLinks, 0, 0, 0);
+    }
+    if (weatherFrame.flash) {
+        frameBufCmd.bindVertexBindings(m_drawWeatherVao);
+        frameBufCmd.bindMaterial(m_flashMat);
+        frameBufCmd.drawIndexed(6, 1, 0, 0, 0);
     }
 }
 
@@ -2197,6 +2355,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
     // may run while the next frame's update is already rebuilding m_gpuDraws state.
     auto gpuFrameDraws = m_gpuDraws.buildFrameDraws(framePlan);
     updateSelectedAABB(framePlan);
+    const WeatherFrame weatherFrame = updateWeather(framePlan, renderingMatricessAndSizes);
 
     // GPU M2 animation: collect the per-frame dispatch list from the objects whose
     // GPU anim state was written during this frame's update (skipped objects keep
@@ -2345,6 +2504,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
         gpuParticleDeltaSeconds,
         gpuParticleViewMat,
         gpuRibbonCount,
+        weatherFrame,
         gpuFrameDraws](CmdBufRecorder &frameBufCmd, CmdBufRecorder &swapChainCmd) -> void {
 
         TracyMessageStr(("Draw stage frame = " + std::to_string(FrameContext::getCurrentProcessingFrameNumber())));
@@ -2605,6 +2765,13 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                                                                l_this->m_pickResultBuffer[pickFrameNum]);
                         l_this->m_pickResultPending[pickFrameNum] = true;
                         l_this->m_pickResultIsHoverPeek[pickFrameNum] = frameInputParams->frameParameters->pickIsHoverPeek;
+                    }
+
+                    if (weatherFrame.particles > 0 || weatherFrame.boltLinks > 0 || weatherFrame.flash) {
+                        auto debugHelper = frameBufCmd.beginDebugLabel("Weather Pass", {0.5f, 0.5f, 1.0f});
+                        auto passHelper = currentView->beginForwardPass(frameBufCmd, false, false,
+                                                                        frameInputParams->frameParameters->clearColor, false);
+                        l_this->drawWeather(frameBufCmd, weatherFrame);
                     }
 
                     if (l_this->m_config->drawM2BB || l_this->m_config->drawWmoBB || l_this->m_selectedAABBValid) {

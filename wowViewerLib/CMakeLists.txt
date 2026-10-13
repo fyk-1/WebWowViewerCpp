@@ -257,6 +257,8 @@ set(SOURCE_FILES
         src/renderer/mapScene/MapSceneRenderer.h
         src/renderer/mapScene/MapSceneRendererFactory.cpp
         src/renderer/mapScene/MapSceneRendererFactory.h
+        src/renderer/mapScene/weather/WeatherSim.cpp
+        src/renderer/mapScene/weather/WeatherSim.h
         src/renderer/IRenderer.h
         src/renderer/IRenderParameters.h
         src/renderer/frame/FrameInputParams.h

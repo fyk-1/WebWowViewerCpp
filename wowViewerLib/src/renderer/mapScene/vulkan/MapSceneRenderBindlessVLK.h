@@ -20,6 +20,8 @@
 #include "indirect/BindlessIndirectDrawsVLK.h"
 #include "../../../gapi/vulkan/buffers/CBufferChunkVLK.h"
 #include "GpuM2AnimationVLK.h"
+#include "../weather/WeatherSim.h"
+#include <chrono>
 
 class COpaqueMeshCollectorBindlessVLK;
 
@@ -339,6 +341,31 @@ protected:
     void createAABBDebugMaterials();
     void drawAABBDebug(CmdBufRecorder &frameBufCmd, const GpuIndirectDrawsVLK::FrameDrawData &gpuFrameDraws);
     void updateSelectedAABB(const std::shared_ptr<MapRenderPlan> &framePlan);
+
+    // Weather (Config::weatherType): the simulation runs in update, writes the particles and the lightning into two
+    // storage buffers, and the draw reads them after the transparent passes. Its vertex arrays have an index buffer and
+    // nothing else, since the shaders pull their corners from the vertex index.
+    struct WeatherFrame {
+        uint32_t particles = 0;
+        uint32_t boltLinks = 0;
+        bool flash = false;
+    };
+    WeatherSim m_weather;
+    int m_weatherIndoors = -1;
+    std::chrono::steady_clock::time_point m_weatherClock;
+    HGBufferVLK m_weatherBuffer;
+    HGBufferVLK m_lightningBuffer;
+    HGBufferVLK m_iboBoltLink;
+    HGVertexBufferBindings m_drawWeatherVao = nullptr;
+    HGVertexBufferBindings m_drawBoltVao = nullptr;
+    std::shared_ptr<ISimpleMaterialVLK> m_weatherMat;
+    std::shared_ptr<ISimpleMaterialVLK> m_boltMat;
+    std::shared_ptr<ISimpleMaterialVLK> m_flashMat;
+
+    void createWeatherMaterials();
+    WeatherFrame updateWeather(const std::shared_ptr<MapRenderPlan> &framePlan,
+                               const std::vector<RenderingMatAndSceneSize> &renderingMatricesAndSizes);
+    void drawWeather(CmdBufRecorder &frameBufCmd, const WeatherFrame &weatherFrame);
 
     // Async GPU object-id pick readback: one small host-visible, persistently-mapped buffer per
     // frame-in-flight slot. A copy is queued on the frame a pick is requested; the result is decoded
