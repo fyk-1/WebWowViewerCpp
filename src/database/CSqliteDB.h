@@ -34,7 +34,6 @@ public:
     void getLiquidTexture(int liquidTypeId, std::vector<LiquidTextureData> &textures);
     void getZoneLightsForMap(int mapId, std::vector<ZoneLight> &zoneLights) override;
 
-    void getGameObjectsForMap(int mapId, std::vector<GameObjectRecord> &gameObjects) override;
     bool getGameObjectDisplayInfo(int displayId, GameObjectDisplayInfoRecord &result) override;
     void getCreatureSpawnsForTile(int mapId, int tileRow, int tileCol, std::vector<CreatureSpawnRecord> &spawns) override;
     void getCreatureSpawnsForMap(int mapId, std::vector<CreatureSpawnRecord> &spawns) override;
@@ -114,7 +113,6 @@ private:
     StatementFieldHolder getMapList;
     StatementFieldHolder getMapByIdStatement;
 
-    StatementFieldHolder getGameObjectsForMapStatement;
     StatementFieldHolder getGameObjectDisplayInfoStatement;
     StatementFieldHolder getCreatureSpawnsForTileStatement;
     StatementFieldHolder getCreatureSpawnsForMapStatement;

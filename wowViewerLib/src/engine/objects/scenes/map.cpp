@@ -474,7 +474,7 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
         //Hack that is needed to get the current WMO the camera is in. Basically it does frustum culling over current ADT
         getPotentialEntities(frustumData, cameraPos, mapRenderPlan, potentialM2, potentialWmo);
 
-        if (m_worldObjectManager && m_api->getConfig()->renderGameObjects) {
+        if (m_worldObjectManager) {
             m_worldObjectManager->getPotentialWmoCandidates(frustumData, potentialWmo);
         }
 
@@ -867,7 +867,7 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
 
     getCandidatesEntities(frustumData, cameraPos, mapRenderPlan, exteriorView->m2List, mapRenderPlan->wmoArray);
 
-    if (m_worldObjectManager && m_api->getConfig()->renderGameObjects) {
+    if (m_worldObjectManager) {
         ZoneScopedN("world objects candidates");
         m_worldObjectManager->cullAndCollect(frustumData, exteriorView->m2List, mapRenderPlan->wmoArray);
     }

@@ -251,7 +251,6 @@ CSqliteDB::CSqliteDB(std::string dbFileName) :
     getMapList(m_sqliteDatabase, getHasWDTId(m_sqliteDatabase) ? getMapListSQL : getMapListSQL_classic),
     getMapByIdStatement(m_sqliteDatabase, getHasWDTId(m_sqliteDatabase) ? getMapByIDSQL : getMapByIDSQL_classic),
 
-    getGameObjectsForMapStatement(m_sqliteDatabase, generateSimpleSelectSQL("GameObjects", {}, "where OwnerID = ?")),
     getGameObjectDisplayInfoStatement(m_sqliteDatabase, generateSimpleSelectSQL("GameObjectDisplayInfo", {}, "where ID = ?")),
     getCreatureSpawnsForTileStatement(m_sqliteDatabase, m_sqliteDatabase.tableExists("CreatureSpawn")
         ? creatureSpawnsSQL(getHasCreatureLook(m_sqliteDatabase), getHasCreatureAlpha(m_sqliteDatabase),
@@ -790,33 +789,6 @@ void CSqliteDB::getZoneLightsForMap(int mapId, std::vector<ZoneLight> &zoneLight
             pt.x = getZoneLightPointsInfo.getField("Pos_0").getDouble();
             pt.y = getZoneLightPointsInfo.getField("Pos_1").getDouble();
         }
-    }
-}
-
-void CSqliteDB::getGameObjectsForMap(int mapId, std::vector<GameObjectRecord> &gameObjects) {
-    getGameObjectsForMapStatement.setInputs( mapId );
-
-    while (getGameObjectsForMapStatement.execute()) {
-        GameObjectRecord &gameObjectRecord = gameObjects.emplace_back();
-
-        gameObjectRecord.ID = getGameObjectsForMapStatement.getField("ID").getInt();
-        gameObjectRecord.OwnerID = mapId;
-        gameObjectRecord.DisplayID = getGameObjectsForMapStatement.getField("DisplayID").getInt();
-        gameObjectRecord.TypeID = getGameObjectsForMapStatement.getField("TypeID").getInt();
-        gameObjectRecord.Name = getGameObjectsForMapStatement.getField("Name_lang").getString();
-
-        gameObjectRecord.Pos[0] = getGameObjectsForMapStatement.getField("Pos_0").getDouble();
-        gameObjectRecord.Pos[1] = getGameObjectsForMapStatement.getField("Pos_1").getDouble();
-        gameObjectRecord.Pos[2] = getGameObjectsForMapStatement.getField("Pos_2").getDouble();
-
-        gameObjectRecord.Rot[0] = getGameObjectsForMapStatement.getField("Rot_0").getDouble();
-        gameObjectRecord.Rot[1] = getGameObjectsForMapStatement.getField("Rot_1").getDouble();
-        gameObjectRecord.Rot[2] = getGameObjectsForMapStatement.getField("Rot_2").getDouble();
-        gameObjectRecord.Rot[3] = getGameObjectsForMapStatement.getField("Rot_3").getDouble();
-
-        gameObjectRecord.Scale = getGameObjectsForMapStatement.getField("Scale").getDouble();
-
-        gameObjectRecord.PropValue0 = getGameObjectsForMapStatement.getField("PropValue_0").getInt();
     }
 }
 

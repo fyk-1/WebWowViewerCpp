@@ -46,7 +46,6 @@ namespace {
     X(Bool, renderSkyDom) \
     X(Bool, renderSkyScene) \
     X(Bool, renderLiquid) \
-    X(Bool, renderGameObjects) \
     X(Bool, renderCreatures) \
     X(Bool, renderHumanoids) \
     X(Bool, renderGameObjectSpawns) \

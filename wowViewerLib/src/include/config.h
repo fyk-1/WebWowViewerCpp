@@ -59,7 +59,6 @@ public:
     // off; WDL sky scenes gated by these are not shown. Empty = everything enabled.
     std::unordered_set<int> disabledSkyScenePlayerConditions;
     bool renderLiquid = true;
-    bool renderGameObjects = true;
     // The host's CreatureSpawn rows, drawn as M2 models standing where they spawn.
     bool renderCreatures = true;
     // The humanoid NPCs among them, the ones dressed by a race and sex model. Off leaves them out while renderCreatures is on.

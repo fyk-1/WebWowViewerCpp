@@ -34,7 +34,7 @@ struct CustomM2Object {
     mathfu::mat4 lastPlacementMatrix = mathfu::mat4::Identity();
 };
 
-// Holds client-side world objects for a single map (DB-driven GameObjects,
+// Holds client-side world objects for a single map (GameObjects,
 // which spawn either an M2 or a WMO, plus user-placed custom M2s). Created once per
 // opened map and handed to Map, which asks it to contribute BVH-narrowed candidates
 // into the frame's exterior culling pass every frame (Map's existing M2/WMO
@@ -105,7 +105,6 @@ public:
     int getCustomM2IdByM2ObjId(M2ObjId id) const;
 
 private:
-    void loadGameObjects();
     std::vector<GameObject*> queryVisible(const MathHelper::FrustumCullingData &frustumData) const;
 
     void spawnCustomM2(CustomM2Object &object);

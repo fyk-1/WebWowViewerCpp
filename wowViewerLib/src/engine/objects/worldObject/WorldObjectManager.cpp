@@ -7,8 +7,6 @@
 
 
 WorldObjectManager::WorldObjectManager(HApiContainer api, int mapId) : m_api(api), m_mapId(mapId) {
-    loadGameObjects();
-
     std::vector<GameObject*> allObjects;
     allObjects.reserve(m_gameObjectsById.size());
     for (auto &[id, gameObject] : m_gameObjectsById) {
@@ -220,41 +218,6 @@ const CustomM2Object *WorldObjectManager::getCustomM2(int id) const {
 int WorldObjectManager::getCustomM2IdByM2ObjId(M2ObjId id) const {
     auto it = m_customIdByM2Id.find(id);
     return it != m_customIdByM2Id.end() ? it->second : -1;
-}
-
-void WorldObjectManager::loadGameObjects() {
-    if (m_api == nullptr || m_api->databaseHandler == nullptr) return;
-
-    std::vector<GameObjectRecord> gameObjectRecords;
-    m_api->databaseHandler->getGameObjectsForMap(m_mapId, gameObjectRecords);
-
-    std::unordered_map<int, GameObjectDisplayInfoRecord> displayInfoCache;
-
-    for (auto &record : gameObjectRecords) {
-        // 38 GAMEOBJECT_TYPE_GARRISON_BUILDING are placed on plots, which is serverside info
-        if (record.TypeID == 38) continue;
-
-        auto cacheIt = displayInfoCache.find(record.DisplayID);
-        if (cacheIt == displayInfoCache.end()) {
-            GameObjectDisplayInfoRecord displayInfo;
-            //On failure, displayInfo stays default-constructed (FileDataID == 0), which is
-            //filtered out below; caching it either way avoids re-querying the same DisplayID.
-            m_api->databaseHandler->getGameObjectDisplayInfo(record.DisplayID, displayInfo);
-            cacheIt = displayInfoCache.emplace(record.DisplayID, displayInfo).first;
-        }
-
-        auto &displayInfo = cacheIt->second;
-        if (displayInfo.FileDataID <= 0) continue;
-
-        auto gameObject = std::make_shared<GameObject>(m_api, record, displayInfo);
-        m_gameObjectsById[record.ID] = gameObject;
-
-        if (gameObject->isWmo()) {
-            m_gameObjectByWmoId[gameObject->getWmoObject()->getObjectId()] = gameObject.get();
-        } else {
-            m_gameObjectByM2Id[gameObject->getM2Object()->getObjectId()] = gameObject.get();
-        }
-    }
 }
 
 std::vector<GameObject*> WorldObjectManager::queryVisible(const MathHelper::FrustumCullingData &frustumData) const {
