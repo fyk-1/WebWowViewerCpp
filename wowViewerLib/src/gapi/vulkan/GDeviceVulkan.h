@@ -5,6 +5,7 @@
 #ifndef AWEBWOWVIEWERCPP_GDEVICEVULKAN_H
 #define AWEBWOWVIEWERCPP_GDEVICEVULKAN_H
 
+#include <atomic>
 #include <memory>
 #include <unordered_map>
 #include <mutex>
@@ -65,6 +66,17 @@ public:
 
     // Writes one "gpu <vendor:device> <type> <name>" line per Vulkan device; 0, or 1 when no instance can be made.
     static int listPhysicalDevices(std::ostream &out);
+
+    // The file the pipeline cache is loaded from and saved to. Set before the device is made; empty keeps the cache in memory.
+    static void setPipelineCacheFile(const std::string &path);
+    VkPipelineCache getPipelineCache() const { return m_pipelineCache; }
+    // Whether the cache file was read into the cache at start, and why not when it was not.
+    bool pipelineCacheLoaded() const { return m_pipelineCacheLoaded; }
+    const std::string &pipelineCacheStatus() const { return m_pipelineCacheStatus; }
+    // Writes the cache to its file unless it has not grown since the last write. False when it could not be written.
+    bool savePipelineCache();
+    // The graphics pipelines made so far, none counted that a live pipeline already served.
+    unsigned int getPipelinesCreated() const { return m_pipelinesCreated; }
 
     GDeviceType getDeviceType() override {return GDeviceType::GVulkan; };
 
@@ -194,11 +206,6 @@ public:
 
     std::shared_ptr<GDescriptorSet> createDescriptorSet(std::shared_ptr<GDescriptorSetLayout> &hDescriptorSetLayout);
 
-    // The file the pipeline cache is loaded from and saved to. Set before the device is made; empty keeps the cache in memory.
-    static void setPipelineCacheFile(const std::string &path);
-    VkPipelineCache getPipelineCache() const { return m_pipelineCache; }
-    // Writes the cache to its file unless it has not grown since the last write. False when it could not be written.
-    bool savePipelineCache();
 
     virtual VkDevice getVkDevice() override {
         return device;
@@ -388,7 +395,10 @@ protected:
 
     void createPipelineCache();
     VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
+    bool m_pipelineCacheLoaded = false;
+    std::string m_pipelineCacheStatus = "not made";
     size_t m_pipelineCacheSavedSize = 0;
+    std::atomic<unsigned int> m_pipelinesCreated{0};
     VkDevice device;
 
     bool m_debugUtilsAvailable = false;

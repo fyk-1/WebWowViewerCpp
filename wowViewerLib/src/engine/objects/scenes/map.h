@@ -147,7 +147,6 @@ protected:
     FreeStrategy adtFreeLambda;
     FreeStrategy zeroStateLambda;
 
-    HADTRenderConfigDataHolder m_adtConfigHolder = nullptr;
     HWorldObjectManager m_worldObjectManager = nullptr;
 
     // The creatures and game objects of a map with no tiles, read once its WDT says so. The map holds the only strong refs, so they go
@@ -182,10 +181,6 @@ public:
     }
     void getAdtAreaId(const mathfu::vec4 &cameraPos, int &areaId, int &parentAreaId);
 
-    void setAdtConfig(HADTRenderConfigDataHolder &adtConfig) {
-        m_adtConfigHolder = adtConfig;
-    }
-
     void setWorldObjectManager(HWorldObjectManager worldObjectManager) {
         m_worldObjectManager = worldObjectManager;
     }
@@ -204,9 +199,26 @@ public:
 
     void doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRenderPlan &renderPlan);
 
+    // A map is about to open: the Map made next finishes its tiles and geometry without the per-frame budgets until the tiles
+    // around the arrival point are in, or FAST_LOAD_CEILING has passed. Called from SceneWindow::unload, ahead of every open.
+    static void requestFastLoad();
+
     void update(const HMapRenderPlan &renderPlan);
     void updateBuffers(const HMapSceneBufferCreate &sceneRenderer, const HMapRenderPlan &renderPlan);
 private:
+    // The open this map belongs to, taken when it is made; a map from an earlier open never takes part in the window.
+    const uint64_t m_fastLoadGeneration = currentFastLoadGeneration();
+    // A map with no tiles, one WMO, has nothing to wait on until its queue has held work once.
+    bool m_fastLoadSawWork = false;
+    static uint64_t currentFastLoadGeneration();
+    // Whether this map's window is open; closes it, logging, once the ceiling has passed.
+    bool fastLoadOpen();
+    bool wdtLoaded() const;
+    // Whether the frame is settled: see the fast-load window in map.cpp.
+    bool loadSettled(bool tilesAsked, bool tilesLoaded, size_t queued);
+
+    // Returns how many items were in the queue when it was cut, the ones it finished included.
+    size_t finishLoadedGeometry(const HMapSceneBufferCreate &sceneRenderer, const HMapRenderPlan &renderPlan, bool fastLoad);
     void checkExterior(mathfu::vec4 &cameraPos,
                        const MathHelper::FrustumCullingData &frustumData,
                        const HMapRenderPlan &mapRenderPlan);

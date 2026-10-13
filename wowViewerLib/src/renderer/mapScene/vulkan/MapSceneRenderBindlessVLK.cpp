@@ -254,6 +254,7 @@ MapSceneRenderBindlessVLK::MapSceneRenderBindlessVLK(const HGDeviceVLK &hDevice,
         }),
     m_gpuM2Animation(hDevice, config) {
     std::cout << "Create Bindless scene renderer " << std::endl;
+    const unsigned int pipelinesBefore = hDevice->getPipelinesCreated();
 
 
     const int rendererId = std::hash<uint64_t>()((uint64_t)this) & 0xFFFF;
@@ -639,6 +640,155 @@ MapSceneRenderBindlessVLK::MapSceneRenderBindlessVLK(const HGDeviceVLK &hDevice,
     createWeatherMaterials();
     m_farTerrain = std::make_unique<FarTerrainVLK>(m_device, uboBuffer, forwardShaderConfig, m_forwardRenderPass, sceneWideDS, allBuffers);
     setupObjectPicking();
+    createPipelinesAhead(pipelinesBefore);
+}
+
+/*
+robots@Impl: Pipelines ahead of time.
+
+A pipeline made on first sight is a compile on the render thread, a hitch in the frame a new kind of material comes into view.
+The materials the engine asks for are keyed by a PipelineTemplate, and the fields that vary are few, so the renderer makes all
+of them at start and the first sight of any is a lookup. What each family varies on:
+
+  M2 models: the eight blend modes of M2BlendingModeToEGxBlendEnum, and depth write, depth test and back face culling as the
+    material's flags set them. The forced transparent twin of a batch (Alpha, no depth write) is one of these. The solid ones also
+    make their fade twin and, like every blend below Alpha, a g-buffer pipeline. Their stencil fields are the engine's.
+  Projected M2 materials: the eight blend modes, the other fields fixed.
+  WMOs: every blend mode of the enum, since a WMO material's blend mode is a number out of the file; depth write follows it
+    (on up to AlphaKey), and back face culling is either.
+  Particles, on the CPU path and, where GPU animation runs, the GPU path: the eight blend modes, depth write on up to AlphaKey.
+  Ribbons, on both paths likewise: the seven blend modes above Opaque (an opaque ribbon is drawn as Alpha), and the eight
+    combinations of depth write, depth test and back face culling.
+  The waterfall: one template. ADT and liquid make theirs with their global materials, and the far terrain's is made by its
+    own class.
+
+A material that carries per-object descriptors (particles, ribbons, the waterfall) is made once with stand-in data through the
+same function the engine calls, so its pipelines are the ones the engine's materials will ask for; the material is dropped and
+only its pipelines are held, since the device's cache of live pipelines holds them weakly. The static M2 and WMO materials are
+held by their maps. The pipeline cache is written afterwards, so a first run's work survives a viewer that is killed.
+*/
+extern const std::array<EGxBlendEnum, 8> M2BlendingModeToEGxBlendEnum;
+
+void MapSceneRenderBindlessVLK::createPipelinesAhead(unsigned int pipelinesBefore) {
+    ZoneScoped;
+    const auto started = std::chrono::steady_clock::now();
+
+    auto keep = [this](const std::shared_ptr<IMaterial> &material) {
+        auto simple = std::dynamic_pointer_cast<ISimpleMaterialVLK>(material);
+        if (simple == nullptr) return;
+
+        for (const HPipelineVLK &pipeline : {simple->getPipeline(), simple->getGBufferPipeline(), simple->getZPrefillPipeline()}) {
+            if (pipeline != nullptr) m_pipelinesAhead.push_back(pipeline);
+        }
+    };
+    // The three flags that vary between the materials of one blend mode.
+    auto flagged = [](PipelineTemplate &pipelineTemplate, int bits) {
+        pipelineTemplate.depthWrite = (bits & 1) != 0;
+        pipelineTemplate.depthCulling = (bits & 2) != 0;
+        pipelineTemplate.backFaceCulling = (bits & 4) != 0;
+    };
+
+    for (EGxBlendEnum blendMode : M2BlendingModeToEGxBlendEnum) {
+        for (int bits = 0; bits < 8; bits++) {
+            PipelineTemplate pipelineTemplate;
+            pipelineTemplate.element = DrawElementMode::TRIANGLES;
+            pipelineTemplate.blendMode = blendMode;
+            flagged(pipelineTemplate, bits);
+            pipelineTemplate.stencilTestEnable = false;
+            pipelineTemplate.stencilWrite = true;
+            pipelineTemplate.stencilWriteVal = ObjStencilValues::M2_STENCIL_VAL;
+            getM2StaticMaterial(pipelineTemplate);
+        }
+
+        PipelineTemplate projective;
+        projective.element = DrawElementMode::TRIANGLES;
+        projective.depthWrite = false;
+        projective.depthCulling = true;
+        projective.backFaceCulling = true;
+        projective.triCCW = false;
+        projective.blendMode = blendMode;
+        projective.stencilTestEnable = true;
+        projective.stencilWrite = false;
+        projective.stencilWriteVal = ObjStencilValues::M2_STENCIL_VAL;
+        getM2ProjectiveStaticMaterial(projective);
+    }
+
+    for (int blend = 0; blend < (int) EGxBlendEnum::GxBlend_MAX; blend++) {
+        for (int backFaceCulling = 0; backFaceCulling < 2; backFaceCulling++) {
+            PipelineTemplate pipelineTemplate;
+            pipelineTemplate.element = DrawElementMode::TRIANGLES;
+            pipelineTemplate.blendMode = static_cast<EGxBlendEnum>(blend);
+            pipelineTemplate.depthWrite = blend <= 1;
+            pipelineTemplate.depthCulling = true;
+            pipelineTemplate.backFaceCulling = backFaceCulling != 0;
+            pipelineTemplate.stencilTestEnable = false;
+            pipelineTemplate.stencilWrite = true;
+            pipelineTemplate.stencilWriteVal = ObjStencilValues::WMO_STENCIL_VAL;
+            getWMOStaticMaterial(pipelineTemplate);
+        }
+    }
+
+    const HGSamplableTexture black = m_device->getBlackTexturePixel();
+    const std::shared_ptr<IM2ModelData> standIn = createM2ModelMat(1, 1, 1, 1, 0);
+    const bool gpuPaths = m_gpuM2Animation.isEnabled();
+
+    for (int path = 0; path < (gpuPaths ? 2 : 1); path++) {
+        for (size_t index = 0; index < M2BlendingModeToEGxBlendEnum.size(); index++) {
+            PipelineTemplate particle;
+            particle.element = DrawElementMode::TRIANGLES;
+            particle.blendMode = M2BlendingModeToEGxBlendEnum[index];
+            particle.depthWrite = index <= 1;
+            particle.depthCulling = true;
+            particle.backFaceCulling = false;
+
+            M2ParticleMaterialTemplate particleTemplate;
+            particleTemplate.textures = {black, black, black};
+            particleTemplate.forGpuPath = path == 1;
+            keep(createM2ParticleMaterial(particle, particleTemplate));
+
+            if (index == 0) continue;
+            for (int bits = 0; bits < 8; bits++) {
+                PipelineTemplate ribbon;
+                ribbon.element = DrawElementMode::TRIANGLE_STRIP;
+                ribbon.blendMode = M2BlendingModeToEGxBlendEnum[index];
+                flagged(ribbon, bits);
+
+                M2RibbonMaterialTemplate ribbonTemplate;
+                ribbonTemplate.textures = {black};
+                ribbonTemplate.forGpuPath = path == 1;
+                keep(createM2RibbonMaterial(standIn, ribbon, ribbonTemplate));
+            }
+        }
+    }
+
+    {
+        PipelineTemplate waterfall;
+        waterfall.element = DrawElementMode::TRIANGLES;
+        waterfall.depthWrite = false;
+        waterfall.depthCulling = true;
+        waterfall.backFaceCulling = false;
+        waterfall.blendMode = EGxBlendEnum::GxBlend_Alpha;
+        waterfall.stencilTestEnable = false;
+        waterfall.stencilWrite = true;
+        waterfall.stencilWriteVal = ObjStencilValues::M2_STENCIL_VAL;
+
+        M2WaterfallMaterialTemplate waterfallTemplate;
+        waterfallTemplate.textures = {black, black, black, black, black};
+        keep(createM2WaterfallMaterial(standIn, waterfall, waterfallTemplate));
+    }
+
+    if (HPipelineVLK farPipeline = m_farTerrain->createPipelineAhead()) m_pipelinesAhead.push_back(farPipeline);
+
+    // The cache holds what the driver compiled, so it goes to its file now and not only at exit.
+    m_device->savePipelineCache();
+
+    static bool logged = false;
+    if (!logged) {
+        logged = true;
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
+        std::cerr << "pipelines: " << (m_device->getPipelinesCreated() - pipelinesBefore) << " created ahead in "
+                  << elapsed.count() << " ms, cache " << m_device->pipelineCacheStatus() << std::endl;
+    }
 }
 
 void MapSceneRenderBindlessVLK::createAABBDebugMaterials() {

@@ -134,6 +134,18 @@ void FarTerrainVLK::createMaterials() {
         .toMaterial();
 }
 
+HPipelineVLK FarTerrainVLK::createPipelineAhead() {
+    // The pipeline reads the vertex layout and not the buffers, so a binding with none builds the same one.
+    m_bindings = m_device->createVertexBufferBindings();
+    m_bindings->addVertexBufferBinding(nullptr, kBindings);
+    createMaterials();
+
+    HPipelineVLK pipeline = m_gapMaterial != nullptr ? m_gapMaterial->getPipeline() : nullptr;
+    m_gapMaterial = nullptr;
+    m_bindings = nullptr;
+    return pipeline;
+}
+
 void FarTerrainVLK::postLoad(const FarTerrainFrame &frame) {
     if (!frame.on || frame.tiles == 0 || frame.terrain == nullptr) return;
 

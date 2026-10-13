@@ -52,9 +52,22 @@ void AdtObject::loadingFinished(const HMapSceneBufferCreate &sceneRenderer, cons
     calcCullBox();
 }
 
-// The box Map::checkADTCulling tests: a tile that fails it collects nothing, so it holds the terrain and water chunks and every
-// object the tile owns. An object stands past the tile's footprint, so each is widened by kObjectReach (a quarter of a tile),
-// a bound and not a measurement, and a model's box is only known once its file has loaded.
+/*
+robots@Impl: The tile's cull box.
+
+Map::checkADTCulling tests the box against the frustum before the tile is collected, and a tile that fails collects nothing:
+none of its chunks, and none of the models, WMOs, creatures and game objects it owns reach the candidates. The box therefore
+holds all of them, not the terrain alone, since an object stands past the tile's footprint (a tree on the edge, a WMO over
+the border) and would vanish with a tile whose terrain is out of view.
+
+It is the union of the terrain chunk boxes, the water chunk boxes that exist, and each owned object's reach. A WMO's reach is
+its placement extents, which the ADT carries, widened by kObjectReach, since its box grows once its doodads load
+(WmoObject::updateBB). A model's box is not known until its file loads, which only a collected tile triggers, so a model
+counts as its placement point widened by kObjectReach, joined with the box it already has when a neighbouring tile loaded it
+or it is a creature seeded with one. kObjectReach is a bound and not a measurement: a quarter of a tile (533.33 yards), which
+sets the most a tile's box grows past its objects, and a model that reaches further is missed until the camera is nearer.
+The box is computed once the tile has finished loading and is widened by widenCullBox where an object is added later.
+*/
 static constexpr float kObjectReach = 128.0f;
 
 void AdtObject::calcCullBox() {
@@ -68,25 +81,35 @@ void AdtObject::calcCullBox() {
     auto joinBox = [&](const CAaBox &box) {
         join(mathfu::vec3(box.min), mathfu::vec3(box.max));
     };
-    const mathfu::vec3 reach(kObjectReach, kObjectReach, kObjectReach);
+    auto joinModel = [&](M2Object *m2Object) {
+        if (m2Object == nullptr) return;
+
+        const mathfu::vec3 reach(kObjectReach, kObjectReach, kObjectReach);
+        const mathfu::vec3 position = m2Object->getWorldPosition();
+        join(position - reach, position + reach);
+
+        const auto *status = m2Factory->getObjectByIdConst<2>(m2Object->getObjectId());
+        if (status != nullptr && status->m_hasAABB) joinBox(m2Object->getAABB());
+    };
+    auto joinWmo = [&](const WMOObjId &wmoId) {
+        const CAaBox &box = retrieveAABB(wmoId);
+        if (box.min.x > box.max.x) return;
+
+        const mathfu::vec3 reach(kObjectReach, kObjectReach, kObjectReach);
+        join(mathfu::vec3(box.min) - reach, mathfu::vec3(box.max) + reach);
+    };
 
     for (int i = 0; i < 256; i++) {
         joinBox(tileAabb[i]);
         if (m_chunkHasWater[i]) joinBox(waterTileAabb[i]);
     }
-    for (auto const &m2Object : objectLods[0].m2Objects) {
-        if (m2Object == nullptr) continue;
-
-        const mathfu::vec3 position = m2Object->getWorldPosition();
-        join(position - reach, position + reach);
-        if (m2Object->getHasBoundingBox()) joinBox(m2Object->getAABB());
-    }
+    for (auto const &m2Object : objectLods[0].m2Objects) joinModel(m2Object.get());
     for (auto const &wmoId : objectLods[0].wmoObjectIds) {
-        if (wmoId == emptyWMO) continue;
-
-        const CAaBox &box = retrieveAABB(wmoId);
-        if (box.min.x > box.max.x) continue;
-        join(mathfu::vec3(box.min) - reach, mathfu::vec3(box.max) + reach);
+        if (wmoId != emptyWMO) joinWmo(wmoId);
+    }
+    for (auto const &creature : m_creatures) joinModel(creature->m2.get());
+    for (auto const &placed : m_gameObjectWmos) {
+        if (placed.wmo != nullptr) joinWmo(placed.wmo->getObjectId());
     }
 
     std::lock_guard<std::mutex> lock(m_cullBoxMutex);
@@ -101,6 +124,14 @@ bool AdtObject::getCullBox(CAaBox &box) {
 
     box = CAaBox(C3Vector(m_cullBoxMin), C3Vector(m_cullBoxMax));
     return true;
+}
+
+void AdtObject::widenCullBox(const CAaBox &box) {
+    std::lock_guard<std::mutex> lock(m_cullBoxMutex);
+    if (!m_hasCullBox) return;
+
+    m_cullBoxMin = mathfu::vec3::Min(m_cullBoxMin, mathfu::vec3(box.min));
+    m_cullBoxMax = mathfu::vec3::Max(m_cullBoxMax, mathfu::vec3(box.max));
 }
 
 void AdtObject::loadM2s() {

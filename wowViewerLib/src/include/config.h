@@ -277,41 +277,4 @@ private:
     int m_hardwareThreadCount;
 };
 
-//ADT STUFF FOR MAP GENERATION
-typedef std::array<int,2> AdtCell;
-
-struct AdtCellCompare
-{
-    bool operator()(const AdtCell &a, const AdtCell &b) const {
-        return a[0] == b[0] && a[1] == b[1];
-    }
-};
-
-struct AdtCellHasher {
-    std::size_t operator()(const AdtCell &k) const {
-        using std::hash;
-        return hash<int>{}(k[0]) ^ (hash<int>{}(k[1]) << 16);
-    };
-};
-
-struct ADTRenderConfigData {
-    ADTRenderConfigData() {
-        std::array<mathfu::vec3, 64> defaultMax = {};
-        std::array<mathfu::vec3, 64> defaultMin = {};
-        defaultMax.fill({-200000, -200000, -200000});
-        defaultMin.fill({200000, 200000, 200000});
-
-        adtMax.fill(defaultMax);
-        adtMin.fill(defaultMin);
-    }
-    std::array<std::array<mathfu::vec3, 64>, 64> adtMin;
-    std::array<std::array<mathfu::vec3, 64>, 64> adtMax;
-    std::unordered_set<AdtCell, AdtCellHasher, AdtCellCompare> excludedADTs;
-    std::unordered_map<AdtCell, std::unordered_set<AdtCell, AdtCellHasher, AdtCellCompare>, AdtCellHasher> excludedChunksPerADTs;
-};
-
-typedef std::shared_ptr<ADTRenderConfigData> HADTRenderConfigDataHolder;
-
-
-
 #endif //WOWVIEWERLIB_CONFIG_H

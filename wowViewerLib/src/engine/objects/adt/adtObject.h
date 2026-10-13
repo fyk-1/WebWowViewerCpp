@@ -76,6 +76,8 @@ public:
     // The box the map culls the tile by: its terrain and water chunks and every object it owns. False until the tile has
     // finished loading, so a tile still loading is never culled by it.
     bool getCullBox(CAaBox &box);
+    // Widens the tile's box, for an object added after the tile finished loading.
+    void widenCullBox(const CAaBox &box);
     bool getWaterColorFromDB(mathfu::vec4 cameraPos, mathfu::vec3 &closeRiverColor);
 
     bool checkFrustumCulling(
@@ -164,7 +166,7 @@ private:
     std::vector<std::shared_ptr<LiquidInstance>> m_liquidInstances = {};
     std::vector<HGMesh> adtLodMeshes;
 
-    // The cull box, written when the tile finishes loading and read by the culling thread.
+    // The cull box, written when the tile finishes loading on the render thread and read by the culling thread.
     std::mutex m_cullBoxMutex;
     bool m_hasCullBox = false;
     mathfu::vec3 m_cullBoxMin = mathfu::vec3(0, 0, 0);

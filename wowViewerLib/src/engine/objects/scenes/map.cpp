@@ -25,6 +25,8 @@
 #include "../../../renderer/frame/FrameProfile.h"
 #include "map_load_max_contants.h"
 #include "../../../gapi/interface/FrameContext.h"
+#include <atomic>
+#include <chrono>
 
 
 std::array<mathfu::vec4, 122> skyConusVBO = {
@@ -1090,8 +1092,9 @@ void Map::checkADTCulling(int i, int j,
     auto &adtObject = mapTiles[i][j];
     auto &adtArray = mapRenderPlan->adtArray;
     if (adtObject != nullptr) {
-        //A tile whose box is out of view collects nothing, but stays alive as any tile in range does: a tile freed here would
-        //load again the moment the camera turned. A tile still loading has no box and is let through.
+        //A tile whose box is out of view collects nothing, but stays alive as any tile in range does: the tile frees by
+        //being left untouched, and a tile freed here would load again the moment the camera turned. A tile still loading
+        //has no box and is let through.
         CAaBox cullBox;
         if (adtObject->getCullBox(cullBox) && !MathHelper::checkFrustum(frustumData, cullBox)) {
             adtObject->getFreeStrategy()(false, true, getCurrentSceneTime());
@@ -1263,12 +1266,186 @@ void Map::createAdtFreeLamdas() {
 
 }
 
+/*
+robots@Impl: Finishing loaded geometry against one time budget. M2 geometry, WMO roots and WMO groups share one queue, since
+what they cost is the same kind of work, uploads and material creation, and a cap per kind let any one of them eat the frame.
+
+The queue is rebuilt each frame from the plan's toLoad lists, sorted by distance from the camera to the item's box, nearest
+first. The WMO the camera stands in, its root and its groups, sorts ahead of everything: it is the view the camera is in, and
+a room that is not there is a hole. Ties go root, then group, then model, since a group waits for its root. Items past the
+budget are not dropped: they are still not loaded next frame, and the next plan lists them again.
+
+An item that is not ready yet (its file has not arrived) costs a lookup and starts its loading, so it neither spends the
+budget nor counts as finished; the clock is read after each item, and the loop leaves only once an item has finished and the
+budget is spent, which keeps a frame of unready items from stopping the queue before it reaches one that is ready. Inside the
+fast-load window the budget is lifted and the loop runs through the whole queue.
+*/
+namespace {
+struct PostLoadItem {
+    enum class Kind : uint8_t { WmoRoot, WmoGroup, M2 };
+
+    bool cameraWmo = false;
+    float distanceSq = 0;
+    Kind kind = Kind::M2;
+    M2ObjId m2Id = M2ObjId(0);
+    WMOObjId wmoId = emptyWMO;
+    WmoGroupObject *group = nullptr;
+};
+
+float distanceSqToBox(const CAaBox &box, const mathfu::vec3 &point) {
+    mathfu::vec3 closest = mathfu::vec3::Max(mathfu::vec3(box.min), mathfu::vec3::Min(mathfu::vec3(box.max), point));
+    return (closest - point).LengthSquared();
+}
+}
+
+size_t Map::finishLoadedGeometry(const HMapSceneBufferCreate &sceneRenderer, const HMapRenderPlan &renderPlan, bool fastLoad) {
+    ZoneScopedN("Finish loaded geometry");
+    const Config *config = m_api->getConfig();
+    const mathfu::vec3 cameraPos = renderPlan->renderingMatrices ? renderPlan->renderingMatrices->cameraPos.xyz() : mathfu::vec3(0, 0, 0);
+    WmoObject *cameraWmo = wmoFactory->getObjectById<0>(renderPlan->m_currentWMO);
+
+    std::vector<PostLoadItem> queue;
+
+    if (config->renderM2) {
+        for (auto &m2ObjectId: renderPlan->m2Array.getToLoadGeom()) {
+            PostLoadItem item;
+            item.kind = PostLoadItem::Kind::M2;
+            item.m2Id = m2ObjectId;
+            item.distanceSq = distanceSqToBox(retrieveAABB(m2ObjectId), cameraPos);
+            queue.push_back(item);
+        }
+    }
+    if (config->renderWMO) {
+        for (const auto wmoId: renderPlan->wmoArray.getToLoad()) {
+            PostLoadItem item;
+            item.kind = PostLoadItem::Kind::WmoRoot;
+            item.wmoId = wmoId;
+            item.cameraWmo = cameraWmo != nullptr && wmoId == renderPlan->m_currentWMO;
+            item.distanceSq = item.cameraWmo ? -1.0f : distanceSqToBox(retrieveAABB(wmoId), cameraPos);
+            queue.push_back(item);
+        }
+        for (auto &wmoGroupObject: renderPlan->wmoGroupArray.getToLoad()) {
+            if (wmoGroupObject == nullptr) continue;
+            PostLoadItem item;
+            item.kind = PostLoadItem::Kind::WmoGroup;
+            item.group = wmoGroupObject.get();
+            item.cameraWmo = cameraWmo != nullptr && wmoGroupObject->getWmoApi() == static_cast<IWmoApi *>(cameraWmo);
+            item.distanceSq = (wmoGroupObject->getWmoApi() != nullptr) ?
+                distanceSqToBox(wmoGroupObject->getWorldAABB(), cameraPos) : 0.0f;
+            queue.push_back(item);
+        }
+    }
+
+    std::sort(queue.begin(), queue.end(), [](const PostLoadItem &a, const PostLoadItem &b) {
+        if (a.cameraWmo != b.cameraWmo) return a.cameraWmo;
+        if (a.distanceSq != b.distanceSq) return a.distanceSq < b.distanceSq;
+        return a.kind < b.kind;
+    });
+
+    const auto start = std::chrono::steady_clock::now();
+    int finished = 0;
+    for (auto &item: queue) {
+        bool done = false;
+        switch (item.kind) {
+            case PostLoadItem::Kind::M2: {
+                auto m2Object = m2Factory->getObjectById<0>(item.m2Id);
+                if (m2Object == nullptr) continue;
+                m2Object->doLoadGeom(sceneRenderer);
+                done = m2Object->getGetIsLoaded();
+                break;
+            }
+            case PostLoadItem::Kind::WmoRoot: {
+                auto wmoObject = wmoFactory->getObjectById<0>(item.wmoId);
+                if (wmoObject == nullptr) continue;
+                done = wmoObject->doPostLoad(sceneRenderer);
+                break;
+            }
+            case PostLoadItem::Kind::WmoGroup:
+                done = item.group->doPostLoad(sceneRenderer, m_liquidMaterialManager);
+                break;
+        }
+
+        if (done) finished++;
+        if (!fastLoad && finished >= 1 && (std::chrono::steady_clock::now() - start) >= POST_LOAD_BUDGET) break;
+    }
+    return queue.size();
+}
+
+/*
+robots@Impl: The fast-load window, the mirror of the full deallocation window after a map change. An initial load, a flight
+start, a map open or a portal hop, is a screen the user waits on, so it finishes as fast as the loader delivers: the tile cap
+and the finishing budget are lifted, and the budgets return for the rest of the session once the window closes.
+
+SceneWindow::unload opens it ahead of every open, the first of the process included, and stamps a generation. A Map takes the
+generation current when it is made and takes part only while it is the latest: the render thread may still run the old map's
+last plan after the unload, and that map must neither close the new window nor read it as its own.
+
+It closes when the tiles around the arrival point are in, which is settled, or after FAST_LOAD_CEILING, whichever is first.
+Settled is read once per frame, in doPostLoad: the plan asked for at least one tile, no tile it asked for, visible or preloaded,
+was still loading when the frame began, and the finishing queue held nothing. The tiles are read ahead of the frame's own tile
+pass, so a tile that finished this frame, whose models no plan has listed yet, does not count. A map whose WDT is one WMO has no
+tile to read, so it waits for its queue to have held work once and then to be empty. Until the WDT has loaded there is nothing
+to tell the two apart, so the map is not settled.
+*/
+namespace {
+std::atomic<uint64_t> fastLoadGeneration{0};
+std::atomic<bool> fastLoadWindowOpen{false};
+std::atomic<long long> fastLoadStartNs{0};
+
+long long steadyNowNs() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// Closes the window of `generation`, once, and logs how long it ran and why.
+void closeFastLoad(uint64_t generation, const char *reason) {
+    if (fastLoadGeneration.load() != generation) return;
+    if (!fastLoadWindowOpen.exchange(false)) return;
+
+    const long long ms = (steadyNowNs() - fastLoadStartNs.load()) / 1000000;
+    std::cerr << "fast load: window closed after " << ms << " ms, " << reason << std::endl;
+}
+}
+
+void Map::requestFastLoad() {
+    fastLoadStartNs.store(steadyNowNs());
+    fastLoadGeneration.fetch_add(1);
+    fastLoadWindowOpen.store(true);
+}
+
+uint64_t Map::currentFastLoadGeneration() {
+    return fastLoadGeneration.load();
+}
+
+bool Map::fastLoadOpen() {
+    if (m_fastLoadGeneration != fastLoadGeneration.load() || !fastLoadWindowOpen.load()) return false;
+
+    const long long elapsedNs = steadyNowNs() - fastLoadStartNs.load();
+    if (elapsedNs >= std::chrono::duration_cast<std::chrono::nanoseconds>(FAST_LOAD_CEILING).count()) {
+        closeFastLoad(m_fastLoadGeneration, "ceiling");
+        return false;
+    }
+    return true;
+}
+
+bool Map::wdtLoaded() const {
+    return m_wdtfile != nullptr && m_wdtfile->getStatus() == FileStatus::FSLoaded;
+}
+
+bool Map::loadSettled(bool tilesAsked, bool tilesLoaded, size_t queued) {
+    if (!wdtLoaded()) return false;
+
+    bool settled;
+    if (m_wdtfile->mphd->flags.wdt_uses_global_map_obj) {
+        settled = m_fastLoadSawWork && queued == 0;
+        if (queued > 0) m_fastLoadSawWork = true;
+    } else {
+        settled = tilesAsked && tilesLoaded && queued == 0;
+    }
+    return settled;
+}
+
 void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRenderPlan &renderPlan) {
     ZoneScoped;
-    int processedThisFrame = 0;
-    int m2ProcessedThisFrame = 0;
-    int wmoProcessedThisFrame = 0;
-    int wmoGroupsProcessedThisFrame = 0;
 
     //Init LiquidManager
     if (m_liquidMaterialManager == nullptr) {
@@ -1277,6 +1454,20 @@ void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRende
 
     m_liquidMaterialManager->update(m_currentTime);
 
+    const bool fastLoad = fastLoadOpen();
+
+    //The tiles as the frame begins, for the fast-load window and a still: a tile that finishes below is read as still loading
+    bool tilesAsked = false;
+    bool tilesLoaded = true;
+    for (auto &adtObject: renderPlan->adtArray) {
+        tilesAsked = true;
+        tilesLoaded = tilesLoaded && adtObject.adtObject->isLoaded();
+    }
+    for (auto &adtObject: renderPlan->adtPreload) {
+        tilesAsked = true;
+        tilesLoaded = tilesLoaded && adtObject->isLoaded();
+    }
+
     {
         ZoneScopedN("Load m2 main");
         if (m_api->getConfig()->renderM2) {
@@ -1284,18 +1475,6 @@ void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRende
                 auto m2Object = m2Factory->getObjectById<0>(m2ObjectId);
                 if (m2Object == nullptr) continue;
                 m2Object->doLoadMainFile();
-            }
-        }
-    }
-    {
-        ZoneScopedN("Load m2 geom");
-        if (m_api->getConfig()->renderM2) {
-            for (auto &m2ObjectId: renderPlan->m2Array.getToLoadGeom()) {
-                auto m2Object = m2Factory->getObjectById<0>(m2ObjectId);
-                if (m2Object == nullptr) continue;
-                m2Object->doLoadGeom(sceneRenderer);
-                m2ProcessedThisFrame++;
-                if (m2ProcessedThisFrame > MAX_LOAD_M2_PER_FRAME) break;
             }
         }
     }
@@ -1326,28 +1505,7 @@ void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRende
     }
 //    }
 
-    {
-        ZoneScopedN("Load wmoObject");
-        if (m_api->getConfig()->renderWMO) {
-            for (auto wmoId: renderPlan->wmoArray.getToLoad()) {
-                auto wmoObject = wmoFactory->getObjectById<0>(wmoId);
-                if (wmoObject != nullptr) {
-                    wmoObject->doPostLoad(sceneRenderer);
-                }
-            }
-        }
-    }
-    {
-        ZoneScopedN("Load wmo group");
-        if (m_api->getConfig()->renderWMO) {
-            for (auto &wmoGroupObject: renderPlan->wmoGroupArray.getToLoad()) {
-                if (wmoGroupObject == nullptr) continue;
-                wmoGroupObject->doPostLoad(sceneRenderer, m_liquidMaterialManager);
-                wmoGroupsProcessedThisFrame++;
-                if (wmoGroupsProcessedThisFrame > MAX_LOAD_WMOGROUP_PER_FRAME) break;
-            }
-        }
-    }
+    const size_t queued = finishLoadedGeometry(sceneRenderer, renderPlan, fastLoad);
 
     {
         ZoneScopedN("Home creatures");
@@ -1368,14 +1526,17 @@ void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRende
         int adtProcessed = 0;
         for (auto &adtObject: renderPlan->adtArray) {
             adtProcessed += (adtObject.adtObject->doPostLoad(sceneRenderer, m_liquidMaterialManager)) ? 1 : 0;
-            if (adtProcessed >= MAX_LOAD_ADT_PER_FRAME) break;
+            if (!fastLoad && adtProcessed >= MAX_LOAD_ADT_PER_FRAME) break;
         }
-        //Preloaded tiles take only what the visible ones left of the per-frame cap
+        //Preloaded tiles take only what the visible ones left of the per-frame cap, which the fast-load window lifts
         for (auto &adtObject: renderPlan->adtPreload) {
-            if (adtProcessed >= MAX_LOAD_ADT_PER_FRAME) break;
+            if (!fastLoad && adtProcessed >= MAX_LOAD_ADT_PER_FRAME) break;
             adtProcessed += (adtObject->doPostLoad(sceneRenderer, m_liquidMaterialManager)) ? 1 : 0;
         }
     }
+
+    const bool settled = loadSettled(tilesAsked, tilesLoaded, queued);
+    if (fastLoad && settled) closeFastLoad(m_fastLoadGeneration, "settled");
 
     if (skyMesh == nullptr) {
         auto skyMeshBinding = createSkyBindings(sceneRenderer);
@@ -1519,23 +1680,38 @@ void Map::update(const HMapRenderPlan &renderPlan) {
         });
     }
 
-    //Cleanup ADT every 10 seconds
+    //Cleanup ADT every 10 seconds, one tile a frame
+    /*
+    robots@Impl: A tile's destructor releases its models, groups, textures and buffers, and every tile past its time-to-live
+    went in the same frame, so a camera that had left a district dropped the whole of it at once. The 10 second pass now frees
+    the first tile it finds and leaves the others to the frames after it: the pass's own timer is reset only when no candidate
+    is left, so while one is, the next frame runs the pass again.
+    */
     {
         ZoneScopedN("Cleanup ADT");
         if (adtFreeLambda != nullptr && adtFreeLambda(true, false, this->m_currentTime)) {
-            for (int i = 0; i < 64; i++) {
+            bool freed = false;
+            bool candidatesLeft = false;
+            for (int i = 0; i < 64 && !candidatesLeft; i++) {
                 for (int j = 0; j < 64; j++) {
                     auto adtObj = mapTiles[i][j];
                     //Free obj, if it was unused for 10 secs
                     if (adtObj != nullptr && adtObj->getFreeStrategy()(true, false, this->m_currentTime)) {
+                        if (freed) {
+                            candidatesLeft = true;
+                            break;
+                        }
 //                    std::cout << "try to free adtObj" << std::endl;
 
                         mapTiles[i][j] = nullptr;
+                        freed = true;
                     }
                 }
             }
 
-            adtFreeLambda(false, true, this->m_currentTime + deltaTime);
+            if (!candidatesLeft) {
+                adtFreeLambda(false, true, this->m_currentTime + deltaTime);
+            }
         }
     }
 

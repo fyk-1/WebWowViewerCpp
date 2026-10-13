@@ -11,6 +11,7 @@
 #include <thread>
 #include <stdlib.h>
 #include "GDeviceVulkan.h"
+#include <atomic>
 #include <fstream>
 #include <filesystem>
 
@@ -319,8 +320,19 @@ GDeviceVLK::GDeviceVLK(vkCallInitCallback * callback) : m_textureManager(std::ma
     vkSurface = callback->createSurface(vkInstance);
 }
 
-// One VkPipelineCache serves every graphics pipeline, seeded from a file at start and written back at exit. A file is used
-// only when its header names this device (version, vendor and device ids, cache uuid); any other is ignored and replaced.
+/*
+robots@Impl: The pipeline cache.
+
+One VkPipelineCache serves every graphics pipeline, so the second creation of a pipeline the driver has compiled before is a
+lookup and not a compile. It is seeded from a file at start and written back after the renderer has made its pipelines ahead of
+time and again at exit, since a viewer the host kills never reaches its exit. The write goes to a sibling file that is then
+renamed over the cache, so a kill mid-write leaves the old cache whole.
+
+A file is used only when its header names this device: the header version, the vendor and device ids and the driver's cache
+uuid. A file that fails the check, or is too short to carry a header, is ignored and the cache starts empty; the next write
+replaces it. The driver checks the rest of the blob itself. A cache that has not grown since the last write is not written
+again.
+*/
 static std::string s_pipelineCacheFile;
 
 void GDeviceVLK::setPipelineCacheFile(const std::string &path) {
@@ -329,9 +341,13 @@ void GDeviceVLK::setPipelineCacheFile(const std::string &path) {
 
 void GDeviceVLK::createPipelineCache() {
     std::vector<char> blob;
-    if (!s_pipelineCacheFile.empty()) {
+    if (s_pipelineCacheFile.empty()) {
+        m_pipelineCacheStatus = "no file";
+    } else {
         std::ifstream file(std::filesystem::path(s_pipelineCacheFile), std::ios::binary | std::ios::ate);
-        if (file.is_open()) {
+        if (!file.is_open()) {
+            m_pipelineCacheStatus = "no file yet";
+        } else {
             const std::streamsize size = file.tellg();
             file.seekg(0);
             blob.resize(size > 0 ? (size_t) size : 0);
@@ -348,7 +364,10 @@ void GDeviceVLK::createPipelineCache() {
                         header[3] == deviceProperties.deviceID &&
                         std::memcmp(blob.data() + sizeof(header), deviceProperties.pipelineCacheUUID, VK_UUID_SIZE) == 0;
             }
-            if (!valid) blob.clear();
+            if (!valid) {
+                m_pipelineCacheStatus = "stale, ignored";
+                blob.clear();
+            }
         }
     }
 
@@ -361,13 +380,18 @@ void GDeviceVLK::createPipelineCache() {
         createInfo.initialDataSize = 0;
         createInfo.pInitialData = nullptr;
         blob.clear();
+        m_pipelineCacheStatus = "rejected by the driver, ignored";
         if (vkCreatePipelineCache(device, &createInfo, nullptr, &m_pipelineCache) != VK_SUCCESS) {
             m_pipelineCache = VK_NULL_HANDLE;
             return;
         }
     }
 
-    m_pipelineCacheSavedSize = blob.size();
+    if (!blob.empty()) {
+        m_pipelineCacheLoaded = true;
+        m_pipelineCacheSavedSize = blob.size();
+        m_pipelineCacheStatus = "loaded " + std::to_string(blob.size()) + " bytes";
+    }
 }
 
 bool GDeviceVLK::savePipelineCache() {
@@ -381,7 +405,6 @@ bool GDeviceVLK::savePipelineCache() {
     if (vkGetPipelineCacheData(device, m_pipelineCache, &size, blob.data()) == VK_INCOMPLETE) return false;
     blob.resize(size);
 
-    // Written beside the cache and renamed over it, so a kill mid-write leaves the old cache whole.
     const auto target = std::filesystem::path(s_pipelineCacheFile);
     const auto temporary = std::filesystem::path(s_pipelineCacheFile + ".tmp");
     {
@@ -1890,20 +1913,31 @@ void GDeviceVLK::presentQueue(const std::vector<VkSemaphore> &waitSemaphores,
     }
 }
 
+/*
+robots@Impl: The device's records are paced like the entity records (EntityActorsFactory.cpp), each queue against its own
+budget: the entity queue is the first wave of a tile's frees and this one the second wave of buffers and images that wave queues,
+and sharing one budget would let the first starve the second. Each drains oldest first, a frame always drains one record, and
+shutdown and the window after a map change drain every due record.
+*/
 void GDeviceVLK::executeDeallocators(bool forceDealloc) {
     {
+        const bool unbudgeted = forceDealloc || fullDeallocationRequested();
+        const auto start = std::chrono::steady_clock::now();
+        size_t drained = 0;
+
         std::lock_guard<std::mutex> lock(m_listOfDeallocatorsAccessMtx);
 
-        do {
-            while ((!listOfDeallocators.empty()) && (forceDealloc || listOfDeallocators.front().frameNumberToDoAt <= m_frameNumber)) {
-                auto stuff = listOfDeallocators.front();
-                if (stuff.callback != nullptr) {
-                    stuff.callback();
-                }
-
-                listOfDeallocators.pop_front();
+        while ((!listOfDeallocators.empty()) && (forceDealloc || listOfDeallocators.front().frameNumberToDoAt <= m_frameNumber)) {
+            auto stuff = listOfDeallocators.front();
+            if (stuff.callback != nullptr) {
+                stuff.callback();
             }
-        } while ((!listOfDeallocators.empty()) && forceDealloc);
+
+            listOfDeallocators.pop_front();
+            drained++;
+
+            if (!unbudgeted && deallocationBudgetSpent(start, drained)) break;
+        }
     }
     {
         executeEntityDeallocators(forceDealloc);
@@ -2021,6 +2055,7 @@ HPipelineVLK GDeviceVLK::createPipeline(const HGVertexBufferBindings &m_bindings
         }
     }
 
+    m_pipelinesCreated++;
     std::shared_ptr<GPipelineVLK> hgPipeline = std::make_shared<GPipelineVLK>(*this,
                                       m_bindings, renderPass, pipelineLayout,
                                       shader, element,

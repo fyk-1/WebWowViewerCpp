@@ -8,7 +8,6 @@
 
 #ifdef _WIN32
  #include <errhandlingapi.h>
- #include <libloaderapi.h>
  #include "flyover/CrashStack.h"
 #endif
 
@@ -28,6 +27,7 @@
 #include <csignal>
 #include <exception>
 #include <algorithm>
+#include <filesystem>
 #include <GLFW/glfw3.h>
 #include <sqlite3.h>
 
@@ -38,8 +38,6 @@
 #include "../wowViewerLib/src/engine/camera/firstPersonCamera.h"
 #include "../wowViewerLib/src/engine/objects/scenes/map.h"
 #include "database/CEmptySqliteDB.h"
-#include "../wowViewerLib/src/gapi/vulkan/GDeviceVulkan.h"
-#include <filesystem>
 #include "flyover/FlyoverMode.h"
 #ifndef SKIP_VULKAN
 #include "../wowViewerLib/src/gapi/vulkan/GDeviceVulkan.h"
@@ -411,16 +409,12 @@ std::ios_base::Init a;
     //Open Sql storage
     HApiContainer apiContainer = std::make_shared<ApiContainer>();
 
-    //The pipeline cache lives beside the executable
-#ifdef LINK_VULKAN
-#ifdef _WIN32
-    wchar_t exePath[MAX_PATH];
-    if (GetModuleFileNameW(nullptr, exePath, MAX_PATH) > 0) {
-        GDeviceVLK::setPipelineCacheFile((std::filesystem::path(exePath).parent_path() / "pipeline-cache.bin").string());
+    //The pipeline cache lives beside the viewer database the host passes, in the data folder, and not at all without one
+#ifndef SKIP_VULKAN
+    if (!flyoverDatabase.empty()) {
+        GDeviceVLK::setPipelineCacheFile(
+            (std::filesystem::path(flyoverDatabase).parent_path() / "pipeline-cache.bin").string());
     }
-#else
-    GDeviceVLK::setPipelineCacheFile((std::filesystem::absolute(argv[0]).parent_path() / "pipeline-cache.bin").string());
-#endif
 #endif
 
     //Create device

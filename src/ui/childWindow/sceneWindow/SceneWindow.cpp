@@ -13,6 +13,7 @@
 #include "../../../../wowViewerLib/src/renderer/mapScene/MapSceneParams.h"
 #include "../../../../wowViewerLib/src/engine/objects/scenes/map.h"
 #include "../../../../wowViewerLib/src/engine/objects/worldObject/WorldObjectManager.h"
+#include "../../../../wowViewerLib/src/engine/objects/scenes/EntityActorsFactory.h"
 
 void updateCameraPosOnLoad(const std::shared_ptr<M2Object> &m2Object, const std::shared_ptr<ICamera> &camera, std::vector<std::shared_ptr<ICamera>> &cameraList) {
     if (m2Object->isMainDataLoaded()) {
@@ -292,6 +293,10 @@ void SceneWindow::openMapByIdAndFilename(int mapId, const std::string &mapName, 
 
 
 void SceneWindow::unload() {
+    //The scene going is a map change: its objects free in full, not a budget's worth a frame
+    requestFullDeallocation();
+    //Every open comes through here, so the map that follows loads in full as well, not a budget's worth a frame
+    Map::requestFastLoad();
     m_sceneRenderer = nullptr;
     m_currentScene = std::make_shared<NullScene>();
     m_camera = nullptr;

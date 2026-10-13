@@ -46,6 +46,10 @@ public:
     // has landed.
     void postLoad(const FarTerrainFrame &frame);
 
+    // Makes the far pass's pipeline before any terrain is loaded, with stand-in buffers, and returns it for the caller to hold:
+    // the pipeline is the one the tiles' materials will ask for. Null when it could not be made.
+    HPipelineVLK createPipelineAhead();
+
     // Forward pass: one draw for each tile of the frame, and while the full scene fades a second for each, taking its pixels.
     void draw(CmdBufRecorder &cmd, const FarTerrainFrame &frame);
 

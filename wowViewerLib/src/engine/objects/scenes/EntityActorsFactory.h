@@ -12,6 +12,7 @@
 #include <typeinfo>
 #include <functional>
 #include <iostream>
+#include <chrono>
 #include <mutex>
 #include <tuple>
 #include <cstring>
@@ -22,6 +23,11 @@
 
 void addEntityDeallocationRecord(std::function<void()> callback);
 void executeEntityDeallocators(bool forceDealloc);
+// A map change: for a short window the deallocators drain every due record per frame, not a budget's worth.
+void requestFullDeallocation();
+bool fullDeallocationRequested();
+// Whether a drain that has run `drained` records since `start` has used its per-frame budget. One record always runs.
+bool deallocationBudgetSpent(std::chrono::steady_clock::time_point start, size_t drained);
 
 
 // The most blocks or pages one storage holds. The tables of them are allocated once at this size and never move, since

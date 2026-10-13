@@ -369,6 +369,7 @@ protected:
 
     // The land beyond the draw distance (Config::farTerrain), drawn in the forward pass after the opaque scene.
     std::unique_ptr<FarTerrainVLK> m_farTerrain;
+
     void createWeatherMaterials();
     WeatherFrame updateWeather(const std::shared_ptr<MapRenderPlan> &framePlan,
                                const std::vector<RenderingMatAndSceneSize> &renderingMatricesAndSizes);
@@ -487,6 +488,10 @@ protected:
     void createADTGlobalMaterialData();
     void createWaterGlobalMaterialData();
     void createM2WaterfallGlobalMaterialData();
+    // Makes every pipeline the M2, WMO, ADT, liquid and far terrain materials can ask for, so none is made while the camera moves.
+    void createPipelinesAhead(unsigned int pipelinesBefore);
+    // Holds the pipelines made ahead that no static material holds, so the device's cache of live pipelines still serves them.
+    std::vector<HPipelineVLK> m_pipelinesAhead;
 
 
     std::mt19937_64 eng; //Use the 64-bit Mersenne Twister 19937 generator
