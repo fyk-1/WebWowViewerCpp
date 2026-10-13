@@ -122,6 +122,8 @@ private:
 
     HM2Geom m_m2Geom = nullptr;
     HSkinGeom m_skinGeom = nullptr;
+    // isBatchBillboarded's answer per batch, filled on its first ask.
+    mutable std::vector<bool> m_batchBillboarded;
     HSkelGeom m_skelGeom = nullptr;
     HSkelGeom m_parentSkelGeom = nullptr;
     // The model's own textures, asked for with its skin and held until its meshes take them (doLoadGeom).
@@ -286,9 +288,10 @@ public:
     bool getIsSkybox() {
         return m_boolSkybox;
     }
-    // Whether Config::drawBackFaces opens up a batch with these material flags, one the artists culled. The sky keeps its
-    // culling.
-    bool drawsBackFaces(uint16_t materialFlags);
+    // Whether Config::drawBackFaces opens up the batch with these material flags, one the artists culled. The sky keeps its
+    // culling, and so does a batch under a billboard bone.
+    bool drawsBackFaces(uint16_t materialFlags, int batchIndex) const;
+    bool isBatchBillboarded(int batchIndex) const;
 
     void setInteriorExteriorBlend(float val) {
         m_interiorExteriorBlend = val;

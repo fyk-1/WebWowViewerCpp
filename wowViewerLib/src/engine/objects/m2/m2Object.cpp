@@ -1782,8 +1782,58 @@ EGxBlendEnum M2Object::getBlendMode(int batchIndex) {
 }
 
 
-bool M2Object::drawsBackFaces(uint16_t materialFlags) {
-    return !(materialFlags & 0x4) && !m_boolSkybox && m_api->getConfig()->drawBackFaces;
+// robots@Impl: a billboard bone turns its batches to face the camera, and the game culls the side the model puts away
+// from it. Placeholder cards under such a bone (the quads of the lava smoke emitters, the triangles of the Ashenvale
+// wisps, the cone of a goober jewel) rely on that to stay unseen, so a back face drawn there shows geometry the game
+// never does. A billboard also never lets the world show through, which is what Config::drawBackFaces is for.
+// A bone counts when it or any ancestor carries a billboard flag, as the children inherit the turn. A batch counts
+// when any vertex that has weight resolves to such a bone, so a batch only partly under a billboard keeps its culling
+// whole, the side the game shows. Every batch is answered once, on the first ask, with one walk of the bones.
+bool M2Object::isBatchBillboarded(int batchIndex) const {
+    if (m_skinGeom == nullptr || m_m2Geom == nullptr || m_boneMasterData == nullptr) return false;
+
+    M2SkinProfile *skin = m_skinGeom->getSkinData();
+    if (m_batchBillboarded.empty()) {
+        const M2Data *m2File = m_m2Geom->getM2Data();
+        const auto &bones = *m_boneMasterData->getSkelData()->m_m2CompBones;
+
+        constexpr uint32_t billboardFlags = 0x4000078;
+        std::vector<int8_t> boneIsBillboarded(bones.size, -1);
+        auto resolve = [&](int boneIndex) {
+            // The chain is walked up to its first known bone, then every bone on it takes that answer.
+            std::vector<int> chain;
+            bool result = false;
+            for (int bone = boneIndex; bone >= 0 && bone < (int) bones.size && chain.size() <= bones.size; bone = bones[bone]->parent_bone) {
+                if (boneIsBillboarded[bone] >= 0) { result = boneIsBillboarded[bone] > 0; break; }
+                chain.push_back(bone);
+                if (bones[bone]->flags_raw & billboardFlags) { result = true; break; }
+            }
+            for (int bone : chain) boneIsBillboarded[bone] = result ? 1 : 0;
+            return result;
+        };
+        auto batchBillboarded = [&](const M2SkinSection *section) {
+            for (int v = section->vertexStart; v < section->vertexStart + section->vertexCount; v++) {
+                const M2Vertex *vertex = m2File->vertices[*skin->vertices[v]];
+                for (int k = 0; k < MAX_BONES_PER_VERTEX; k++) {
+                    if (vertex->bone_weights[k] == 0) continue;
+                    int comboIndex = section->boneComboIndex + (*skin->bones[v])[k];
+                    if (comboIndex >= m2File->bone_lookup_table.size) continue;
+                    int boneIndex = *m2File->bone_lookup_table[comboIndex];
+                    if (boneIndex >= 0 && boneIndex < (int) bones.size && resolve(boneIndex)) return true;
+                }
+            }
+            return false;
+        };
+
+        m_batchBillboarded.resize(skin->batches.size);
+        for (int i = 0; i < skin->batches.size; i++)
+            m_batchBillboarded[i] = batchBillboarded(skin->skinSections[skin->batches[i]->skinSectionIndex]);
+    }
+    return batchIndex >= 0 && batchIndex < (int) m_batchBillboarded.size() && m_batchBillboarded[batchIndex];
+}
+
+bool M2Object::drawsBackFaces(uint16_t materialFlags, int batchIndex) const {
+    return !(materialFlags & 0x4) && !m_boolSkybox && m_api->getConfig()->drawBackFaces && !isBatchBillboarded(batchIndex);
 }
 
 std::shared_ptr<IM2Material> M2Object::createM2Material(const HMapSceneBufferCreate &sceneRenderer, int batchIndex,
@@ -1808,7 +1858,7 @@ std::shared_ptr<IM2Material> M2Object::createM2Material(const HMapSceneBufferCre
     pipelineTemplate.element = DrawElementMode::TRIANGLES;
     pipelineTemplate.depthWrite = !(renderFlag->flags & 0x10);
     pipelineTemplate.depthCulling = !(renderFlag->flags & 0x8);
-    pipelineTemplate.backFaceCulling = !(renderFlag->flags & 0x4) && !drawsBackFaces(renderFlag->flags);
+    pipelineTemplate.backFaceCulling = !(renderFlag->flags & 0x4) && !drawsBackFaces(renderFlag->flags, batchIndex);
     if (overrideBlend) {
         pipelineTemplate.blendMode = blendMode;
         if (blendMode > EGxBlendEnum::GxBlend_AlphaKey)

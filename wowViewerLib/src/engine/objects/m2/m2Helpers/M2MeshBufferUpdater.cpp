@@ -52,7 +52,7 @@ void M2MeshBufferUpdater::updateMaterialData(const std::shared_ptr<IM2Material> 
     meshblockVSPS.PixelShader = m2Material->pixelShader;
     meshblockVSPS.UnFogged = ((renderFlag->flags & 0x2) > 0) ? 1 : 0;
     meshblockVSPS.BlendMode = static_cast<int>(m2Material->blendMode);
-    meshblockVSPS.backFacesDrawn = m2Object->drawsBackFaces(renderFlag->flags) ? 1 : 0;
+    meshblockVSPS.backFacesDrawn = m2Object->drawsBackFaces(renderFlag->flags, batchIndex) ? 1 : 0;
     meshblockVSPS.applyWeight = batch->textureCount && !(batch->flags & 0x40);
     meshblockVSPS.colorIndex =
         ((batch->colorIndex >= 0) && (batch->colorIndex < m2Data->colors.size))
