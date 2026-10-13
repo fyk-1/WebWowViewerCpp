@@ -141,54 +141,6 @@ private:
         return m_hasLiquidTypeXTexture;
     }
 
-    bool getHasCreatureLook(SQLite::Database &sqliteDatabase) {
-        auto fields = getTableFields(sqliteDatabase, "CreatureSpawn");
-
-        return std::find(fields.begin(), fields.end(), "Geosets") != fields.end();
-    }
-
-    bool getHasCreatureAlpha(SQLite::Database &sqliteDatabase) {
-        auto fields = getTableFields(sqliteDatabase, "CreatureSpawn");
-
-        return std::find(fields.begin(), fields.end(), "Alpha") != fields.end();
-    }
-
-    bool getHasCreatureAttachments(SQLite::Database &sqliteDatabase) {
-        auto fields = getTableFields(sqliteDatabase, "CreatureSpawn");
-
-        return std::find(fields.begin(), fields.end(), "Attachments") != fields.end();
-    }
-
-    bool getHasCreatureEvents(SQLite::Database &sqliteDatabase) {
-        auto fields = getTableFields(sqliteDatabase, "CreatureSpawn");
-
-        return std::find(fields.begin(), fields.end(), "Events") != fields.end();
-    }
-
-    bool getHasCreaturePoses(SQLite::Database &sqliteDatabase) {
-        auto fields = getTableFields(sqliteDatabase, "CreatureSpawn");
-
-        return std::find(fields.begin(), fields.end(), "MountModelFileDataID") != fields.end();
-    }
-
-    bool getHasGameObjectEvents(SQLite::Database &sqliteDatabase) {
-        auto fields = getTableFields(sqliteDatabase, "GameObjectSpawn");
-
-        return std::find(fields.begin(), fields.end(), "Events") != fields.end();
-    }
-
-    bool getHasGameObjectWmo(SQLite::Database &sqliteDatabase) {
-        auto fields = getTableFields(sqliteDatabase, "GameObjectSpawn");
-
-        return std::find(fields.begin(), fields.end(), "IsWmo") != fields.end();
-    }
-
-    bool getHasGameObjectAnim(SQLite::Database &sqliteDatabase) {
-        auto fields = getTableFields(sqliteDatabase, "GameObjectSpawn");
-
-        return std::find(fields.begin(), fields.end(), "Anim") != fields.end();
-    }
-
     bool getHasWDTId(SQLite::Database &sqliteDatabase) {
         bool m_hasWdtId;
         try {

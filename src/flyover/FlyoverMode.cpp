@@ -820,7 +820,7 @@ void FlyoverMode::update() {
         char text[64];
         std::snprintf(text, sizeof(text), "flyover d %.1f", m_path ? m_path->getDistance() : 0.0f);
         emit(text);
-        // The camera in use, path or free, as world x and y, its heading over the ground, and then its z. The z trails the line so a host that reads four fields still parses it.
+        // The camera in use, path or free, as world x and y, its heading over the ground, and its z.
         std::shared_ptr<ICamera> camera = m_isFree && m_free ? std::static_pointer_cast<ICamera>(m_free) : std::static_pointer_cast<ICamera>(m_path);
         if (camera) {
             auto matrices = camera->getCameraMatrices(1.0f, 1.0f, 1.0f, 100.0f);

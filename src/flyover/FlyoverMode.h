@@ -6,7 +6,6 @@
 // A failure to open the install exits 2.
 //
 // The periodic `flyover pos <x> <y> <hx> <hy> <z>` line is the camera in use: its world x and y, the unit heading over the ground, and its z.
-// A reader of the first four fields ignores the fifth.
 //
 // `--db <file>` (also `--db=<file>`) opens that SQLite file as the client database instead of `./export.db3`.
 // A file that is missing or fails to open exits 2 before any window exists.
