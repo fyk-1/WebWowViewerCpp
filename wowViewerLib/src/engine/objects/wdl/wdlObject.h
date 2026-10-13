@@ -67,6 +67,11 @@ public:
         return m_loaded;
     }
 
+    // The WDL file, loaded or not; the far terrain reads its low-detail heights once it is.
+    const HWdlFile &getWdlFile() const {
+        return m_wdlFile;
+    }
+
     const std::map<int, std::set<int>> &getSkyScenesByPlayerCondition() const {
         return m_skyScenesByPlayerCondition;
     }

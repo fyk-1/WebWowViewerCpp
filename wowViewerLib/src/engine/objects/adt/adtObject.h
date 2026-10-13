@@ -60,6 +60,13 @@ public:
 
     int getAreaId(int mcnk_x, int mcnk_y);
     void getHeight(const mathfu::vec4 &camera, float &height);
+    // The tile's 17 x 17 chunk-corner heights, absolute: the first vertex of each chunk, and the last row and column of the last
+    // chunks. The first index runs along the tile's rows (world x falling), the second along its columns (world y falling), as the
+    // WDL's outer grid does. False until the ADT file has loaded, or where a chunk is missing.
+    bool getCornerHeights(std::array<float, 17 * 17> &heights);
+
+    // True once the tile's files have loaded and its meshes are made.
+    bool isLoaded() const {return m_loaded;}
 
     int getAdtX() {return adt_x;}
     int getAdtY() {return adt_y;}

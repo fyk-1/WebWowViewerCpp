@@ -637,6 +637,7 @@ MapSceneRenderBindlessVLK::MapSceneRenderBindlessVLK(const HGDeviceVLK &hDevice,
 
     createAABBDebugMaterials();
     createWeatherMaterials();
+    m_farTerrain = std::make_unique<FarTerrainVLK>(m_device, uboBuffer, forwardShaderConfig, m_forwardRenderPass, sceneWideDS, allBuffers);
     setupObjectPicking();
 }
 
@@ -2338,10 +2339,10 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
             double nearPlane = 1.0;
             double farPlane = m_config->effectiveFarPlaneForCulling();
             // mathfu's Perspective puts f/(n-f) and 2nf/(n-f) in row 2, not the textbook (f+n)/(n-f) and 2nf/(n-f),
-            // so these are n and f.
+            // so these are n and the f it was given, half of where the matrix clips (SceneWindow's draw distance).
             if (std::fabs(a) > 1e-6 && std::fabs(1.0 + a) > 1e-9) {
                 nearPlane = b / (2.0 * a);
-                farPlane = a * nearPlane / (1.0 + a);
+                farPlane = 2.0 * a * nearPlane / (1.0 + a);
             }
 
             mainTarget.jitterX = jitterX;
@@ -2369,6 +2370,11 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                              framePlan->frameDependentData,
                              true,
                              mapScene->getCurrentSceneTime());
+
+        if (!renderingMatricessAndSizes.empty()) {
+            const auto &first = renderingMatricessAndSizes[0];
+            m_farTerrain->write(framePlan->farTerrain, framePlan->frameDependentData, first.jitterX, first.jitterY, first.width, first.height);
+        }
     }
 
 
@@ -2448,8 +2454,10 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
             {
                 ZoneScopedN("Post Load");
                 //Do postLoad here. So creation of stuff is done from main thread
-                if (stepBufferUpdates)
+                if (stepBufferUpdates) {
                     mapScene->doPostLoad(l_this, framePlan);
+                    l_this->m_farTerrain->postLoad(framePlan->farTerrain);
+                }
 
                 for (auto &renderTarget : frameInputParams->frameParameters->renderTargets) {
                     auto updatingTarget = std::dynamic_pointer_cast<RendererViewClass>(renderTarget.target);
@@ -2676,6 +2684,12 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
 
                         if (l_this->m_config->drawDebugLights) {
                             currentView->doDebugLightPass(frameBufCmd);
+                        }
+
+                        {
+                            // The land beyond the draw distance, under the sky: it fills the pixels the scene left at the clear value, in a band of depth above the scene's and short of the sky's.
+                            auto debugHelper = frameBufCmd.beginDebugLabel("Far terrain", {0, 0.5f, 0});
+                            l_this->m_farTerrain->draw(frameBufCmd, framePlan->farTerrain);
                         }
 
                         {

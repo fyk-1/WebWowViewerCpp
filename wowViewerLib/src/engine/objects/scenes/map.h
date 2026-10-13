@@ -73,6 +73,13 @@ protected:
     std::shared_ptr<WdlObject> m_wdlObject = nullptr;
     std::shared_ptr<WdtLightsObject> m_wdtLightObject = nullptr;
 
+    // The land beyond the draw distance, made once the WDL and the WDT have loaded and kept while the map is open, once
+    // Config's farTerrain has been on.
+    std::shared_ptr<FarTerrain> m_farTerrain = nullptr;
+    // The frame's view is the far terrain alone, see FarTerrain::updateSwap. Decided in makeFramePlan, ahead of the tile requests.
+    bool m_farTerrainSwapped = false;
+    void createFarTerrain();
+
     HGMesh skyMesh = nullptr;
     std::shared_ptr<ISkyMeshMaterial> skyMeshMat = nullptr;
 

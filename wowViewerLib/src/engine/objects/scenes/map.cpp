@@ -600,14 +600,38 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
         }
     }
 
+    // Above the far terrain's swap height, once the full scene has faded out, the view is the far terrain alone: checkExterior and the
+    // preload ask for no tile, model or spawn.
+    m_farTerrainSwapped = false;
+    if (config->farTerrain) {
+        createFarTerrain();
+        if (m_farTerrain != nullptr) {
+            m_farTerrainSwapped = m_farTerrain->updateSwap(*config, cameraVec3, (float) frameInputParams.delta);
+        }
+    }
+
     {
         auto exteriorView = mapRenderPlan->viewsHolder.getOrCreateExterior(frustumData);
         checkExterior(cameraPos, exteriorView->frustumData, mapRenderPlan);
     }
 
     //After every visible tile has been requested, so the visible ones are first in line
-    if (frameInputParams.frameParameters->preloadPoint) {
+    if (frameInputParams.frameParameters->preloadPoint && !m_farTerrainSwapped) {
         preloadTilesAhead(*frameInputParams.frameParameters->preloadPoint, mapRenderPlan);
+    }
+
+    if (config->farTerrain) {
+        if (m_farTerrain != nullptr) {
+            FarTerrain::View farView;
+            farView.cameraPos = cameraVec3;
+            farView.lookAt = lookAtMat4;
+            farView.perspective = frustumMat;
+            farView.drawDistance = config->effectiveFarPlaneForCulling();
+            m_farTerrain->makeFrame(*config, farView, mapRenderPlan->adtArray, mapRenderPlan->farTerrain);
+            m_farTerrain->checkAdtCorners(mapRenderPlan->adtArray);
+        } else {
+            mapRenderPlan->farTerrain.on = true;
+        }
     }
 
     if (!m_suppressDrawingSky && (mapRenderPlan->viewsHolder.getExterior() != nullptr || mapRenderPlan->currentWmoGroupShowExtSkybox || mapRenderPlan->currentWmoGroupIsExtLit)) {
@@ -824,13 +848,23 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
 
     auto exteriorView = mapRenderPlan->viewsHolder.getExterior(); //Should not be null, since we called checkExterior
 
+    // The swapped view has no tile, model or spawn: the WDL's low-detail models, the tiles and the spawns are all left out. The WDL
+    // still gets its call, which builds its sky scenes on the frame its file has loaded, and its candidates go nowhere.
     if (m_wdlObject != nullptr) {
-        m_wdlObject->checkFrustumCulling(frustumData, cameraPos, exteriorView->m2List, mapRenderPlan->wmoArray);
+        if (m_farTerrainSwapped) {
+            M2ObjectListContainer noM2;
+            WMOListContainer noWmo;
+            m_wdlObject->checkFrustumCulling(frustumData, cameraPos, noM2, noWmo);
+        } else {
+            m_wdlObject->checkFrustumCulling(frustumData, cameraPos, exteriorView->m2List, mapRenderPlan->wmoArray);
+        }
     }
 
-    getCandidatesEntities(frustumData, cameraPos, mapRenderPlan, exteriorView->m2List, mapRenderPlan->wmoArray);
+    if (!m_farTerrainSwapped) {
+        getCandidatesEntities(frustumData, cameraPos, mapRenderPlan, exteriorView->m2List, mapRenderPlan->wmoArray);
+    }
 
-    if (m_worldObjectManager) {
+    if (m_worldObjectManager && !m_farTerrainSwapped) {
         ZoneScopedN("world objects candidates");
         m_worldObjectManager->cullAndCollect(exteriorView->m2List);
     }
@@ -1168,6 +1202,16 @@ void Map::preloadTilesAhead(const mathfu::vec3 &point, const HMapRenderPlan &map
             mapRenderPlan->adtPreload.push_back(adtObject);
         }
     }
+}
+
+void Map::createFarTerrain() {
+    if (m_farTerrain != nullptr || m_wdlObject == nullptr || m_wdtfile == nullptr) return;
+    if (m_wdtfile->getStatus() != FileStatus::FSLoaded || m_wdtfile->mphd->flags.wdt_uses_global_map_obj) return;
+
+    const auto &wdl = m_wdlObject->getWdlFile();
+    if (wdl == nullptr) return;
+
+    m_farTerrain = std::make_shared<FarTerrain>(m_api, wdl, m_wdtfile, m_mapId, mapName);
 }
 
 void Map::getPossibleHeight(const mathfu::vec4 &cameraPos, float &height) {

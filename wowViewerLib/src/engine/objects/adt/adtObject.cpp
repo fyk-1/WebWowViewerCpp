@@ -1646,6 +1646,25 @@ int AdtObject::getAreaId(int mcnk_x, int mcnk_y) {
     return 0;
 }
 
+bool AdtObject::getCornerHeights(std::array<float, 17 * 17> &heights) {
+    if (m_adtFile == nullptr || m_adtFile->getStatus() != FileStatus::FSLoaded) return false;
+
+    for (int row = 0; row < 17; row++) {
+        for (int col = 0; col < 17; col++) {
+            const int chunkRow = std::min(row, 15);
+            const int chunkCol = std::min(col, 15);
+            const int index = m_adtFile->mcnkMap[chunkCol][chunkRow];
+            if (index < 0 || index >= 256 || m_adtFile->mcnkStructs[index].mcvt == nullptr) return false;
+
+            const int vertexRow = row == 16 ? 8 : 0;
+            const int vertexCol = col == 16 ? 8 : 0;
+            heights[row * 17 + col] = m_adtFile->mapTile[index].position.z +
+                                      m_adtFile->mcnkStructs[index].mcvt->height[vertexRow * 17 + vertexCol];
+        }
+    }
+    return true;
+}
+
 void AdtObject::getHeight(const mathfu::vec4 &camera, float &height) {
     int mcnk_x = worldCoordinateToGlobalAdtChunk(camera.y) % 16;
     int mcnk_y = worldCoordinateToGlobalAdtChunk(camera.x) % 16;

@@ -50,6 +50,13 @@ public:
 public:
     auto hardwareThreadCount() const -> int { return m_hardwareThreadCount;}
     bool renderAdt = true;
+    // Draws the land beyond the draw distance out to the continent's edge, from the map's WDL heights wearing its minimap tiles.
+    bool farTerrain = false;
+    // How much fog the far land takes toward the horizon: 0 none, 1 full fog at the continent's edge, 2 full fog at half the way.
+    float farTerrainFog = 1;
+    // Yards over the WDL's ground above which the whole view is the far land and no tile, model or spawn is requested or drawn,
+    // once they have faded out into it (and back in, below). 0 never swaps.
+    float farTerrainSwapHeight = 0;
     bool renderWMO = true;
     bool renderM2 = true;
     bool renderM2Decals = true;

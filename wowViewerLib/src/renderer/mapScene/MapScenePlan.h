@@ -9,6 +9,7 @@
 #include "FrameDependentData.h"
 #include "../../engine/objects/ViewsObjects.h"
 #include "../../engine/objects/wmo/wmoObject.h"
+#include "../../engine/objects/farTerrain/farTerrain.h"
 
 struct MapRenderPlan {
     int adtAreadId = -1;
@@ -42,6 +43,9 @@ struct MapRenderPlan {
     std::vector<ADTObjRenderRes> adtArray = {};
     // Tiles loaded ahead of the camera. Loaded and kept alive, never updated or drawn.
     std::vector<std::shared_ptr<AdtObject>> adtPreload = {};
+
+    // The far terrain of the frame, which the renderer draws after the opaque scene. Empty while Config's farTerrain is off.
+    FarTerrainFrame farTerrain;
 
     M2ObjectListContainer m2Array;
     WMOListContainer wmoArray;

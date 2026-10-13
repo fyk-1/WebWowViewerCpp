@@ -173,6 +173,8 @@ set(SOURCE_FILES
         src/engine/persistance/wdlFile.h
         src/engine/objects/wdl/wdlObject.cpp
         src/engine/objects/wdl/wdlObject.h
+        src/engine/objects/farTerrain/farTerrain.cpp
+        src/engine/objects/farTerrain/farTerrain.h
         src/engine/managers/particles/CGeneratorAniProp.cpp
         src/engine/managers/particles/CGeneratorAniProp.h
         src/engine/managers/particles/CRndSeed.cpp
@@ -339,6 +341,8 @@ if (LINK_VULKAN)
             src/gapi/vulkan/GRenderPassVLK.h
             src/renderer/mapScene/vulkan/MapSceneRenderBindlessVLK.cpp
             src/renderer/mapScene/vulkan/MapSceneRenderBindlessVLK.h
+            src/renderer/mapScene/vulkan/FarTerrainVLK.cpp
+            src/renderer/mapScene/vulkan/FarTerrainVLK.h
             src/renderer/mapScene/vulkan/passes/FFXGlowPassVLK.h
             src/renderer/mapScene/vulkan/passes/FFXGlowPassVLK.cpp
             src/gapi/vulkan/buffers/GBufferVLK.cpp

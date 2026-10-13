@@ -20,6 +20,7 @@
 #include "../../../gapi/vulkan/buffers/CBufferChunkVLK.h"
 #include "GpuM2AnimationVLK.h"
 #include "../weather/WeatherSim.h"
+#include "FarTerrainVLK.h"
 #include <chrono>
 
 class COpaqueMeshCollectorBindlessVLK;
@@ -366,6 +367,8 @@ protected:
     std::shared_ptr<ISimpleMaterialVLK> m_roadLineMat;
     std::vector<RoadLines::Segment> m_roadSegments;
 
+    // The land beyond the draw distance (Config::farTerrain), drawn in the forward pass after the opaque scene.
+    std::unique_ptr<FarTerrainVLK> m_farTerrain;
     void createWeatherMaterials();
     WeatherFrame updateWeather(const std::shared_ptr<MapRenderPlan> &framePlan,
                                const std::vector<RenderingMatAndSceneSize> &renderingMatricesAndSizes);

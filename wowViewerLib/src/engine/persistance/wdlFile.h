@@ -45,6 +45,19 @@ public:
 
     uint64_t *m_mssf = nullptr;
 
+    // The low-detail terrain: MAOF's absolute file offsets of the tiles' MARE chunks, indexed row * 64 + col, 0 for a tile with none.
+    uint32_t *m_maof = nullptr;
+    int m_maof_len = -1;
+
+    // What a tile's MARE chunk gives: its 17 x 17 outer heights, first index along the tile's rows (world x falling) and second
+    // along its columns (world y falling), in yards, and the 16 hole rows of its MAHO chunk, one bit a cell, nullptr when it has none.
+    struct Tile {
+        const int16_t *outer = nullptr;
+        const uint16_t *holes = nullptr;
+    };
+    // Answers false for a tile with no low-detail terrain, and for an offset that leaves the file or does not name a MARE chunk.
+    bool getTile(int row, int col, Tile &tile) const;
+
 private:
 
     HFileContent m_wdlFile;

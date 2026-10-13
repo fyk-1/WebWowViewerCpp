@@ -744,6 +744,15 @@ void FlyoverMode::finishDump(const std::string &pngFile, FrameCapture &&capture)
         {"renderScale", config.renderScale},
         {"fsr", config.fsrUpscaling},
         {"fov", config.fov},
+        {"farTerrain", {
+            {"on", config.farTerrain},
+            {"swapped", plan && plan->farTerrain.swapped},
+            {"fullShare", plan ? plan->farTerrain.fullShare : 1.0f},
+            {"extent", plan ? plan->farTerrain.extent : 0.0f},
+            {"tiles", plan ? plan->farTerrain.tiles : 0},
+            {"drawn", plan ? plan->farTerrain.drawn.size() : 0},
+            {"textures", plan ? plan->farTerrain.textures : 0},
+        }},
     };
 
     emit("flyover dump " + dump.dump(-1, ' ', false, json::error_handler_t::replace));

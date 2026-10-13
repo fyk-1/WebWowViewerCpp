@@ -28,19 +28,14 @@ layout(location = 0) out vec4 outColor;
 #endif
 
 #include "../../common/commonUboSceneData.slang"
+#include "../../common/commonCullFade.slang"
 //Whole model
 #include "../../common/commonM2IndirectDescriptorSet.slang"
 
 layout (set = 2, binding = 0) uniform sampler2D s_Textures[];
 
-#ifndef TRUE_OPAQUE
-// The screen-door of Config::m2CullFade: keeps the share `fade` of the fragments, in a pattern fixed to the screen
-// (interleaved gradient noise). The opaque pipelines test depth before the shader runs, so they cannot drop a fragment;
-// a solid batch of a fading model draws through this shader with its opaque state instead.
-bool dropsForCullFade(float fade, vec2 fragCoord) {
-    return fade < 1.0 && fract(52.9829189 * fract(dot(fragCoord, vec2(0.06711056, 0.00583715)))) >= fade;
-}
-#endif
+// Config::m2CullFade's screen-door is dropsForCullFade (commonCullFade.slang). The opaque pipelines test depth before the shader runs,
+// so they cannot drop a fragment; a solid batch of a fading model draws through this shader with its opaque state instead.
 
 #ifdef TRUE_OPAQUE
 [earlydepthstencil]

@@ -78,7 +78,15 @@ inline HMapSceneParams createMapSceneParams(const HApiContainer &apiContainer,
     result->scene = currentScene;
 
     float farPlaneRendering = apiContainer->getConfig()->farPlane;
-    float farPlaneCulling = apiContainer->getConfig()->effectiveFarPlaneForCulling();
+    /*
+    robots@Impl: The draw distance, as the cameras take it.
+
+    mathfu's Perspective puts f/(n-f) and 2nf/(n-f) in the depth row, not the textbook (f+n)/(n-f) and 2nf/(n-f), so the matrix
+    clips at twice the far plane it is given along the view axis. The cameras pass it on unchanged, so the draw distance goes
+    in halved, and the frustum planes the scene culls by, tiles, models, WMOs and liquids alike, stand at the configured draw
+    distance. Whoever reads the far plane back out of the matrix (the FSR block of MapSceneRenderBindlessVLK) doubles it.
+    */
+    float farPlaneCulling = apiContainer->getConfig()->effectiveFarPlaneForCulling() * 0.5f;
 
     float nearPlane = 1.0;
     float fovR = toRadian(fov);
