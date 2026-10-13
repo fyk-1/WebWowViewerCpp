@@ -985,7 +985,7 @@ void Map::getCandidatesEntities(const MathHelper::FrustumCullingData &frustumDat
 
         } else if (wmoMap) {
             wmoCandidates.addCand(wmoMap);
-            collectMapCreatures(m2ObjectsCandidates);
+            collectMapCreatures(m2ObjectsCandidates, wmoCandidates);
         }
     }
 }
@@ -997,9 +997,10 @@ A map whose WDT is one global WMO (a dungeon or raid such as Ragefire Chasm) has
 reads every CreatureSpawn row of its id the first time its exterior is collected, and builds each as AdtObject does for a tile
 (WorldObjectManager::createCreature), offering all to the global WMO. The GameObjectSpawn rows of the id go the same way
 (WorldObjectManager::createGameObjectSpawn). The ones it leaves outside join the exterior candidates of each frame, which the map's
-per-object culling treats as any M2, and go when the map does.
+per-object culling treats as any M2, and go when the map does. A game object whose model is a WMO (IsWmo) is a WMO candidate of each
+frame instead (WorldObjectManager::createGameObjectWmo).
 */
-void Map::collectMapCreatures(M2ObjectListContainer &m2ObjectsCandidates) {
+void Map::collectMapCreatures(M2ObjectListContainer &m2ObjectsCandidates, WMOListContainer &wmoCandidates) {
     if (!m_mapCreaturesLoaded) {
         m_mapCreaturesLoaded = true;
         if (m_api->databaseHandler == nullptr) return;
@@ -1018,6 +1019,12 @@ void Map::collectMapCreatures(M2ObjectListContainer &m2ObjectsCandidates) {
         std::vector<GameObjectSpawnRecord> gameObjects;
         m_api->databaseHandler->getGameObjectSpawnsForMap(m_mapId, gameObjects);
         for (auto &spawn : gameObjects) {
+            if (spawn.IsWmo) {
+                auto wmo = WorldObjectManager::createGameObjectWmo(m_api, spawn, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f});
+                if (wmo != nullptr) m_mapGameObjectWmos.push_back({wmo, spawn.Events});
+                continue;
+            }
+
             auto gameObject = WorldObjectManager::createGameObjectSpawn(m_api, spawn);
             if (gameObject == nullptr) continue;
 
@@ -1025,7 +1032,10 @@ void Map::collectMapCreatures(M2ObjectListContainer &m2ObjectsCandidates) {
             m_mapCreatures.push_back(gameObject);
         }
         std::cerr << "flyover creatures map " << m_mapId << ": " << creatures << " placed, game objects "
-                  << m_mapCreatures.size() - creatures << " placed" << std::endl;
+                  << m_mapCreatures.size() - creatures << " placed, " << m_mapGameObjectWmos.size() << " WMO game objects" << std::endl;
+    }
+    for (auto const &placed : m_mapGameObjectWmos) {
+        if (placed.shown(*m_api->getConfig())) wmoCandidates.addCand(placed.wmo);
     }
 
     for (auto const &creature : m_mapCreatures) {

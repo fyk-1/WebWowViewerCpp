@@ -228,18 +228,6 @@ struct AreaRecord {
     float ambientMultiplier = 1;
 };
 
-struct GameObjectRecord {
-    int ID = 0;
-    int OwnerID = 0; //Actually MapID
-    int DisplayID = 0;
-    int TypeID = 0;
-    std::string Name;
-    std::array<float, 3> Pos = {0.0f, 0.0f, 0.0f};
-    std::array<float, 4> Rot = {0.0f, 0.0f, 0.0f, 0.0f};
-    float Scale = 1.0f;
-    int PropValue0 = 0; //For TypeID == 5 (Generic), this is `floatingTooltip`
-};
-
 // A model a humanoid wears, hung on the body at one of its M2 attachment points (11 the helm, 5 and 6 the shoulders, 1 and 2 the
 // hands, 0 the shield). The textures are FileDataIDs for the model's texture types 2 and up, the item texture being type 2, 0 for none.
 struct CreatureAttachmentRecord {
@@ -253,7 +241,9 @@ struct CreatureAttachmentRecord {
 // A humanoid carries its look too: FileDataIDs for the character texture types 1 (body), 2 (cape), 6 (hair) and 8 (skin
 // extra), 0 for none, and the variant its geoset list gives each group of the model. A row with no geoset list leaves
 // MeshIds empty, which draws every geoset of the model. Alpha is the display's CreatureModelAlpha, 0 to 255. The models it wears
-// are its Attachments. Events are its signed world event ids (PlacedCreature::events).
+// are its Attachments. Events are its signed world event ids (PlacedCreature::events). Anim is the AnimationData id it stands in,
+// -1 for the model's default. A creature on a mount has the mount's model and textures (in the creature-skin slots 11 to 13 as its own
+// are) and Anim the riding one; MountAnim is the mount's own, -1 for its default.
 struct CreatureSpawnRecord {
     std::array<float, 3> Pos = {0.0f, 0.0f, 0.0f};
     float Facing = 0.0f; //Radians, 0 facing +x
@@ -268,23 +258,23 @@ struct CreatureSpawnRecord {
     std::vector<CreatureAttachmentRecord> Attachments;
     int Alpha = 255;
     std::vector<int> Events;
+    int Anim = -1;
+    int MountModelFileDataID = 0;
+    std::array<int, 3> MountTextures = {0, 0, 0};
+    int MountAnim = -1;
 };
 
 // Row of GameObjectSpawn, a table the host adds to the database: one game object model standing on a map tile. The rotation is the
-// server's quaternion (x, y, z, w) and the model a FileDataID. A row whose model is a WMO is not read. Events are as on CreatureSpawnRecord.
+// server's quaternion (x, y, z, w) and the model a FileDataID, of a WMO where IsWmo is set. Anim is the AnimationData id of a door's or a
+// button's pose, -1 for the model's default. Events are as on CreatureSpawnRecord.
 struct GameObjectSpawnRecord {
     std::array<float, 3> Pos = {0.0f, 0.0f, 0.0f};
     std::array<float, 4> Rotation = {0.0f, 0.0f, 0.0f, 1.0f};
     float Scale = 1.0f;
     int ModelFileDataID = 0;
+    bool IsWmo = false;
     std::vector<int> Events;
-};
-
-struct GameObjectDisplayInfoRecord {
-    int ID = 0;
-    int FileDataID = 0;
-    std::array<float, 3> GeoBoxMin = {0.0f, 0.0f, 0.0f};
-    std::array<float, 3> GeoBoxMax = {0.0f, 0.0f, 0.0f};
+    int Anim = -1;
 };
 
 // Row of the SkySceneXPlayerCondition db2: assigns a player condition to a WDL

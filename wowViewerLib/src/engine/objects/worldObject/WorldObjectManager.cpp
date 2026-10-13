@@ -28,6 +28,7 @@ std::shared_ptr<PlacedCreature> WorldObjectManager::createCreature(HApiContainer
     m2Object->hideUnfilledBatches();
     m2Object->setAlpha(spawn.Alpha / 255.0f);
     m2Object->setModelFileId(spawn.ModelFileDataID);
+    if (spawn.Anim >= 0) m2Object->setInitialAnimation(spawn.Anim);
 
     mathfu::mat4 rotationMat = MathHelper::RotationZ(spawn.Facing);
     m2Object->createPlacementMatrix(mathfu::vec3(spawn.Pos[0], spawn.Pos[1], spawn.Pos[2]), 0.0f,
@@ -50,9 +51,28 @@ std::shared_ptr<PlacedCreature> WorldObjectManager::createCreature(HApiContainer
         m2Object->attach(item, attachment.Attachment);
     }
 
+    auto placed = m2Object;
+    if (spawn.MountModelFileDataID > 0) {
+        std::vector<HBlpTexture> mountTextures(14, nullptr);
+        for (int i = 0; i < 3; i++) {
+            if (spawn.MountTextures[i] > 0) mountTextures[11 + i] = textureCache->getFileId(spawn.MountTextures[i]);
+        }
+
+        auto mount = m2Factory->createObject(api);
+        mount->setLoadParams(0, {}, mountTextures);
+        mount->hideUnfilledBatches();
+        if (spawn.MountAnim >= 0) mount->setInitialAnimation(spawn.MountAnim);
+        mount->setModelFileId(spawn.MountModelFileDataID);
+        mount->createPlacementMatrix(mathfu::vec3(spawn.Pos[0], spawn.Pos[1], spawn.Pos[2]), 0.0f,
+                                     mathfu::vec3(spawn.Scale, spawn.Scale, spawn.Scale), &rotationMat);
+        mount->calcWorldPosition();
+        mount->attach(m2Object, MountAttachment);
+        placed = mount;
+    }
+
     auto creature = std::make_shared<PlacedCreature>();
-    creature->m2 = m2Object;
-    creature->id = m2Object->getObjectId();
+    creature->m2 = placed;
+    creature->id = placed->getObjectId();
     creature->humanoid = spawn.BodyTexture > 0;
     creature->events = spawn.Events;
     return creature;
@@ -65,6 +85,7 @@ std::shared_ptr<PlacedCreature> WorldObjectManager::createGameObjectSpawn(HApiCo
     m2Object->setLoadParams(0, {}, {});
     m2Object->hideUnfilledBatches();
     m2Object->setModelFileId(spawn.ModelFileDataID);
+    if (spawn.Anim >= 0) m2Object->setInitialAnimation(spawn.Anim);
 
     //The row's quaternion is (x, y, z, w), the same as the GameObjects table's Rot_0 to Rot_3
     mathfu::mat4 rotationMat = mathfu::quat(spawn.Rotation[3], spawn.Rotation[0], spawn.Rotation[1], spawn.Rotation[2]).ToMatrix4();
@@ -78,6 +99,22 @@ std::shared_ptr<PlacedCreature> WorldObjectManager::createGameObjectSpawn(HApiCo
     placed->gameObject = true;
     placed->events = spawn.Events;
     return placed;
+}
+
+std::shared_ptr<WmoObject> WorldObjectManager::createGameObjectWmo(HApiContainer api, const GameObjectSpawnRecord &spawn,
+                                                                  const std::array<float, 3> &geoBoxMin, const std::array<float, 3> &geoBoxMax) {
+    if (spawn.ModelFileDataID <= 0) return nullptr;
+
+    mathfu::vec3 pos(spawn.Pos[0], spawn.Pos[1], spawn.Pos[2]);
+    mathfu::vec3 scaleVec(spawn.Scale, spawn.Scale, spawn.Scale);
+    mathfu::mat4 rotationMat = mathfu::quat(spawn.Rotation[3], spawn.Rotation[0], spawn.Rotation[1], spawn.Rotation[2]).ToMatrix4();
+    mathfu::vec4 minVec(geoBoxMin[0], geoBoxMin[1], geoBoxMin[2], 1);
+    mathfu::vec4 maxVec(geoBoxMax[0], geoBoxMax[1], geoBoxMax[2], 1);
+
+    auto wmoObject = wmoFactory->createObject(api);
+    wmoObject->setModelFileId(spawn.ModelFileDataID);
+    wmoObject->setLoadingParam(pos, scaleVec, &rotationMat, minVec, maxVec);
+    return wmoObject;
 }
 
 void WorldObjectManager::homeCreature(const std::shared_ptr<PlacedCreature> &creature, const std::array<float, 3> &spawnPosition,

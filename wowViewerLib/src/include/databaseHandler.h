@@ -28,8 +28,6 @@ public:
     virtual void getLiquidTypeData(int liquidTypeId, LiquidTypeAndMat &loData, std::vector<LiquidTextureData> &textures) = 0;
     virtual void getZoneLightsForMap(int mapId, std::vector<ZoneLight> &zoneLights) = 0;
 
-    virtual bool getGameObjectDisplayInfo(int displayId, GameObjectDisplayInfoRecord &result) = 0;
-
     // The creature spawns of one ADT tile, row and column as the map indexes it (row from the world x, column from the world y).
     // A database without the CreatureSpawn table answers none.
     virtual void getCreatureSpawnsForTile(int mapId, int tileRow, int tileCol, std::vector<CreatureSpawnRecord> &spawns) {}

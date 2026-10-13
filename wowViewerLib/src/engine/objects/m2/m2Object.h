@@ -167,6 +167,7 @@ private:
     std::array<std::array<mathfu::vec4, 3>, 3> m_particleColorReplacement;
 
     std::unique_ptr<AnimationManager> m_animationManager;
+    int m_initialAnimationId = -1;
     std::vector<mathfu::mat4, tbb::cache_aligned_allocator<mathfu::mat4>> bonesMatrices;
     std::vector<mathfu::mat4, tbb::cache_aligned_allocator<mathfu::mat4>> textAnimMatrices;
     std::vector<mathfu::vec4, tbb::cache_aligned_allocator<mathfu::vec4>> subMeshColors;
@@ -344,6 +345,9 @@ public:
     }
 
     void setAnimationId(int animationId);
+    // The AnimationData id the model starts in once it is loaded, which setAnimationId cannot say before that. A model without the
+    // animation starts as it would have: in Stand, else Closed. -1 for the model's own default.
+    void setInitialAnimation(int animationId);
     int getCurrentAnimationIndex();
     void resetCurrentAnimation();
     void createPlacementMatrix(const SMODoodadDef &def, mathfu::mat4 &wmoPlacementMat);

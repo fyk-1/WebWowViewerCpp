@@ -47,7 +47,8 @@ private:
 
     void calcAnimRepetition(AnimationStruct &animationStruct);
 public:
-    AnimationManager(const HApiContainer &api, const std::shared_ptr<CBoneMasterData> &boneMasterData, bool hasExp2);
+    //initialAnimationId is the AnimationData id to start in, 0 or less for the model's own default
+    AnimationManager(const HApiContainer &api, const std::shared_ptr<CBoneMasterData> &boneMasterData, bool hasExp2, int initialAnimationId = -1);
 
     void resetCurrentAnimation();
     bool setAnimationId(int animationId, bool reset);

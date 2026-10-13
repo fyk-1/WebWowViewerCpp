@@ -25,6 +25,7 @@
 #include "dayNightDataHolder/DayNightLightHolder.h"
 #include "../liquid/liquidMaterials/LiquidMaterialManager.h"
 #include "../worldObject/WorldObjectManager.h"
+#include "../worldObject/PlacedWmo.h"
 
 enum class SceneMode {
    smMap,
@@ -145,8 +146,9 @@ protected:
     // The creatures and game objects of a map with no tiles, read once its WDT says so. The map holds the only strong refs, so they go
     // with it.
     std::vector<std::shared_ptr<PlacedCreature>> m_mapCreatures;
+    std::vector<PlacedWmo> m_mapGameObjectWmos;
     bool m_mapCreaturesLoaded = false;
-    void collectMapCreatures(M2ObjectListContainer &m2ObjectsCandidates);
+    void collectMapCreatures(M2ObjectListContainer &m2ObjectsCandidates, WMOListContainer &wmoCandidates);
 
 protected:
     explicit Map(const HApiContainer &m_api) : m_dayNightLightHolder(m_api, -1) {

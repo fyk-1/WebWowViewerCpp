@@ -167,7 +167,9 @@ in (checkWmoGlobally), so the map's own per-object culling handles them as it do
 one global WMO, has its creatures loaded by Map instead (Map::collectMapCreatures).
 
 The tile's GameObjectSpawn rows go the same way (WorldObjectManager::createGameObjectSpawn), into the same list, and are shown or
-hidden by their own flag.
+hidden by their own flag. A row with IsWmo set is a WMO instead (WorldObjectManager::createGameObjectWmo), kept in the tile's own list of
+those and added to the WMO candidates of each frame, which loads it, culls it by the box its header gives it and draws it as any WMO.
+The tile logs its rows with a pose, a mount or a WMO model, the creatures it counts having been made.
 */
 void AdtObject::loadCreatures() {
     ZoneScoped;
@@ -176,6 +178,7 @@ void AdtObject::loadCreatures() {
     std::vector<CreatureSpawnRecord> spawns;
     m_api->databaseHandler->getCreatureSpawnsForTile(m_mapApi->getMapId(), adt_y, adt_x, spawns);
 
+    int animated = 0, mounted = 0, wmos = 0;
     m_creatures.reserve(spawns.size());
     for (auto &spawn : spawns) {
         auto creature = WorldObjectManager::createCreature(m_api, spawn);
@@ -183,16 +186,33 @@ void AdtObject::loadCreatures() {
 
         WorldObjectManager::homeCreature(creature, spawn.Pos, objectLods[0].wmoObjects, true);
         m_creatures.push_back(creature);
+        if (spawn.Anim >= 0) animated++;
+        if (spawn.MountModelFileDataID > 0) mounted++;
     }
 
     std::vector<GameObjectSpawnRecord> gameObjects;
     m_api->databaseHandler->getGameObjectSpawnsForTile(m_mapApi->getMapId(), adt_y, adt_x, gameObjects);
     for (auto &spawn : gameObjects) {
+        if (spawn.IsWmo) {
+            auto wmo = WorldObjectManager::createGameObjectWmo(m_api, spawn, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f});
+            if (wmo == nullptr) continue;
+
+            m_gameObjectWmos.push_back({wmo, spawn.Events});
+            wmos++;
+            continue;
+        }
+
         auto gameObject = WorldObjectManager::createGameObjectSpawn(m_api, spawn);
         if (gameObject == nullptr) continue;
 
         WorldObjectManager::homeCreature(gameObject, spawn.Pos, objectLods[0].wmoObjects, true);
         m_creatures.push_back(gameObject);
+        if (spawn.Anim >= 0) animated++;
+    }
+
+    if (animated + mounted + wmos > 0) {
+        std::cerr << "flyover spawns tile " << adt_y << "," << adt_x << ": " << animated << " with an animation, " << mounted
+                  << " mounted, " << wmos << " WMO game objects" << std::endl;
     }
 }
 
@@ -1340,6 +1360,9 @@ AdtObject::checkWmoGlobally(int lodLevel, M2ObjectListContainer &m2ObjectsCandid
     for (auto const &creature : m_creatures) {
         if (creature->home == CreatureHome::Exterior && creature->shown(*m_api->getConfig()))
             m2ObjectsCandidates.addCandidate(creature->id);
+    }
+    for (auto const &placed : m_gameObjectWmos) {
+        if (placed.shown(*m_api->getConfig())) wmoCandidates.addCand(placed.wmo);
     }
 
     if (lodLevel >= 4) {

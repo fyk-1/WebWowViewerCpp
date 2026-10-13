@@ -2125,7 +2125,7 @@ void M2Object::forEachRibbonEmitter(const std::function<void(CRibbonEmitter *emi
 
 void M2Object::initAnimationManager() {
     ZoneScoped;
-    this->m_animationManager = std::make_unique<AnimationManager>(m_api, m_boneMasterData, m_m2Geom->exp2 != nullptr);
+    this->m_animationManager = std::make_unique<AnimationManager>(m_api, m_boneMasterData, m_m2Geom->exp2 != nullptr, m_initialAnimationId);
     if (m_api->getConfig()->randomAnimationPhase && !m_boolSkybox) m_animationManager->seedRandomPhase();
 }
 
@@ -2246,6 +2246,9 @@ void M2Object::setAnimationId(int animationId) {
     if (!status->m_loaded) return;
 
     m_animationManager->setAnimationId(animationId, false);
+}
+void M2Object::setInitialAnimation(int animationId) {
+    m_initialAnimationId = animationId;
 }
 void M2Object::resetCurrentAnimation() {
     if (!status->m_loaded) return;

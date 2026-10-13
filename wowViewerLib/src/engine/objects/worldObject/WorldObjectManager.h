@@ -52,18 +52,29 @@ public:
     // The creature a CreatureSpawn row places: its model at the row's world position, turned about z by its facing and at its scale,
     // with the row's textures in the model's creature-skin slots 11 to 13. A batch whose first texture slot stays empty, or is a type
     // the row cannot fill, is left out of the draw. The models the row says it wears hang on the creature's attachment points
-    // (M2Object::attach) and are drawn with it. Null for a row with no model. The caller owns it, homes it
-    // (homeCreature) and takes it into the exterior candidates of the map or tile it belongs to once its home is Exterior.
+    // (M2Object::attach) and are drawn with it. The row's Anim is the animation the model starts in. A row with a mount places the mount
+    // there instead, on its default animation, and hangs the creature on its attachment point MountAttachment; the creature's own
+    // placement is then the mount's, so the pair is the one PlacedCreature, and its id and its box are the mount's. Null for a row with no model.
+    // The caller owns it, homes it (homeCreature) and takes it into the exterior candidates of the map or tile it belongs to once its home
+    // is Exterior.
     static std::shared_ptr<PlacedCreature> createCreature(HApiContainer api, const CreatureSpawnRecord &spawn);
     // The game object a GameObjectSpawn row places: its model at the row's world position, turned by its quaternion and at its scale,
-    // as it stands with nothing replaced and nothing hidden but the batches whose first texture nothing fills. Null for a row with no
-    // model. The caller owns it and homes it as a creature (homeCreature).
+    // as it stands with nothing replaced and nothing hidden but the batches whose first texture nothing fills, in the animation the row's
+    // Anim names. Null for a row with no model. The caller owns it and homes it as a creature (homeCreature).
     static std::shared_ptr<PlacedCreature> createGameObjectSpawn(HApiContainer api, const GameObjectSpawnRecord &spawn);
+    // The WMO a game object places: its model at the row's world position, turned by its quaternion and at its scale. The box is the
+    // model's geometry box in model space, which the WMO keeps until its own load is done and then replaces with its header's. The
+    // callers pass an empty one: a WMO that is not loaded is loaded whenever it is a candidate, whatever its box. Null for a row with no
+    // model. The caller owns it. AdtObject and Map place the rows with IsWmo set through this.
+    static std::shared_ptr<WmoObject> createGameObjectWmo(HApiContainer api, const GameObjectSpawnRecord &spawn,
+                                                          const std::array<float, 3> &geoBoxMin, const std::array<float, 3> &geoBoxMax);
     // Hands the creature, standing at the position, to the WMOs it may stand in, which decide in which interior group, if any, it does
     // (WmoObject::offerCreature). With onlyWhereBounded the WMOs are those whose bounding box holds the position, and a creature in none
     // of them is Exterior at once.
     static void homeCreature(const std::shared_ptr<PlacedCreature> &creature, const std::array<float, 3> &position,
                              const std::vector<std::shared_ptr<WmoObject>> &wmos, bool onlyWhereBounded);
+    // The M2 attachment point of a mount a rider hangs on.
+    static constexpr int MountAttachment = 0;
 
     // ---------------- Custom user-placed M2s ----------------
     // Custom M2s are submitted as exterior M2 candidates every frame; Map's per-object

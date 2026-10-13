@@ -20,6 +20,7 @@ class M2Object;
 #include "../../persistance/wdtFile.h"
 #include "../m2/m2Object.h"
 #include "../wmo/wmoObject.h"
+#include "../worldObject/PlacedWmo.h"
 #include "../iMapApi.h"
 #include "../ViewsObjects.h"
 #include "../liquid/LiquidInstance.h"
@@ -191,6 +192,8 @@ private:
     // The creatures the tile's CreatureSpawn rows place, and the game objects its GameObjectSpawn rows do. The tile holds the only
     // strong refs, so they go with it.
     std::vector<std::shared_ptr<PlacedCreature>> m_creatures;
+    // The game objects of the tile whose model is a WMO. They are candidates of every frame the tile is collected in.
+    std::vector<PlacedWmo> m_gameObjectWmos;
 
     HGSamplableTexture getAdtTexture(int textureId);
     HGSamplableTexture getAdtHeightTexture(int textureId);

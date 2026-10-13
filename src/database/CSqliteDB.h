@@ -34,7 +34,6 @@ public:
     void getLiquidTexture(int liquidTypeId, std::vector<LiquidTextureData> &textures);
     void getZoneLightsForMap(int mapId, std::vector<ZoneLight> &zoneLights) override;
 
-    bool getGameObjectDisplayInfo(int displayId, GameObjectDisplayInfoRecord &result) override;
     void getCreatureSpawnsForTile(int mapId, int tileRow, int tileCol, std::vector<CreatureSpawnRecord> &spawns) override;
     void getCreatureSpawnsForMap(int mapId, std::vector<CreatureSpawnRecord> &spawns) override;
     void getGameObjectSpawnsForTile(int mapId, int tileRow, int tileCol, std::vector<GameObjectSpawnRecord> &spawns) override;
@@ -113,7 +112,6 @@ private:
     StatementFieldHolder getMapList;
     StatementFieldHolder getMapByIdStatement;
 
-    StatementFieldHolder getGameObjectDisplayInfoStatement;
     StatementFieldHolder getCreatureSpawnsForTileStatement;
     StatementFieldHolder getCreatureSpawnsForMapStatement;
     bool m_hasCreatureSpawns = false;
@@ -167,10 +165,28 @@ private:
         return std::find(fields.begin(), fields.end(), "Events") != fields.end();
     }
 
+    bool getHasCreaturePoses(SQLite::Database &sqliteDatabase) {
+        auto fields = getTableFields(sqliteDatabase, "CreatureSpawn");
+
+        return std::find(fields.begin(), fields.end(), "MountModelFileDataID") != fields.end();
+    }
+
     bool getHasGameObjectEvents(SQLite::Database &sqliteDatabase) {
         auto fields = getTableFields(sqliteDatabase, "GameObjectSpawn");
 
         return std::find(fields.begin(), fields.end(), "Events") != fields.end();
+    }
+
+    bool getHasGameObjectWmo(SQLite::Database &sqliteDatabase) {
+        auto fields = getTableFields(sqliteDatabase, "GameObjectSpawn");
+
+        return std::find(fields.begin(), fields.end(), "IsWmo") != fields.end();
+    }
+
+    bool getHasGameObjectAnim(SQLite::Database &sqliteDatabase) {
+        auto fields = getTableFields(sqliteDatabase, "GameObjectSpawn");
+
+        return std::find(fields.begin(), fields.end(), "Anim") != fields.end();
     }
 
     bool getHasWDTId(SQLite::Database &sqliteDatabase) {

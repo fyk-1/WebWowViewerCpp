@@ -10,7 +10,8 @@
 #include "../persistance/header/M2FileHeader.h"
 #include "mathfu/glsl_mappings.h"
 
-AnimationManager::AnimationManager(const HApiContainer &api, const std::shared_ptr<CBoneMasterData> &boneMasterData, bool hasExp2) {
+AnimationManager::AnimationManager(const HApiContainer &api, const std::shared_ptr<CBoneMasterData> &boneMasterData, bool hasExp2,
+                                   int initialAnimationId) {
     this->m_api = api;
     this->boneMasterData = boneMasterData;
 
@@ -37,8 +38,9 @@ AnimationManager::AnimationManager(const HApiContainer &api, const std::shared_p
     this->initGlobalSequenceTimes();
     this->calculateBoneTree();
 
-    if (!this->setAnimationId(0, false)) { // try Stand(0) animation
-        this->setAnimationId(147, false); // otherwise try Closed(147) animation
+    //The animation the placing code asked for first. A model without it, or a call that asked for none, takes Stand(0), else Closed(147)
+    if (!(initialAnimationId > 0 && this->setAnimationId(initialAnimationId, false)) && !this->setAnimationId(0, false)) {
+        this->setAnimationId(147, false);
     }
 
     this->m_needToUpdateBB = true;

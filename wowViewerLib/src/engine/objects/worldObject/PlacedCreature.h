@@ -20,6 +20,24 @@ enum class CreatureHome : uint8_t {
     Interior,
 };
 
+// Whether a spawn stands given its signed world event ids. A positive event shows the spawn while it runs, and any one of several
+// does. A negative event hides it while that event runs. Config::activeSpawnEvents decides which count.
+inline bool spawnEventsStand(const std::vector<int> &events, const Config &config) {
+    if (events.empty()) return true;
+
+    std::shared_lock lock(config.activeSpawnEventsLock);
+    bool tied = false, running = false;
+    for (int event : events) {
+        bool active = config.activeSpawnEvents.count(event < 0 ? -event : event) > 0;
+        if (event < 0 && active) return false;
+        if (event > 0) {
+            tied = true;
+            running = running || active;
+        }
+    }
+    return !tied || running;
+}
+
 // A creature of a CreatureSpawn row, or a game object of a GameObjectSpawn row, which is placed, homed and drawn the same way. The
 // tile or the map that built it holds the only strong refs, and the WMO groups it stands in hold weak ones, so it goes with its
 // owner. WorldObjectManager::homeCreature sets the WMOs asking about it, and each WmoObject answers once its groups are loaded
@@ -31,7 +49,7 @@ struct PlacedCreature {
     bool humanoid = false;
     // From a GameObjectSpawn row. Config::renderGameObjectSpawns shows these alone, where renderCreatures shows the creatures.
     bool gameObject = false;
-    // The signed world event ids of the spawn's row, empty for a spawn no event ties. Config::activeSpawnEvents decides which count.
+    // The signed world event ids of the spawn's row, empty for a spawn no event ties (spawnEventsStand).
     std::vector<int> events;
     std::atomic<CreatureHome> home{CreatureHome::Pending};
     std::atomic<int> wmosToAnswer{0};
@@ -42,21 +60,8 @@ struct PlacedCreature {
         return config.renderCreatures && (config.renderHumanoids || !humanoid);
     }
 
-    // A positive event shows the spawn while it runs, and any one of several does. A negative event hides it while that event runs.
     bool inActiveEvents(const Config &config) const {
-        if (events.empty()) return true;
-
-        std::shared_lock lock(config.activeSpawnEventsLock);
-        bool tied = false, running = false;
-        for (int event : events) {
-            bool active = config.activeSpawnEvents.count(event < 0 ? -event : event) > 0;
-            if (event < 0 && active) return false;
-            if (event > 0) {
-                tied = true;
-                running = running || active;
-            }
-        }
-        return !tied || running;
+        return spawnEventsStand(events, config);
     }
 
     // A WMO that holds the creature in no interior group of its own. The last to answer sends a creature no WMO took outside.
