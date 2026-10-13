@@ -137,8 +137,10 @@ void main() {
         // (MOCV: an INDOOR group "uses only MOCV") and WMO/Rendering (lighting mode 3: the MOHD ambient, no directional light,
         // the vertex colour doubled). fixColorVertexAlpha took the MOHD ambient out of MOCV and halved it, so the doubled vertex
         // colour plus the ambient is the baked colour again, flat on every face. calcLight's sky-to-ground split and its interior
-        // sun are a later client's look and are left out. The exterior side a transition vertex blends toward is calcLight as
-        // before, minus the direct sun: the viewer has no sun shadows, so the arch that shades a doorway in the game does not here.
+        // sun are a later client's look and are left out. The exterior side a transition vertex blends toward is the exterior's
+        // own light, ambient and sun by normal, with no baked colour: attenuateTransVerts moved a transition vertex's colour
+        // toward 127 by its alpha, so at full alpha the colour is the neutral 1.0 once doubled, and added to the exterior
+        // ambient it burns the doorway white. The baked colour belongs to the interior term and fades out with it.
         bool applyLight = wmoMeshWide.UseLitColor_EnableAlpha_PixelShader_BlendMode.x == 1;
         vec3 litInterior = matDiffuse;
         if (applyLight) {
@@ -151,8 +153,6 @@ void main() {
 
         litColor = litInterior;
         if (interiorExteriorBlend > 0.0) {
-            SceneWideParams litScene = scene;
-            litScene.extLight.uExteriorDirectColor = vec4(0.0);
             InteriorLightParam extLight = intLight;
             extLight.uInteriorAmbientColorAndInteriorExteriorBlend.w = 1.0;
 
@@ -161,10 +161,10 @@ void main() {
                 normal,
                 vPosition.xyz,
                 applyLight,
-                litScene,
+                scene,
                 extLight,
                 accumLight,
-                vColor.rgb * 2.0,
+                vec3(0.0),
                 spec,
                 emissive,
                 1.0 /* ao */
