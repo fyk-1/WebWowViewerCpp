@@ -12,12 +12,8 @@ namespace FlyoverConfig {
     // Sets one field from its text form. Returns an empty string on success, otherwise the reason, with nothing applied.
     std::string set(Config &config, const std::string &name, const std::string &value);
 
-    // Every settable field with its value as one JSON object on one line; main.cpp prints a fresh Config's, under
-    // applyDefaults(), as `--config-defaults`.
+    // Every settable field with its value as one JSON object on one line; main.cpp prints a fresh Config's as `--config-defaults`.
     std::string dump(const Config &config);
-
-    // Sets the flyover's own defaults over the library's, the ones a flight starts from before its route's config.
-    void applyDefaults(Config &config);
 }
 
 #endif //AWEBWOWVIEWERCPP_FLYOVERCONFIG_H

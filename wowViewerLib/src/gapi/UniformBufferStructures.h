@@ -185,7 +185,7 @@ namespace M2 {
     struct modelWideBlockPS {
         InteriorLightParam intLight;
         float modelAlpha;
-        float cullFade;      // 1 draws the model whole; below 1 the shader drops that share of its fragments (m2CullFade)
+        float cullFade;      // 1 draws the model whole; below 1 the shader drops that share of its fragments (m2CullFadeBand)
         float foliageHeight; // The model's height in its own space when foliageTint is on, else 0
         float unused2;
         uint32_t objectId; // dense M2ObjId, used for GPU object-id picking

@@ -328,11 +328,10 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
-    // Prints the renderer fields of a flight's starting Config as one JSON line and exits, with no window or device.
+    // Prints the renderer fields of a fresh Config, the library's defaults, as one JSON line and exits, with no window or device.
     for (int i = 1; i < argc; i++) {
         if (std::string(argv[i]) == "--config-defaults") {
             Config config;
-            FlyoverConfig::applyDefaults(config);
             std::cout << FlyoverConfig::dump(config) << std::endl;
             return 0;
         }
@@ -517,26 +516,7 @@ std::ios_base::Init a;
         double frameRateCap = apiContainer->getConfig()->frameRateCap;
         return frameRateCap > 0 ? std::max(5.0, 1000.0 / frameRateCap) : 5.0;
     };
-    bool resumedFromIdle = false;
     while (!glfwWindowShouldClose(window)) {
-        /*
-        robots@Impl: In flyover mode a frameRateCap of 0 or less draws, presents and sleeps on nothing, unless
-        FlyoverMode::wantsFrames or a window resize asks for a frame: the loop waits on the window's events, which the stdin
-        thread also ends (FlyoverMode::post), and runs the mode's update for its commands and lines. The wait is capped at
-        IDLE_WAIT_SECONDS so the `world` line keeps its pace and a close request is seen. The first frame drawn after the gap
-        takes one frame interval as its delta, not the time spent idle, so animation and the free camera carry on from where
-        they stood, and sets weatherClockResetRequested, since weather falls on the wall clock. The UI mode has no such branch:
-        there 0 is uncapped.
-        */
-        if (flyoverMode && apiContainer->getConfig()->frameRateCap <= 0 && !flyoverMode->wantsFrames() && !windowSizeChanged) {
-            constexpr double IDLE_WAIT_SECONDS = 0.1;
-            glfwWaitEventsTimeout(IDLE_WAIT_SECONDS);
-            flyoverMode->update();
-            lastFrame = glfwGetTime();
-            resumedFromIdle = true;
-            continue;
-        }
-
         frontendUI->newFrame();
         stopMouse = frontendUI->getStopMouse();
         stopKeyboard = frontendUI->getStopKeyboard();
@@ -546,11 +526,6 @@ std::ios_base::Init a;
         // Render scene
         currentFrame = glfwGetTime(); // seconds
         double deltaTime = currentFrame - lastFrame;
-        if (resumedFromIdle) {
-            deltaTime = minFrameMs() / 1000.0;
-            apiContainer->getConfig()->weatherClockResetRequested = true;
-            resumedFromIdle = false;
-        }
 
         // The scene is the whole window, so the UI pass is an empty frame.
         if (flyoverMode) flyoverMode->update();

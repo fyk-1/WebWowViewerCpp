@@ -65,20 +65,11 @@ the scene and the cameras live. `look <dx> <dy>`, `move <w|a|s|d|q|e> <1|0>` and
 host that takes the input itself, the window behind the desktop icons getting none; look does nothing in path
 mode, and a move still held at a switch goes with the camera, since every switch to free mode starts a new one.
 
-Far plane: flyover sets farPlaneForCulling to 1000 and farPlaneForCullingAir to 1500 at startup, before the route
-file's config is applied, so fog at full strength at 1000 yards has geometry behind it. The normal UI mode keeps 400.
-
-Frame rate: flyover sets frameRateCap to 30 the same way. The swapchain presents in mailbox mode, which
-never waits for vsync, so an uncapped viewer renders as fast as the GPU allows; a camera at taxi speed
-reads smooth at 30. A cap of 0 or less draws nothing here: the main loop (main.cpp) waits on events, the last
-frame stays on screen with the GPU idle, and update() still runs for commands and lines. Frames are drawn
-whatever the cap before `ready` is sent, since the first plan needs them, and while a dump warms or captures
-(wantsFrames). The normal UI mode stays uncapped, where 0 means no cap.
-
-Render scale: flyover sets fsrUpscaling on and renderScale to 0.59, so the scene renders at 59 % of the window's
-width and height (35 % of its pixels) and FSR upscales it to the window. On the iGPU a 4K window took nearly the
-whole GPU where a smaller monitor took half, so the pixel count is the cost. Where FSR is unavailable the final
-pass stretches the scene instead. The normal UI mode renders at 1, without FSR.
+Config: the viewer starts from the library's Config and holds no policy. The route file's config carries every value the host
+wants at the start, and the host's script sets the rest as the flight goes, from the `world` line (Modules/Flyover/README.md
+§ Script). The swapchain presents in mailbox mode, which never waits for vsync, so an uncapped viewer renders as fast as the GPU
+allows; frameRateCap holds the main loop (main.cpp) to at most that many frames a second, and 0 leaves it uncapped, as in the
+normal UI mode.
 
 FSR history: the camera jumping makes the upscaler drop its history. A route that opens a map or changes the
 points, and every switch between the path and the free camera, set fsrResetRequested; the renderer consumes it
@@ -101,18 +92,16 @@ has finished writes it as a PNG and prints `flyover dump {json}`. The json holds
 terrain height is the plan's, taken by the culling thread, since the tile table is not safe to read from here. A dump
 with no pixels still answers, with its error, so a waiting host never hangs. The PNG is written with stb_image_write,
 and the json is read on the main thread when the frame finishes, so its camera is within a frame of the picture's.
-With frameRateCap at 0 a `dump` draws kDumpWarmFrames frames first, so the capture is of a frame made after the command,
-asks for the capture, and stops drawing again once finishDump has answered. A second `dump` meanwhile is answered at once
-with its error.
+A second `dump` while one waits for its frame is answered at once with its error.
 
-World line: update() sends `flyover world {json}` every 100 ms once `ready` has gone, whether or not frames are drawn, so
-a script on the host keeps its pace while the viewer is idle. The object holds `map`, `area` and `parentArea` (the plan's
-ids, 0 outside any area), `indoors` (the camera is in an interior WMO group, the flag the weather reads), `mode` ("free",
-"paused" or "route"), `camera` {x, y, z, yaw, pitch} as the dump's camera is, `altitude` (the camera's z minus the plan's
-ground height, unsmoothed, null with no terrain under it), `settled` (the plan's loadSettled), `farFade` (the far
-terrain's fullShare), `frameTime` (seconds the draw of the last frame drawn since the previous line took, the cap's sleep
-excluded, null when none), `dayHalfMinutes` (currentTime) and `weather` {type, intensity}. The idle loop's wait can return a
-few milliseconds early, so a line is due 5 ms before its time.
+World line: update() sends `flyover world {json}` once for every frame drawn, once `ready` has gone, so a script on the host runs at
+the frame rate. The object holds `map`, `area` and `parentArea` (the plan's ids, 0 outside any area), `indoors` (the camera is in
+an interior WMO group, the flag the weather reads), `mode` ("free", "paused" or "route"), `camera` {x, y, z, yaw, pitch} as the
+dump's camera is, `terrainHeight` (the plan's ground height, null with no terrain under the camera), `altitude` (the camera's z
+minus it, unsmoothed, null with no terrain), `wdlAltitude` (the camera's z minus the map's WDL ground under it, null where the far
+terrain is off or the WDL has no tile there), `settled` (the plan's loadSettled), `tilesPending` (a tile the plan asked for has not
+loaded), `frameTime` (seconds the draw of the last frame took, the cap's sleep excluded), `dayHalfMinutes` (currentTime) and
+`weather` {type, intensity}.
 
 Start facing: a route in free mode may carry `yawDegrees` and `pitchDegrees`, and the free camera then starts facing that
 way instead of along the route. They use the dump's convention, so a dump's camera replays as a route. The free camera
@@ -122,8 +111,6 @@ reads them: a refresh of the same points, a switch of mode and a `look` leave th
 */
 
 namespace {
-    constexpr int kDumpWarmFrames = 2;
-
     FILE *g_protocolOut = nullptr;
     std::mutex g_outputMutex;
 
@@ -429,8 +416,6 @@ bool FlyoverMode::start(const std::string &routeFile, const FlyoverInstall &inst
 
     m_scene = m_frontendUI.getBackgroundScene();
     m_api = m_frontendUI.getApi();
-    // Before the route's config, so a file value still wins.
-    FlyoverConfig::applyDefaults(*m_api->getConfig());
     applyRoute(route, true);
 
     std::thread(&FlyoverMode::readStdin, m_queue).detach();
@@ -450,8 +435,6 @@ void FlyoverMode::post(CommandQueue &queue, Command command) {
         std::lock_guard<std::mutex> lock(queue.mutex);
         queue.items.push_back(std::move(command));
     }
-    // An idle viewer (frameRateCap 0) waits on the window's events; this ends the wait.
-    glfwPostEmptyEvent();
 }
 
 void FlyoverMode::readStdin(std::shared_ptr<CommandQueue> queue) {
@@ -639,14 +622,6 @@ void FlyoverMode::apply(const Command &command) {
         case CommandType::Dump:
             if (command.text.empty()) {
                 emitError("dump", "expected a png path");
-            } else if (m_dumpHold) {
-                FrameCapture refused;
-                refused.error = "another dump is waiting for its frame";
-                answerDump(command.text, std::move(refused));
-            } else if (m_readySent && m_api->getConfig()->frameRateCap <= 0) {
-                m_dumpPng = command.text;
-                m_dumpWarm = kDumpWarmFrames;
-                m_dumpHold = true;
             } else {
                 takeDump(command.text);
             }
@@ -714,17 +689,12 @@ void FlyoverMode::takeDump(const std::string &pngFile) {
     FrameCapture refused;
     if (!m_readySent) {
         refused.error = "the viewer is not ready";
-    } else if (!m_api->hDevice->captureNextFrame([this, pngFile](FrameCapture &&capture) { finishDump(pngFile, std::move(capture)); })) {
+    } else if (!m_api->hDevice->captureNextFrame([this, pngFile](FrameCapture &&capture) { answerDump(pngFile, std::move(capture)); })) {
         refused.error = "another dump is waiting for its frame";
     } else {
         return;
     }
-    finishDump(pngFile, std::move(refused));
-}
-
-void FlyoverMode::finishDump(const std::string &pngFile, FrameCapture &&capture) {
-    m_dumpHold = false;
-    answerDump(pngFile, std::move(capture));
+    answerDump(pngFile, std::move(refused));
 }
 
 void FlyoverMode::answerDump(const std::string &pngFile, FrameCapture &&capture) {
@@ -775,9 +745,8 @@ void FlyoverMode::answerDump(const std::string &pngFile, FrameCapture &&capture)
     std::sort(spawnEvents.begin(), spawnEvents.end());
     dump["timeOfDay"] = config.currentTime;
     dump["display"] = {
-        {"drawDistance", {{"ground", config.farPlaneForCulling}, {"air", config.farPlaneForCullingAir}, {"inUse", config.effectiveFarPlaneForCulling()}}},
-        {"modelCullPercent", {{"ground", config.minM2ScreenPercent}, {"air", config.minM2ScreenPercentAir}, {"inUse", config.effectiveMinM2ScreenPercent()}}},
-        {"cameraGrounded", config.cameraGrounded},
+        {"drawDistance", config.farPlaneForCulling},
+        {"modelCullPercent", config.minM2ScreenPercent},
         {"creatures", config.renderCreatures},
         {"humanoids", config.renderHumanoids},
         {"gameObjectSpawns", config.renderGameObjectSpawns},
@@ -785,12 +754,11 @@ void FlyoverMode::answerDump(const std::string &pngFile, FrameCapture &&capture)
         {"liquids", config.renderLiquid},
         {"renderScale", config.renderScale},
         {"fsr", config.fsrUpscaling},
-        {"cameraAltitude", config.cameraAltitude},
         {"fov", config.fov},
         {"farTerrain", {
             {"on", config.farTerrain},
-            {"swapped", plan && plan->farTerrain.swapped},
-            {"fullShare", plan ? plan->farTerrain.fullShare : 1.0f},
+            {"share", plan ? plan->farTerrain.share : 1.0f},
+            {"only", plan && plan->farTerrain.only},
             {"extent", plan ? plan->farTerrain.extent : 0.0f},
             {"tiles", plan ? plan->farTerrain.tiles : 0},
             {"drawn", plan ? plan->farTerrain.drawn.size() : 0},
@@ -948,12 +916,7 @@ void FlyoverMode::update() {
         }
     }
 
-    if (now >= m_nextWorldReport - 0.005) {
-        m_nextWorldReport = now + 0.1;
-        emitWorld(plan.get());
-    }
-
-    if (m_dumpWarm > 0 && --m_dumpWarm == 0) takeDump(m_dumpPng);
+    emitWorld(plan.get());
 }
 
 std::shared_ptr<ICamera> FlyoverMode::activeCamera() const {
@@ -962,7 +925,6 @@ std::shared_ptr<ICamera> FlyoverMode::activeCamera() const {
 
 void FlyoverMode::noteFrame(double seconds) {
     m_frameSeconds = seconds;
-    m_frameDrawn = true;
 }
 
 void FlyoverMode::emitWorld(const MapRenderPlan *plan) {
@@ -983,11 +945,12 @@ void FlyoverMode::emitWorld(const MapRenderPlan *plan) {
     } else {
         world["camera"] = nullptr;
     }
+    world["terrainHeight"] = plan && plan->hasGroundHeight ? json(plan->groundHeight) : json(nullptr);
     world["altitude"] = posed && plan && plan->hasGroundHeight ? json(pose.position.z - plan->groundHeight) : json(nullptr);
+    world["wdlAltitude"] = posed && plan && plan->hasWdlGround ? json(pose.position.z - plan->wdlGround) : json(nullptr);
     world["settled"] = plan && plan->loadSettled;
-    world["farFade"] = plan ? plan->farTerrain.fullShare : 1.0f;
-    world["frameTime"] = m_frameDrawn ? json(m_frameSeconds) : json(nullptr);
-    m_frameDrawn = false;
+    world["tilesPending"] = plan && plan->tilesPending;
+    world["frameTime"] = m_frameSeconds;
 
     const Config &config = *m_api->getConfig();
     world["dayHalfMinutes"] = config.currentTime;

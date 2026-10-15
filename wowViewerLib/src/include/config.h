@@ -54,9 +54,13 @@ public:
     bool farTerrain = false;
     // How much fog the far land takes toward the horizon: 0 none, 1 full fog at the continent's edge, 2 full fog at half the way.
     float farTerrainFog = 1;
-    // Yards over the WDL's ground above which the whole view is the far land and no tile, model or spawn is requested or drawn,
-    // once they have faded out into it (and back in, below). 0 never swaps.
-    float farTerrainSwapHeight = 0;
+    // The share of the full scene that shows against the far land, from 1 (all of it) to 0 (none): below 1 the tiles, models and
+    // liquids dissolve into the far land in the screen-door pattern of m2CullFadeBand. Read once per culling pass with farTerrainOnly.
+    // Only the far terrain's own draw reads it, so it does nothing while farTerrain is off.
+    float farTerrainShare = 1;
+    // No tile, model or spawn is requested or drawn, and at a share of 0 the full scene's draw is skipped as well. Whoever sets it
+    // fades the share to 0 first. Read once per culling pass with farTerrainShare, and only while farTerrain is on.
+    bool farTerrainOnly = false;
     bool renderWMO = true;
     bool renderM2 = true;
     bool renderM2Decals = true;
@@ -137,12 +141,10 @@ public:
     float nearPlane = 1;
     float farPlane = 1000;
     float farPlaneForCulling = 400;
-    // The draw distance with the camera in the air; farPlaneForCulling is the one on the ground (cameraGrounded).
-    float farPlaneForCullingAir = 1500;
     // Yards ahead on a camera's route whose map tiles are loaded before they are seen. 0 or less turns it off.
     // Only a camera that knows its route answers it (the flyover path camera).
     float preloadAhead = 1200;
-    // Frames per second the main loop holds to at most. 0 or less leaves it uncapped, except in flyover mode, where 0 draws nothing (FlyoverMode.cpp).
+    // Frames per second the main loop holds to at most. 0 or less leaves it uncapped.
     float frameRateCap = 0;
     // Scale of the scene against the window, 0.05 to 1.5, stretched or shrunk to the window by the final pass.
     // Object picking in the UI mode assumes 1. With fsrUpscaling on and the scale at most 1, FSR upscales it instead;
@@ -157,29 +159,11 @@ public:
     // Below 1 FSR costs less, and renderScale above it turns FSR off.
     float fsrOutputScale = 1;
     // Skips a model (M2) whose bounding sphere spans less of the view's height than this, in percent: small props
-    // drop out at a distance and large ones stay. Doodads inside WMOs are not affected. Never below
-    // MinM2ScreenPercentFloor: with a long draw distance, culling nothing loads the CPU and GPU with every far prop.
-    static constexpr float MinM2ScreenPercentFloor = 1;
+    // drop out at a distance and large ones stay. Doodads inside WMOs are not affected. 0 or less culls nothing.
     float minM2ScreenPercent = 1;
-    // The camera counts as on the ground up to groundAltitude yards above the terrain, and in the air above it.
-    // minM2ScreenPercent applies on the ground and minM2ScreenPercentAir in the air.
-    float groundAltitude = 30;
-    float minM2ScreenPercentAir = 2;
-    // Set by the map every frame from cameraAltitude and groundAltitude.
-    bool cameraGrounded = true;
-
-    float effectiveFarPlaneForCulling() const {
-        return cameraGrounded ? farPlaneForCulling : farPlaneForCullingAir;
-    }
-    float effectiveMinM2ScreenPercent() const {
-        const float ground = minM2ScreenPercent > MinM2ScreenPercentFloor ? minM2ScreenPercent : MinM2ScreenPercentFloor;
-        const float air = minM2ScreenPercentAir > MinM2ScreenPercentFloor ? minM2ScreenPercentAir : MinM2ScreenPercentFloor;
-        return cameraGrounded ? ground : air;
-    }
-    // The band's top as a multiple of the percent: M2CullFadeBand with m2CullFade on, and 1, no band, with it off.
-    float effectiveM2CullFadeBand() const {
-        return m2CullFade ? M2CullFadeBand : 1.0f;
-    }
+    // Skips a model whose world box has no side longer than this, in yards, whatever its distance, in the same cull as
+    // minM2ScreenPercent and whatever that is. 0 or less skips none.
+    float minM2WorldSize = 0;
     // Which WoWee shader ports draw, as a bitmask: 1 water, 2 terrain, 4 WMO, 8 M2, 16 magma and slime. The rest of each
     // family keeps the retail shading. Reaches the shaders in the scene-wide block's uSceneSize_DisableLightBuffer.w.
     int woweeShaders = 17;
@@ -194,11 +178,9 @@ public:
     // every term of it. Reaches the shaders in the scene-wide block's uWoweeLook.z.
     float foliageTintStrength = 1.0f;
     // A model the small-model cull is about to drop fades out over the band above minM2ScreenPercent, to nothing at the
-    // percent itself, instead of vanishing. Every batch of the model dissolves, the solid ones through the alpha-keyed
-    // pipeline, which can drop fragments.
-    bool m2CullFade = false;
-    // How far above minM2ScreenPercent the band reaches, as a multiple of the percent.
-    static constexpr float M2CullFadeBand = 2;
+    // percent itself, instead of vanishing. This is the band's top as a multiple of the percent, and 1 or less is no band.
+    // Every batch of the model dissolves, the solid ones through the alpha-keyed pipeline, which can drop fragments.
+    float m2CullFadeBand = 1;
     // The sky cone takes WoWee's sun glow: a warm scatter and a soft glow around the sun, and a haze at the horizon.
     bool skyGlow = false;
     // Zone light is eased toward its target with a time constant of a fifth of a second, so a jump at a light volume,
@@ -223,9 +205,6 @@ public:
     std::shared_ptr<RoadLines> roadLines = std::make_shared<RoadLines>();
     // Set by the host when the camera jumps, so the next FSR dispatch drops its history. The renderer clears it.
     bool fsrResetRequested = false;
-    // Set by the flyover mode when drawing resumes after a gap, so the weather's next step is one frame long, not the whole gap. The renderer clears it.
-    bool weatherClockResetRequested = false;
-
     float fogDensityIncreaser = 0;
     // Set when the database opens, from IClientDatabase::usesClassicFog: the map renderer then draws fog that rises from
     // the ground, densest at the terrain under the camera and thinning by a factor of e every classicFogFalloff yards
@@ -233,8 +212,9 @@ public:
     bool classicFog = false;
     float classicFogStrength = 1;
     float classicFogFalloff = 60;
-    // Set by the map every frame: the camera's height above the terrain under it, averaged over several seconds, in yards.
-    float cameraAltitude = 0;
+    // The world height the classic fog rises from, in z: it is densest there and thins with the camera's height above it. The camera's
+    // own z is read every frame, so a moving camera needs no new value.
+    float classicFogGroundZ = 0;
 
     bool disableGlow = false;
 

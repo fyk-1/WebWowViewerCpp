@@ -33,12 +33,12 @@ class FarTerrain;
 struct FarTerrainFrame {
     // Config's farTerrain at the time of the plan. Everything below is empty or zero while it is off.
     bool on = false;
-    // The view is swapped to the far terrain: above the swap height, or on the way there while the full tiles are still fading out.
-    bool swapped = false;
-    // The share of the full scene that shows, from 1 (all of it) to 0 (none). Below 1 the full tiles, models and liquids are
-    // dissolving into the far land, and the far pass takes the rest of the pixels in the screen-door pattern of Config::m2CullFade.
-    // At 0 with the view swapped the full tiles, models and spawns are neither requested nor drawn.
-    float fullShare = 1.0f;
+    // The view is the far terrain alone: Config's farTerrainOnly, no tile, model or spawn requested or drawn.
+    bool only = false;
+    // The share of the full scene that shows, from 1 (all of it) to 0 (none): Config's farTerrainShare. Below 1 the full tiles,
+    // models and liquids are dissolving into the far land, and the far pass takes the rest of the pixels in the screen-door pattern
+    // of Config::m2CullFadeBand. At 0 with the far terrain alone the full scene's draw is skipped as well.
+    float share = 1.0f;
     // The far plane of the far pass, in yards.
     float extent = 0;
     // The tiles with a low-detail entry, and how many of their minimap textures have landed.
@@ -88,22 +88,19 @@ public:
     // Starts the build once the WDL and the WDT have loaded, and takes it in once it is done. True from then on.
     bool poll();
 
-    // Decides whether the view is swapped to the far terrain, from the camera's height over the WDL's ground, with a hysteresis
-    // band, and moves the share of the full scene that shows toward 0 when it is and toward 1 when it is not, by the frame's
-    // time in milliseconds. Config's farTerrainSwapHeight of 0 never swaps. True while the full scene is gone altogether, which
-    // is when the map stops asking for tiles, models and spawns.
-    bool updateSwap(const Config &config, const mathfu::vec3 &cameraPos, float deltaMs);
-
     struct View {
         mathfu::vec3 cameraPos;
         mathfu::mat4 lookAt;
         // The scene's projection as the camera builds it, before the Vulkan fix.
         mathfu::mat4 perspective;
-        // Config's effectiveFarPlaneForCulling().
+        // Config's farPlaneForCulling.
         float drawDistance = 0;
+        // Config's farTerrainShare and farTerrainOnly as the culling pass read them, see FarTerrainFrame.
+        float share = 1.0f;
+        bool only = false;
     };
 
-    // Fills the frame: the swap, the far pass's projection, the tiles to draw, and the bounded texture requests.
+    // Fills the frame: the share and the far-alone flag it was given, the far pass's projection, the tiles to draw, and the bounded texture requests.
     void makeFrame(const Config &config, const View &view, const std::vector<ADTObjRenderRes> &adtArray, FarTerrainFrame &frame);
 
     // Compares the WDL's corner heights of a loaded tile with its ADT's and logs one line, once.
@@ -120,9 +117,6 @@ public:
     // The CPU geometry, until the renderer has uploaded it. Null after releaseGeometry.
     const Geometry *geometry() const { return m_geometry.get(); }
     void releaseGeometry() { m_geometry.reset(); }
-
-    bool isSwapped() const { return m_swapped; }
-    float fullShare() const { return m_fullShare; }
 
 private:
     struct Built {
@@ -154,13 +148,6 @@ private:
     float m_maxHeight = 0;
     int m_minRow = 63, m_maxRow = 0, m_minCol = 63, m_maxCol = 0;
 
-    bool m_swapped = false;
-    // The share of the full scene that shows, see FarTerrainFrame::fullShare. Set from the first swap decision.
-    float m_fullShare = 1.0f;
-    bool m_shareStarted = false;
-    // Set while a tile the plan asked for has not loaded, and the time the share has waited on it, in milliseconds.
-    bool m_adtPending = false;
-    float m_pendingMs = 0.0f;
     bool m_cornersChecked = false;
     bool m_reachLogged = false;
 };

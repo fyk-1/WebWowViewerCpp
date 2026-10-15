@@ -87,7 +87,7 @@ inline HMapSceneParams createMapSceneParams(const HApiContainer &apiContainer,
     in halved, and the frustum planes the scene culls by, tiles, models, WMOs and liquids alike, stand at the configured draw
     distance. Whoever reads the far plane back out of the matrix (the FSR block of MapSceneRenderBindlessVLK) doubles it.
     */
-    float farPlaneCulling = apiContainer->getConfig()->effectiveFarPlaneForCulling() * 0.5f;
+    float farPlaneCulling = apiContainer->getConfig()->farPlaneForCulling * 0.5f;
 
     float nearPlane = 1.0;
     float fovR = toRadian(fov);

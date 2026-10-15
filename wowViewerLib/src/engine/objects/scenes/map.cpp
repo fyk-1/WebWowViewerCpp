@@ -485,27 +485,6 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
 
             if (adtHeight < cameraPos.z)
                 bottomBorder = adtHeight;
-
-            // The camera's altitude, measured from the terrain under it averaged with a ten-second time constant, so a
-            // hill or a ravine passing below does not make the fog or the cull pulse while a climb onto a plateau still
-            // catches up. A jump of the camera, such as a route opening another map, takes the new terrain at once.
-            // The altitude sets config's cameraAltitude and cameraGrounded, which leaves the ground above groundAltitude
-            // and comes back below it less 10 yards, so hovering at the line does not flip it every frame. Both are kept
-            // where no terrain is found under the camera.
-            if (adtHeight > -99999) {
-                const float jump = (cameraVec3 - m_altitudeCameraPos).Length();
-                if (!m_altitudeGroundSet || jump > 200.0f) {
-                    m_altitudeGround = adtHeight;
-                    m_altitudeGroundSet = true;
-                } else {
-                    m_altitudeGround += (adtHeight - m_altitudeGround) * (1.0f - std::exp(-float(frameInputParams.delta) / 10000.0f));
-                }
-                const float altitude = cameraPos.z - m_altitudeGround;
-                if (config->cameraGrounded && altitude > config->groundAltitude) config->cameraGrounded = false;
-                else if (!config->cameraGrounded && altitude < config->groundAltitude - 10.0f) config->cameraGrounded = true;
-                config->cameraAltitude = altitude;
-            }
-            m_altitudeCameraPos = cameraVec3;
         }
 
         WmoGroupResult resGroupResult;
@@ -602,13 +581,15 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
         }
     }
 
-    // Above the far terrain's swap height, once the full scene has faded out, the view is the far terrain alone: checkExterior and the
-    // preload ask for no tile, model or spawn.
-    m_farTerrainSwapped = false;
+    // The far terrain's share of the view and whether it is alone come from Config, read together once here so the tile requests, the
+    // plan and the draw agree. Alone, checkExterior and the preload ask for no tile, model or spawn.
+    m_farTerrainOnly = false;
+    float farShare = 1.0f;
     if (config->farTerrain) {
         createFarTerrain();
         if (m_farTerrain != nullptr) {
-            m_farTerrainSwapped = m_farTerrain->updateSwap(*config, cameraVec3, (float) frameInputParams.delta);
+            farShare = std::clamp(config->farTerrainShare, 0.0f, 1.0f);
+            m_farTerrainOnly = config->farTerrainOnly;
         }
     }
 
@@ -618,17 +599,31 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
     }
 
     //After every visible tile has been requested, so the visible ones are first in line
-    if (frameInputParams.frameParameters->preloadPoint && !m_farTerrainSwapped) {
+    if (frameInputParams.frameParameters->preloadPoint && !m_farTerrainOnly) {
         preloadTilesAhead(*frameInputParams.frameParameters->preloadPoint, mapRenderPlan);
+    }
+
+    mapRenderPlan->tilesPending = false;
+    for (const auto &adt : mapRenderPlan->adtArray) {
+        if (!adt.adtObject->isLoaded()) {
+            mapRenderPlan->tilesPending = true;
+            break;
+        }
     }
 
     if (config->farTerrain) {
         if (m_farTerrain != nullptr) {
+            float wdlGround = 0.0f;
+            mapRenderPlan->hasWdlGround = m_farTerrain->groundHeight(cameraVec3.x, cameraVec3.y, wdlGround);
+            mapRenderPlan->wdlGround = wdlGround;
+
             FarTerrain::View farView;
             farView.cameraPos = cameraVec3;
             farView.lookAt = lookAtMat4;
             farView.perspective = frustumMat;
-            farView.drawDistance = config->effectiveFarPlaneForCulling();
+            farView.drawDistance = config->farPlaneForCulling;
+            farView.share = farShare;
+            farView.only = m_farTerrainOnly;
             m_farTerrain->makeFrame(*config, farView, mapRenderPlan->adtArray, mapRenderPlan->farTerrain);
             m_farTerrain->checkAdtCorners(mapRenderPlan->adtArray);
         } else {
@@ -850,10 +845,10 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
 
     auto exteriorView = mapRenderPlan->viewsHolder.getExterior(); //Should not be null, since we called checkExterior
 
-    // The swapped view has no tile, model or spawn: the WDL's low-detail models, the tiles and the spawns are all left out. The WDL
+    // The far-terrain-alone view has no tile, model or spawn: the WDL's low-detail models, the tiles and the spawns are all left out. The WDL
     // still gets its call, which builds its sky scenes on the frame its file has loaded, and its candidates go nowhere.
     if (m_wdlObject != nullptr) {
-        if (m_farTerrainSwapped) {
+        if (m_farTerrainOnly) {
             M2ObjectListContainer noM2;
             WMOListContainer noWmo;
             m_wdlObject->checkFrustumCulling(frustumData, cameraPos, noM2, noWmo);
@@ -862,11 +857,11 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
         }
     }
 
-    if (!m_farTerrainSwapped) {
+    if (!m_farTerrainOnly) {
         getCandidatesEntities(frustumData, cameraPos, mapRenderPlan, exteriorView->m2List, mapRenderPlan->wmoArray);
     }
 
-    if (m_worldObjectManager && !m_farTerrainSwapped) {
+    if (m_worldObjectManager && !m_farTerrainOnly) {
         ZoneScopedN("world objects candidates");
         m_worldObjectManager->cullAndCollect(exteriorView->m2List);
     }
@@ -921,9 +916,10 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
         auto results = std::vector<uint32_t>();
 
         auto &candidates = exteriorView->m2List.getCandidates();
-        // Models too small on screen are skipped like ones outside the frustum (minM2ScreenPercent, by altitude).
-        const float minScreenPercent = m_api->getConfig()->effectiveMinM2ScreenPercent();
-        const float fadeBandTop = m_api->getConfig()->effectiveM2CullFadeBand();
+        // Models too small on screen, or too small in the world, are skipped like ones outside the frustum.
+        const float minScreenPercent = m_api->getConfig()->minM2ScreenPercent;
+        const float fadeBandTop = m_api->getConfig()->m2CullFadeBand;
+        const float minWorldSize = m_api->getConfig()->minM2WorldSize;
         const float tanHalfFov = std::tan(toRadian(m_api->getConfig()->fov) * 0.5f);
         const mathfu::vec3 cullCameraPos = cameraPos.xyz();
         if (candidates.size() > 0) {
@@ -948,7 +944,7 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
                                                                      results);
 #endif
                       ScreenSizeCulling<M2ObjId>::cull(cullCameraPos, tanHalfFov, minScreenPercent,
-                                                       r.begin(), r.end(), candidates, results, fadeBandTop);
+                                                       r.begin(), r.end(), candidates, results, fadeBandTop, minWorldSize);
     //            }
                 }, tbb::auto_partitioner());
             });
@@ -1387,9 +1383,9 @@ pass, so a tile that finished this frame, whose models no plan has listed yet, d
 tile to read, so it waits for its queue to have held work once and then to be empty. Until the WDT has loaded there is nothing
 to tell the two apart, so the map is not settled.
 
-The reading is made every frame, not only while the window is open, and the plan carries it as loadSettled: the flyover mode's
-still waits on it too. For the still, a frame that asks for no tile at all, the camera above the draw distance or the view swapped
-to the far land, has none loading, so it counts as settled once the queue is empty.
+The reading is made every frame, not only while the window is open, and the plan carries it as loadSettled, which the flyover's
+`world` line reports. A frame that asks for no tile at all, the camera above the draw distance or the view the far land alone,
+has none loading, so it counts as settled once the queue is empty.
 */
 namespace {
 std::atomic<uint64_t> fastLoadGeneration{0};

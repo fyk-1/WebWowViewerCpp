@@ -376,7 +376,7 @@ void GpuIndirectDrawsVLK::collectM2Meshes(M2Object *m2Object, uint32_t cullObjec
     header.sortDistance = m2Object->getCurrentDistance();
     header.transpBegin = transpDraws.size();
     const uint32_t opaqueBegin = opaqueDraws.size();
-    const bool fades = m_config->m2CullFade && m2Object->getCullFade() < 1.0f;
+    const bool fades = m_config->m2CullFadeBand > 1.0f && m2Object->getCullFade() < 1.0f;
 
     // The M2 serves its meshes in render order: transparent ones are already sorted
     // within the object (M2Object::forEachVisibleMeshSorted) — keep that order here.
@@ -504,7 +504,7 @@ void GpuIndirectDrawsVLK::collectMeshDraws(const std::shared_ptr<MapRenderPlan> 
     }
 
     // The solid batches of a fading model move to the material that can drop fragments, so the whole model dissolves.
-    if (m_config->m2CullFade) {
+    if (m_config->m2CullFadeBand > 1.0f) {
         for (auto &e : frameData.opaqueDraws) {
             if (!e.fades || e.matId == 0) continue;
             if (const uint32_t fadeId = fadeMaterialId(e.matId)) e.matId = fadeId;

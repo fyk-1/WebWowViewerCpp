@@ -25,7 +25,9 @@ public:
 // Marks culled the visible objects whose bounding sphere spans less than minScreenPercent of the view's height,
 // seen from cameraPos with tanHalfFovY. An object around the camera stays. With fadeBandTop above 1, an object between
 // the percent and the percent times fadeBandTop is kept at a share of itself that grows from 0 to 1 across the band
-// (storeCullFade), and every other kept object is stored at 1.
+// (storeCullFade), and every other kept object is stored at 1. Before any of that, an object whose box has no side longer
+// than minWorldSize yards is culled, wherever it stands; a minWorldSize of 0 or less culls none, and a minScreenPercent of
+// 0 or less leaves only this cull.
 template<typename T>
 class ScreenSizeCulling {
 public:
@@ -33,7 +35,16 @@ public:
                      const size_t start, const size_t end,
                      const framebased::vector<T> &objects,
                      std::vector<uint32_t> &culling_res,
-                     float fadeBandTop = 1.0f) {
+                     float fadeBandTop = 1.0f,
+                     float minWorldSize = 0.0f) {
+        if (minWorldSize > 0.0f) {
+            for (size_t i = start; i < end; i++) {
+                if (culling_res[i]) continue;
+                const CAaBox &aabb = retrieveAABB(objects[i]);
+                const float largestSide = std::max({aabb.max.x - aabb.min.x, aabb.max.y - aabb.min.y, aabb.max.z - aabb.min.z});
+                if (largestSide < minWorldSize) culling_res[i] = 0xFFFFFFFF;
+            }
+        }
         if (minScreenPercent <= 0.0f || tanHalfFovY <= 0.0f) return;
         const bool fading = fadeBandTop > 1.0f;
         // The shader tells this many shares apart, so a finer fade only costs uploads.

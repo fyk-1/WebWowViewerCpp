@@ -959,12 +959,7 @@ MapSceneRenderBindlessVLK::WeatherFrame MapSceneRenderBindlessVLK::updateWeather
     WeatherFrame frame;
     if (renderingMatricesAndSizes.empty()) return frame;
 
-    // Weather falls on the wall clock: the frame's own delta is zero while the animation is paused. A still stops no clock, so the
-    // frame that ends one starts the count again, and the weather resumes where it stood.
-    if (m_config->weatherClockResetRequested) {
-        m_config->weatherClockResetRequested = false;
-        m_weatherClock = {};
-    }
+    // Weather falls on the wall clock: the frame's own delta is zero while the animation is paused.
     const auto now = std::chrono::steady_clock::now();
     const float seconds = m_weatherClock.time_since_epoch().count() == 0 ? 0.0f : std::chrono::duration<float>(now - m_weatherClock).count();
     m_weatherClock = now;
@@ -1341,7 +1336,7 @@ std::shared_ptr<ISimpleMaterialVLK> MapSceneRenderBindlessVLK::getM2StaticMateri
     m_m2StaticMaterials[pipelineTemplate] = staticMaterial;
     m_m2MatCacheId[staticMaterial->getMaterialId()] = staticMaterial;
 
-    // The twin that can drop fragments, for Config::m2CullFade. It is built with its solid material, since the draw stage reads
+    // The twin that can drop fragments, for Config::m2CullFadeBand. It is built with its solid material, since the draw stage reads
     // the cache by id while the update stage fills it.
     if (solid) {
         auto fadeMaterial = buildM2StaticMaterial(pipelineTemplate, false);
@@ -2499,7 +2494,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
             double a = perspective(2, 2);
             double b = perspective(2, 3);
             double nearPlane = 1.0;
-            double farPlane = m_config->effectiveFarPlaneForCulling();
+            double farPlane = m_config->farPlaneForCulling;
             // mathfu's Perspective puts f/(n-f) and 2nf/(n-f) in row 2, not the textbook (f+n)/(n-f) and 2nf/(n-f),
             // so these are n and the f it was given, half of where the matrix clips (SceneWindow's draw distance).
             if (std::fabs(a) > 1e-6 && std::fabs(1.0 + a) > 1e-9) {

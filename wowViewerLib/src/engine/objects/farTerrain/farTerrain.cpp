@@ -34,15 +34,6 @@ namespace {
     constexpr float kNearFraction = 0.25f;
 
     /*
-    robots@Impl: The swap's hysteresis band.
-
-    The view swaps to the far terrain above farTerrainSwapHeight over the ground and back below 85 % of it. A camera hovering at the
-    line moves a few yards, and swapping at one height would request and free every tile in view each time it crossed. A band
-    that grows with the height scales with the altitude the camera bobs about at.
-    */
-    constexpr float kSwapBand = 0.85f;
-
-    /*
     robots@Impl: The far land's band of depth.
 
     The scene's depth is not reversed: it clears to 1 and compares less-or-equal, and every scene fragment is drawn through the
@@ -71,31 +62,10 @@ namespace {
     tiles in view times that cosine bounds every visible depth from below, and nothing visible is clipped. kDepthNearMargin
     is the slack for the float arithmetic of the planes and for the upscaler's jitter. At 780 yards the steps are about a
     twentieth of a yard at 2 000 yards and under 4 at the extent, well under the skirt and the cells. Where the view is neither
-    swapped nor fading the near plane stays a quarter of the draw distance (kNearFraction), which is the nearest a tile still
+    alone nor fading the near plane stays a quarter of the draw distance (kNearFraction), which is the nearest a tile still
     loading can be there.
     */
     constexpr float kDepthNearMargin = 0.95f;
-
-    /*
-    robots@Impl: The fade of the swap.
-
-    A second, the share of the full scene going from 1 to 0 or back. The flyover caps the viewer at 30 frames a second, so a
-    second steps the screen-door through thirty levels, which reads as a fade and not as flicker, and is short enough that a
-    descent does not wait on it: the full tiles are requested again the moment the view swaps back.
-    */
-    constexpr float kFadeMs = 1000.0f;
-
-    /*
-    robots@Impl: How long the fade back in waits on the tiles.
-
-    The full tiles are requested when the view swaps back, and fading them in while their files still load would show the holes
-    they leave. The share waits at 0 until every tile the plan asked for has loaded, and for this long at most, so that a tile that
-    never loads cannot keep the far land over the ground for good. Four seconds is the usual time for the tiles under a descent.
-    */
-    constexpr float kFadeInHoldMs = 4000.0f;
-
-    // A frame longer than this moves the share by this much, so a stall on a map's load does not skip the fade.
-    constexpr float kLongestStepMs = 100.0f;
 
     constexpr int kTexturesPerFrame = 4;
 
@@ -310,55 +280,11 @@ bool FarTerrain::groundHeight(float x, float y, float &height) const {
     return true;
 }
 
-bool FarTerrain::updateSwap(const Config &config, const mathfu::vec3 &cameraPos, float deltaMs) {
-    const float swapHeight = config.farTerrainSwapHeight;
-    if (swapHeight <= 0.0f) {
-        m_swapped = false;
-        m_fullShare = 1.0f;
-        m_shareStarted = true;
-        return false;
-    }
-
-    float ground = 0.0f;
-    groundHeight(cameraPos.x, cameraPos.y, ground);
-    const float above = cameraPos.z - ground;
-
-    const bool wasSwapped = m_swapped;
-    if (!m_swapped && above > swapHeight) {
-        m_swapped = true;
-    } else if (m_swapped && above < swapHeight * kSwapBand) {
-        m_swapped = false;
-    }
-
-    // A map opened above the swap height has no full scene to fade out.
-    if (!m_shareStarted) {
-        m_shareStarted = true;
-        m_fullShare = m_swapped ? 0.0f : 1.0f;
-    }
-
-    const float step = std::min(std::max(deltaMs, 0.0f), kLongestStepMs) / kFadeMs;
-    if (m_swapped) {
-        m_fullShare = std::max(m_fullShare - step, 0.0f);
-    } else if (m_fullShare < 1.0f) {
-        if (wasSwapped) {
-            // The tiles are asked for this frame, and makeFrame finds out which are still loading.
-            m_adtPending = true;
-            m_pendingMs = 0.0f;
-        }
-        if (m_adtPending && m_pendingMs < kFadeInHoldMs) {
-            m_pendingMs += std::min(std::max(deltaMs, 0.0f), kLongestStepMs);
-        } else {
-            m_fullShare = std::min(m_fullShare + step, 1.0f);
-        }
-    }
-    return m_swapped && m_fullShare <= 0.0f;
-}
-
 /*
 robots@Impl: The far pass's projection and its tiles.
 
 The view is the scene's. The projection is built from the scene's own (its fov and aspect), with the near plane at a quarter of the
-draw distance, or while the view is swapped or fading at the nearest the visible far land can be (see the near plane of the depth
+draw distance, or while the view is alone or fading at the nearest the visible far land can be (see the near plane of the depth
 above), and the far plane at the map's extent: the greatest distance from the camera to the rectangle of tiles with a low-detail
 entry, taken to its four corners at the heights that lie furthest in z. The depth range is folded into the matrix (see the band of
 depth above), and Vulkan's flipped y with it. The matrix holds the view's rotation alone and the shader takes the camera off each
@@ -377,8 +303,8 @@ void FarTerrain::makeFrame(const Config &config, const View &view, const std::ve
     frame.terrain = shared_from_this();
     frame.fogStart = view.drawDistance;
     frame.fogStrength = std::max(config.farTerrainFog, 0.0f);
-    frame.swapped = m_swapped;
-    frame.fullShare = m_fullShare;
+    frame.only = view.only;
+    frame.share = view.share;
 
     if (!poll()) return;
 
@@ -391,7 +317,7 @@ void FarTerrain::makeFrame(const Config &config, const View &view, const std::ve
     const float sceneNear = std::fabs(a) > 1e-6f ? b / (2.0f * a) : 1.0f;
 
     // The near plane reaches the camera while the full scene fades, since the far land is what replaces it, nearby too.
-    const bool fading = m_swapped || m_fullShare < 1.0f;
+    const bool fading = view.only || view.share < 1.0f;
     const float nearPlane = fading ? sceneNear : std::max(sceneNear, view.drawDistance * kNearFraction);
 
     // The extent.
@@ -423,11 +349,8 @@ void FarTerrain::makeFrame(const Config &config, const View &view, const std::ve
     // to show under it, and it is the far land that shows through where the screen-door lets it.
     std::array<bool, 64 * 64> loaded;
     loaded.fill(false);
-    m_adtPending = false;
     for (const auto &adt : adtArray) {
-        if (!adt.adtObject->isLoaded()) {
-            m_adtPending = true;
-        } else if (m_fullShare >= 1.0f) {
+        if (adt.adtObject->isLoaded() && view.share >= 1.0f) {
             loaded[adt.adtObject->getAdtY() * 64 + adt.adtObject->getAdtX()] = true;
         }
     }
@@ -484,7 +407,7 @@ void FarTerrain::makeFrame(const Config &config, const View &view, const std::ve
     frame.drawn.reserve(candidates.size());
     for (const auto &candidate : candidates) frame.drawn.push_back(candidate.index);
 
-    // The near plane of the depth, and with it the clip: the nearest the visible far land can be where the view is swapped or fading.
+    // The near plane of the depth, and with it the clip: the nearest the visible far land can be where the view is alone or fading.
     float depthNear = nearPlane;
     if (fading && !candidates.empty()) {
         const float cornerCosine = 1.0f / std::sqrt(1.0f + 1.0f / (sceneX * sceneX) + 1.0f / (sceneY * sceneY));

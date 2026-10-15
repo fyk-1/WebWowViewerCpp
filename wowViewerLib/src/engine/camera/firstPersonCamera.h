@@ -89,11 +89,6 @@ public:
     void setCameraLookAt(float x, float y, float z) override;
     // Faces the camera by yaw and pitch in degrees, yaw 0 along +x growing toward +y, pitch positive upward.
     void setViewAngles(float yawDegrees, float pitchDegrees);
-    // Whether the camera will move or turn on its next tick: a movement key is held, or a look or a zoom is waiting to be applied.
-    bool isMoving() const {
-        return MDDepthPlus != 0 || MDDepthMinus != 0 || MDHorizontalPlus != 0 || MDHorizontalMinus != 0 ||
-               MDVerticalPlus != 0 || MDVerticalMinus != 0 || depthDiff != 0 || delta_x != 0 || delta_y != 0;
-    }
 };
 
 

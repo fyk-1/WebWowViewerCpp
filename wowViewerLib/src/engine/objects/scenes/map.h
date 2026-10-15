@@ -55,12 +55,6 @@ protected:
     SceneMode m_sceneMode = SceneMode::smMap;
 
     float m_currentTime = 0;
-    // The averaged terrain height that makeFramePlan measures the camera's altitude from, and the camera position it
-    // last saw, to tell a jump from flight.
-    float m_altitudeGround = 0;
-    bool m_altitudeGroundSet = false;
-    mathfu::vec3 m_altitudeCameraPos = {0, 0, 0};
-
     bool m_lockedMap = false;
 
     int m_mapId = -1;
@@ -76,8 +70,8 @@ protected:
     // The land beyond the draw distance, made once the WDL and the WDT have loaded and kept while the map is open, once
     // Config's farTerrain has been on.
     std::shared_ptr<FarTerrain> m_farTerrain = nullptr;
-    // The frame's view is the far terrain alone, see FarTerrain::updateSwap. Decided in makeFramePlan, ahead of the tile requests.
-    bool m_farTerrainSwapped = false;
+    // The frame's view is the far terrain alone: Config's farTerrainOnly, read in makeFramePlan ahead of the tile requests.
+    bool m_farTerrainOnly = false;
     void createFarTerrain();
 
     HGMesh skyMesh = nullptr;

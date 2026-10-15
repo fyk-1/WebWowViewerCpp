@@ -19,7 +19,7 @@ precision highp int;
 // fog colour by distance from the draw distance to the far plane, times the strength. The scene's fog is not applied, since it ends at
 // the draw distance and would paint all of this land in fog colour. A tile whose minimap has not landed is the fog colour outright, so
 // the gap reads as haze. The draw that takes pixels from the fading full scene keeps the fragments the scene's screen-door drops
-// (dropsForCullFade, the pattern of Config::m2CullFade), and writes no depth in the others, which is why this shader tests depth
+// (dropsForCullFade, the pattern of Config::m2CullFadeBand), and writes no depth in the others, which is why this shader tests depth
 // after it runs: a discard must not leave a depth write behind.
 
 layout(std140, set=1, binding=0) uniform farTerrainBlock {

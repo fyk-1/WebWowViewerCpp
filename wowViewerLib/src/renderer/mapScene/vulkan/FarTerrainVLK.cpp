@@ -76,7 +76,7 @@ void FarTerrainVLK::write(const FarTerrainFrame &frame, const HFrameDependantDat
     block.viewProjection = viewProjection;
     block.params = mathfu::vec4_packed(mathfu::vec4(frame.fogStart, frame.extent, frame.fogStrength, 0.0f));
     block.fogColor = mathfu::vec4_packed(mathfu::vec4(fogColor, 0.0f));
-    block.fade = mathfu::vec4_packed(mathfu::vec4(frame.fullShare, kTakeDepthLow, kTakeDepthSize, 0.0f));
+    block.fade = mathfu::vec4_packed(mathfu::vec4(frame.share, kTakeDepthLow, kTakeDepthSize, 0.0f));
     block.camera = mathfu::vec4_packed(mathfu::vec4(frame.cameraPos, 0.0f));
     m_block->save();
 }
@@ -237,8 +237,8 @@ void FarTerrainVLK::draw(CmdBufRecorder &cmd, const FarTerrainFrame &frame) {
     drawTiles(0);
 
     // While the full scene fades, the far land takes the pixels the scene's screen-door drops, through the usual viewport and in
-    // front of the scene. With the view swapped and the scene gone there is nothing to take from.
-    if (frame.fullShare < 1.0f && !(frame.swapped && frame.fullShare <= 0.0f)) {
+    // front of the scene. With the far land alone and the scene gone there is nothing to take from.
+    if (frame.share < 1.0f && !(frame.share <= 0.0f && frame.only)) {
         cmd.setViewPort(CmdBufRecorder::ViewportType::vp_usual);
         drawTiles(2);
     }

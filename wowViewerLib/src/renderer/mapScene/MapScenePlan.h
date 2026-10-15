@@ -22,6 +22,11 @@ struct MapRenderPlan {
     // The terrain height under the camera, in world z, where the camera stands over a loaded tile.
     bool hasGroundHeight = false;
     float groundHeight = 0;
+    // The WDL's ground height under the camera, in world z, where the map's WDL has a tile there. Only while Config's farTerrain is on.
+    bool hasWdlGround = false;
+    float wdlGround = 0;
+    // A tile the plan asked for has not loaded yet.
+    bool tilesPending = false;
 
     animTime_t deltaTime;
     HCameraMatrices renderingMatrices;
@@ -48,7 +53,7 @@ struct MapRenderPlan {
     FarTerrainFrame farTerrain;
 
     // Set by Map::doPostLoad when the frame began: nothing the plan asked for was still loading and nothing waited to be finished.
-    // The flyover mode reads it for a still.
+    // The flyover mode reports it.
     bool loadSettled = false;
 
     M2ObjectListContainer m2Array;

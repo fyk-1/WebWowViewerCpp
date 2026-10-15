@@ -38,7 +38,7 @@ namespace {
 
 #define FLYOVER_CONFIG_FIELDS(X) \
     X(Bool, renderAdt) \
-    X(Bool, farTerrain)     X(Float, farTerrainFog)     X(Float, farTerrainSwapHeight) \
+    X(Bool, farTerrain)     X(Float, farTerrainFog)     X(Float, farTerrainShare)     X(Bool, farTerrainOnly) \
     X(Bool, renderWMO) \
     X(Bool, skipUnreachableWmoGroups) \
     X(Bool, renderM2) \
@@ -87,15 +87,14 @@ namespace {
     X(Float, fov) \
     X(Float, nearPlane) \
     X(Float, farPlane) \
-    X(Float, farPlaneForCulling)     X(Float, farPlaneForCullingAir) \
+    X(Float, farPlaneForCulling) \
     X(Float, preloadAhead) \
     X(Float, frameRateCap) \
     X(Float, renderScale) \
-    X(Float, fsrSharpness)     X(Float, fsrOutputScale)     X(Float, minM2ScreenPercent) \
-    X(Float, groundAltitude)   X(Float, minM2ScreenPercentAir) \
-    X(Int, woweeShaders)     X(Bool, randomAnimationPhase)   X(Bool, foliageTint)   X(Float, foliageTintStrength)   X(Bool, m2CullFade) \
+    X(Float, fsrSharpness)     X(Float, fsrOutputScale)     X(Float, minM2ScreenPercent)     X(Float, minM2WorldSize) \
+    X(Int, woweeShaders)     X(Bool, randomAnimationPhase)   X(Bool, foliageTint)   X(Float, foliageTintStrength)   X(Float, m2CullFadeBand) \
     X(Bool, skyGlow)   X(Bool, lightSmoothing)   X(Bool, waterSkyReflection)   X(Bool, drawBackFaces)     X(Int, weatherType)   X(Float, weatherIntensity) \
-    X(Float, fogDensityIncreaser)     X(Float, classicFogStrength) X(Float, classicFogFalloff) \
+    X(Float, fogDensityIncreaser)     X(Float, classicFogStrength) X(Float, classicFogFalloff) X(Float, classicFogGroundZ) \
     X(Float, adtSpecMult) \
     X(Float, currentGlow) \
     X(Double, adtTTLWithoutUpdate) \
@@ -369,13 +368,5 @@ namespace FlyoverConfig {
         }
 
         return result.dump();
-    }
-
-    void applyDefaults(Config &config) {
-        config.farPlaneForCulling = 1000;
-        config.farPlaneForCullingAir = 1500;
-        config.frameRateCap = 30;
-        config.fsrUpscaling = true;
-        config.renderScale = 0.59f;
     }
 }

@@ -19,11 +19,8 @@
 // the viewer's side of a debug dump: see FlyoverMode.cpp. F12 in the viewer's window sends `flyover dumpkey`, which the
 // host answers with that command.
 //
-// The periodic `flyover world {json}` line, ten a second whether or not frames are drawn, is the state a host's script reads:
-// see FlyoverMode.cpp.
-//
-// A `frameRateCap` of 0 draws nothing: the last frame stays on screen, and the viewer keeps reading commands and sending its lines.
-// A `dump` while it is 0 draws a few frames for its picture and then stops again. See FlyoverMode.cpp.
+// The `flyover world {json}` line, one for every frame drawn once `ready` has gone, is the state a host's script reads: see
+// FlyoverMode.cpp. The viewer holds no policy; the script sets Config fields by the `config` command.
 //
 
 #ifndef AWEBWOWVIEWERCPP_FLYOVERMODE_H
@@ -100,8 +97,6 @@ public:
     void requestToggleMode();
     // The F12 key.
     void requestDump();
-    // Whether the main loop must draw although frameRateCap is 0: before the first `ready`, and while a dump warms or captures.
-    bool wantsFrames() const { return !m_readySent || m_dumpHold; }
     // Seconds the draw of the frame just drawn took, for the next `world` line.
     void noteFrame(double seconds);
 private:
@@ -132,7 +127,6 @@ private:
     void setMode(bool free, bool announce);
     void applyRoadLines(const std::string &file);
     void takeDump(const std::string &pngFile);
-    void finishDump(const std::string &pngFile, FrameCapture &&capture);
     void answerDump(const std::string &pngFile, FrameCapture &&capture);
     void emitWorld(const MapRenderPlan *plan);
     std::shared_ptr<ICamera> activeCamera() const;
@@ -168,15 +162,8 @@ private:
     int m_lastParentAreaId = 0;
     bool m_areaReported = false;
 
-    double m_nextWorldReport = 0;
-    // The last frame's draw seconds, and whether one was drawn since the last `world` line.
+    // The last frame's draw seconds.
     double m_frameSeconds = 0;
-    bool m_frameDrawn = false;
-    // A dump taken with frameRateCap 0: its picture, the frames left to draw before the capture is asked for, and whether the
-    // viewer must keep drawing until the capture has finished.
-    std::string m_dumpPng;
-    int m_dumpWarm = 0;
-    bool m_dumpHold = false;
 };
 
 #endif //AWEBWOWVIEWERCPP_FLYOVERMODE_H

@@ -55,7 +55,7 @@ public:
 
     void produceTransformedPortalMeshes(const HMapSceneBufferCreate &sceneRenderer, const HApiContainer &apiContainer,
                                         const std::vector<std::vector<mathfu::vec3>> &portalsVerts, bool isAntiportal = false);
-    // Culls the view's candidates, its groups' doodads among them, by the frustum and by config's minM2ScreenPercent.
+    // Culls the view's candidates, its groups' doodads among them, by the frustum and by config's minM2ScreenPercent and minM2WorldSize.
     void addM2FromGroups(const MathHelper::FrustumCullingData &frustumData, mathfu::vec4 &cameraPos, const Config *config);
 };
 
