@@ -67,7 +67,7 @@ namespace {
     X(Bool, drawM2BB) \
     X(Bool, enableObjectPicking) \
     X(Bool, enableFXAA) \
-    X(Bool, fsrUpscaling)     X(Bool, stillWhenIdle) \
+    X(Bool, fsrUpscaling) \
     X(Bool, enableLightBuffer) \
 \
     X(Bool, disableGlow) \
@@ -91,7 +91,7 @@ namespace {
     X(Float, preloadAhead) \
     X(Float, frameRateCap) \
     X(Float, renderScale) \
-    X(Float, fsrSharpness)     X(Float, fsrOutputScale)     X(Float, fsrMaxHeight)     X(Float, minM2ScreenPercent) \
+    X(Float, fsrSharpness)     X(Float, fsrOutputScale)     X(Float, minM2ScreenPercent) \
     X(Float, groundAltitude)   X(Float, minM2ScreenPercentAir) \
     X(Int, woweeShaders)     X(Bool, randomAnimationPhase)   X(Bool, foliageTint)   X(Float, foliageTintStrength)   X(Bool, m2CullFade) \
     X(Bool, skyGlow)   X(Bool, lightSmoothing)   X(Bool, waterSkyReflection)   X(Bool, drawBackFaces)     X(Int, weatherType)   X(Float, weatherIntensity) \

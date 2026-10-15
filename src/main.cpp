@@ -506,24 +506,24 @@ std::ios_base::Init a;
         double frameRateCap = apiContainer->getConfig()->frameRateCap;
         return frameRateCap > 0 ? std::max(5.0, 1000.0 / frameRateCap) : 5.0;
     };
-    bool resumedFromStill = false;
+    bool resumedFromIdle = false;
     while (!glfwWindowShouldClose(window)) {
         /*
-        robots@Impl: A still viewer (FlyoverMode::isStill) draws, presents and sleeps on nothing: it waits on the window's events,
-        which the stdin thread also ends (FlyoverMode::post), and runs the mode's update for its commands and reports. The wait
-        is capped at STILL_WAIT_SECONDS so the reports keep their pace and a close request is seen. The resumed frame takes one
-        frame interval as its delta, not the time spent still, so animation and the free camera carry on from where they stood.
+        robots@Impl: In flyover mode a frameRateCap of 0 or less draws, presents and sleeps on nothing, unless
+        FlyoverMode::wantsFrames or a window resize asks for a frame: the loop waits on the window's events, which the stdin
+        thread also ends (FlyoverMode::post), and runs the mode's update for its commands and lines. The wait is capped at
+        IDLE_WAIT_SECONDS so the `world` line keeps its pace and a close request is seen. The first frame drawn after the gap
+        takes one frame interval as its delta, not the time spent idle, so animation and the free camera carry on from where
+        they stood, and sets weatherClockResetRequested, since weather falls on the wall clock. The UI mode has no such branch:
+        there 0 is uncapped.
         */
-        bool updated = false;
-        if (flyoverMode && flyoverMode->isStill()) {
-            constexpr double STILL_WAIT_SECONDS = 0.1;
-            glfwWaitEventsTimeout(STILL_WAIT_SECONDS);
-            if (windowSizeChanged) flyoverMode->wake();
+        if (flyoverMode && apiContainer->getConfig()->frameRateCap <= 0 && !flyoverMode->wantsFrames() && !windowSizeChanged) {
+            constexpr double IDLE_WAIT_SECONDS = 0.1;
+            glfwWaitEventsTimeout(IDLE_WAIT_SECONDS);
             flyoverMode->update();
-            updated = true;
             lastFrame = glfwGetTime();
-            if (flyoverMode->isStill()) continue;
-            resumedFromStill = true;
+            resumedFromIdle = true;
+            continue;
         }
 
         frontendUI->newFrame();
@@ -535,13 +535,14 @@ std::ios_base::Init a;
         // Render scene
         currentFrame = glfwGetTime(); // seconds
         double deltaTime = currentFrame - lastFrame;
-        if (resumedFromStill) {
+        if (resumedFromIdle) {
             deltaTime = minFrameMs() / 1000.0;
-            resumedFromStill = false;
+            apiContainer->getConfig()->weatherClockResetRequested = true;
+            resumedFromIdle = false;
         }
 
         // The scene is the whole window, so the UI pass is an empty frame.
-        if (flyoverMode && !updated) flyoverMode->update();
+        if (flyoverMode) flyoverMode->update();
         frontendUI->composeFlyoverUI();
         auto sceneScenario = frontendUI->createFrameScenario(canvWidth, canvHeight, deltaTime);
 
@@ -549,6 +550,7 @@ std::ios_base::Init a;
         windowSizeChanged = false;
 
         double currentDeltaAfterDraw = (glfwGetTime() - currentFrame)*(1000.0f);
+        if (flyoverMode) flyoverMode->noteFrame(currentDeltaAfterDraw / 1000.0);
         lastFrame = currentFrame;
         const double frameMs = minFrameMs();
         if (currentDeltaAfterDraw < frameMs) {

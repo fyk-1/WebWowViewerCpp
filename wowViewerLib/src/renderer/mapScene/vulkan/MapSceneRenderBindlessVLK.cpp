@@ -2414,11 +2414,10 @@ The draw stage runs FSR in this order: motion vectors right after the Hi-Z step,
 sampleable; a copy of the forward color after the first forward pass, which is the opaque scene; then, after the
 glow, the composite, the upscale, and a fullscreen draw of its output onto the swapchain in place of FXAA.
 
-Whether FSR runs is Config::effectiveFsrUpscaling, read once at the top of this stage and handed to the render
-lambda, so the jitter and the view agree. Where the camera is above fsrMaxHeight it is false, which is the same
-path as fsrUpscaling off: the view drops its FSR context and the scene renders at renderScale, stretched by the
-final pass. The context is built again on the first frame back below, so each crossing costs one context build
-and never a per-frame allocation.
+Whether FSR runs is Config::fsrUpscaling, read once at the top of this stage and handed to the render
+lambda, so the jitter and the view agree. With it off the view drops its FSR context and the scene renders at
+renderScale, stretched by the final pass. The context is built again on the first frame it is back on, so each
+switch costs one context build and never a per-frame allocation.
 */
 std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::shared_ptr<FrameInputParams<MapSceneParams>> &frameInputParams,
                                                                    const std::shared_ptr<MapRenderPlan> &framePlan) {
@@ -2476,7 +2475,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
     }
 
     // Read once, so the jitter and the view agree on whether FSR runs this frame.
-    const bool fsrWanted = m_config->effectiveFsrUpscaling();
+    const bool fsrWanted = m_config->fsrUpscaling;
     FsrFrame fsrFrame;
     if (fsrWanted && !renderingMatricessAndSizes.empty() && FsrUpscalerVLK::isAvailable()) {
         auto firstView = std::dynamic_pointer_cast<RendererViewClass>(frameInputParams->frameParameters->renderTargets[0].target);

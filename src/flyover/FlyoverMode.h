@@ -19,11 +19,11 @@
 // the viewer's side of a debug dump: see FlyoverMode.cpp. F12 in the viewer's window sends `flyover dumpkey`, which the
 // host answers with that command.
 //
-// The still: in free flight with the `stillWhenIdle` config on, the viewer stops drawing once the camera has been left alone
-// and the scene has settled, and keeps the last frame on screen. It says `flyover still 1` on entering and `flyover still 0`
-// on leaving. Input, and every command that changes what a frame shows, leave it; `ambient <name> <value>` sets a config field
-// the way `config` does for a change that comes with time passing (the clock, the zone's weather), and does not. A `dump` while
-// still draws a few frames for its picture and then stills again. See FlyoverMode.cpp.
+// The periodic `flyover world {json}` line, ten a second whether or not frames are drawn, is the state a host's script reads:
+// see FlyoverMode.cpp.
+//
+// A `frameRateCap` of 0 draws nothing: the last frame stays on screen, and the viewer keeps reading commands and sending its lines.
+// A `dump` while it is 0 draws a few frames for its picture and then stops again. See FlyoverMode.cpp.
 //
 
 #ifndef AWEBWOWVIEWERCPP_FLYOVERMODE_H
@@ -43,6 +43,7 @@ class FrontendUI;
 class SceneWindow;
 class PathCamera;
 class FirstPersonCamera;
+class ICamera;
 struct MapRenderPlan;
 
 struct FlyoverRoute {
@@ -99,10 +100,10 @@ public:
     void requestToggleMode();
     // The F12 key.
     void requestDump();
-    // Whether the viewer holds its last frame instead of drawing one. The main loop draws nothing while it is true.
-    bool isStill() const { return m_still; }
-    // Ends a still, for a reason the main loop knows and this class does not, the window changing size.
-    void wake();
+    // Whether the main loop must draw although frameRateCap is 0: before the first `ready`, and while a dump warms or captures.
+    bool wantsFrames() const { return !m_readySent || m_dumpHold; }
+    // Seconds the draw of the frame just drawn took, for the next `world` line.
+    void noteFrame(double seconds);
 private:
     enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, ModeToggle, Look, Move, FreeSpeed, Route, Config, Ambient, ConfigDump, Dump, RoadLines, Take, PosInterval, Quit };
     struct Command {
@@ -132,9 +133,9 @@ private:
     void applyRoadLines(const std::string &file);
     void takeDump(const std::string &pngFile);
     void finishDump(const std::string &pngFile, FrameCapture &&capture);
-    void settleStill(const MapRenderPlan *plan);
-    void enterStill();
-    void leaveStill();
+    void answerDump(const std::string &pngFile, FrameCapture &&capture);
+    void emitWorld(const MapRenderPlan *plan);
+    std::shared_ptr<ICamera> activeCamera() const;
 
     int m_failureExitCode = 1;
 
@@ -167,12 +168,12 @@ private:
     int m_lastParentAreaId = 0;
     bool m_areaReported = false;
 
-    // The viewer draws nothing while this is set.
-    bool m_still = false;
-    // Frames drawn in a row with nothing driving the camera and the scene settled.
-    int m_calmFrames = 0;
-    // A dump taken while still: its picture, the frames left to draw before the capture is asked for, and whether the viewer
-    // goes back to the still once the capture has finished.
+    double m_nextWorldReport = 0;
+    // The last frame's draw seconds, and whether one was drawn since the last `world` line.
+    double m_frameSeconds = 0;
+    bool m_frameDrawn = false;
+    // A dump taken with frameRateCap 0: its picture, the frames left to draw before the capture is asked for, and whether the
+    // viewer must keep drawing until the capture has finished.
     std::string m_dumpPng;
     int m_dumpWarm = 0;
     bool m_dumpHold = false;

@@ -142,7 +142,7 @@ public:
     // Yards ahead on a camera's route whose map tiles are loaded before they are seen. 0 or less turns it off.
     // Only a camera that knows its route answers it (the flyover path camera).
     float preloadAhead = 1200;
-    // Frames per second the main loop holds to at most. 0 or less leaves it uncapped.
+    // Frames per second the main loop holds to at most. 0 or less leaves it uncapped, except in flyover mode, where 0 draws nothing (FlyoverMode.cpp).
     float frameRateCap = 0;
     // Scale of the scene against the window, 0.05 to 1.5, stretched or shrunk to the window by the final pass.
     // Object picking in the UI mode assumes 1. With fsrUpscaling on and the scale at most 1, FSR upscales it instead;
@@ -151,9 +151,6 @@ public:
     // Upscales the scene to the window with AMD FSR 3.1 instead of stretching it. Needs the bindless renderer and
     // amd_fidelityfx_vk.dll beside the executable; without either the scene is stretched as before.
     bool fsrUpscaling = false;
-    // Yards above the terrain up to which fsrUpscaling engages, measured as cameraAltitude. Above it the frame renders as
-    // with fsrUpscaling off. 0 or less never lifts it.
-    float fsrMaxHeight = 100;
     // RCAS sharpening of the FSR output, 0 to 1.
     float fsrSharpness = 0.3f;
     // Size FSR upscales to, as a fraction of the window, 0.25 to 1; the last pass stretches its output to the window.
@@ -171,9 +168,6 @@ public:
     // Set by the map every frame from cameraAltitude and groundAltitude.
     bool cameraGrounded = true;
 
-    // Set by the map every frame from cameraAltitude and fsrMaxHeight: whether the camera is low enough for FSR.
-    bool cameraFsrLow = true;
-
     float effectiveFarPlaneForCulling() const {
         return cameraGrounded ? farPlaneForCulling : farPlaneForCullingAir;
     }
@@ -181,10 +175,6 @@ public:
         const float ground = minM2ScreenPercent > MinM2ScreenPercentFloor ? minM2ScreenPercent : MinM2ScreenPercentFloor;
         const float air = minM2ScreenPercentAir > MinM2ScreenPercentFloor ? minM2ScreenPercentAir : MinM2ScreenPercentFloor;
         return cameraGrounded ? ground : air;
-    }
-    // Whether FSR is wanted this frame: fsrUpscaling on and, unless fsrMaxHeight is off, the camera low.
-    bool effectiveFsrUpscaling() const {
-        return fsrUpscaling && (fsrMaxHeight <= 0 || cameraFsrLow);
     }
     // The band's top as a multiple of the percent: M2CullFadeBand with m2CullFade on, and 1, no band, with it off.
     float effectiveM2CullFadeBand() const {
@@ -233,10 +223,7 @@ public:
     std::shared_ptr<RoadLines> roadLines = std::make_shared<RoadLines>();
     // Set by the host when the camera jumps, so the next FSR dispatch drops its history. The renderer clears it.
     bool fsrResetRequested = false;
-    // In free flight, stops rendering once nothing drives the camera and the scene has settled, and leaves the last frame on
-    // screen. Any input or change that shows renders again. See FlyoverMode.cpp.
-    bool stillWhenIdle = true;
-    // Set by the flyover mode when a still ends, so the weather's next step is one frame long, not the whole still. The renderer clears it.
+    // Set by the flyover mode when drawing resumes after a gap, so the weather's next step is one frame long, not the whole gap. The renderer clears it.
     bool weatherClockResetRequested = false;
 
     float fogDensityIncreaser = 0;
