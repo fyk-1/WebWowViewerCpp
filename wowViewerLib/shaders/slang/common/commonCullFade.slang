@@ -3,7 +3,7 @@
 
 import glsl;
 
-// The screen-door of Config::m2CullFadeBand, shared by every fade that dissolves a thing in the scene: keeps the share `fade` of the
+// The screen-door of Config::m2FadeStartPercent, shared by every fade that dissolves a thing in the scene: keeps the share `fade` of the
 // fragments, in a pattern fixed to the screen (interleaved gradient noise). The M2 shader drops a fading model's fragments by
 // it, and the far terrain's pass takes the fragments that this drops when the full scene fades into the far land, so both
 // leave the same pixels to each other.

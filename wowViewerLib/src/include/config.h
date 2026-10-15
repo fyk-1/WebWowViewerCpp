@@ -55,7 +55,7 @@ public:
     // How much fog the far land takes toward the horizon: 0 none, 1 full fog at the continent's edge, 2 full fog at half the way.
     float farTerrainFog = 1;
     // The share of the full scene that shows against the far land, from 1 (all of it) to 0 (none): below 1 the tiles, models and
-    // liquids dissolve into the far land in the screen-door pattern of m2CullFadeBand. Read once per culling pass with farTerrainOnly.
+    // liquids dissolve into the far land in the screen-door pattern of m2FadeStartPercent. Read once per culling pass with farTerrainOnly.
     // Only the far terrain's own draw reads it, so it does nothing while farTerrain is off.
     float farTerrainShare = 1;
     // No tile, model or spawn is requested or drawn, and at a share of 0 the full scene's draw is skipped as well. Whoever sets it
@@ -177,10 +177,11 @@ public:
     // How strongly foliageTint shows, from 0 to 2: 0 leaves the models as they are, 1 is the full shading, and 2 doubles
     // every term of it. Reaches the shaders in the scene-wide block's uWoweeLook.z.
     float foliageTintStrength = 1.0f;
-    // A model the small-model cull is about to drop fades out over the band above minM2ScreenPercent, to nothing at the
-    // percent itself, instead of vanishing. This is the band's top as a multiple of the percent, and 1 or less is no band.
-    // Every batch of the model dissolves, the solid ones through the alpha-keyed pipeline, which can drop fragments.
-    float m2CullFadeBand = 1;
+    // A model the small-model cull is about to drop fades out from this percent of the view's height down to
+    // minM2ScreenPercent, where it is gone, instead of vanishing. At or below minM2ScreenPercent nothing fades. Every batch
+    // of the model dissolves, the solid ones through the alpha-keyed pipeline, which can drop fragments.
+    float m2FadeStartPercent = 0;
+    bool m2CullFading() const { return minM2ScreenPercent > 0 && m2FadeStartPercent > minM2ScreenPercent; }
     // The sky cone takes WoWee's sun glow: a warm scatter and a soft glow around the sun, and a haze at the horizon.
     bool skyGlow = false;
     // Zone light is eased toward its target with a time constant of a fifth of a second, so a jump at a light volume,

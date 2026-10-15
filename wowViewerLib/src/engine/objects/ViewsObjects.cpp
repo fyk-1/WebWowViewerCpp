@@ -92,7 +92,7 @@ void GeneralView::addM2FromGroups(const MathHelper::FrustumCullingData &frustumD
     auto &candidatesArr = this->m2List.getCandidates();
     auto candCullRes = std::vector<uint32_t>(candidatesArr.size(), 0xFFFFFFFF);
     const float minScreenPercent = config->minM2ScreenPercent;
-    const float fadeBandTop = config->m2CullFadeBand;
+    const float fadeStartPercent = config->m2FadeStartPercent;
     const float minWorldSize = config->minM2WorldSize;
     const float tanHalfFov = std::tan(toRadian(config->fov) * 0.5f);
     const mathfu::vec3 cullCameraPos = cameraPos.xyz();
@@ -113,7 +113,7 @@ void GeneralView::addM2FromGroups(const MathHelper::FrustumCullingData &frustumD
                                                               candCullRes);
 #endif
             ScreenSizeCulling<M2ObjId>::cull(cullCameraPos, tanHalfFov, minScreenPercent,
-                                             r.begin(), r.end(), candidatesArr, candCullRes, fadeBandTop, minWorldSize);
+                                             r.begin(), r.end(), candidatesArr, candCullRes, fadeStartPercent, minWorldSize);
         }, tbb::auto_partitioner());
     });
 

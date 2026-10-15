@@ -1336,7 +1336,7 @@ std::shared_ptr<ISimpleMaterialVLK> MapSceneRenderBindlessVLK::getM2StaticMateri
     m_m2StaticMaterials[pipelineTemplate] = staticMaterial;
     m_m2MatCacheId[staticMaterial->getMaterialId()] = staticMaterial;
 
-    // The twin that can drop fragments, for Config::m2CullFadeBand. It is built with its solid material, since the draw stage reads
+    // The twin that can drop fragments, for Config::m2FadeStartPercent. It is built with its solid material, since the draw stage reads
     // the cache by id while the update stage fills it.
     if (solid) {
         auto fadeMaterial = buildM2StaticMaterial(pipelineTemplate, false);

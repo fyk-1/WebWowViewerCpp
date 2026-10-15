@@ -1281,7 +1281,7 @@ void M2Object::uploadBuffers(mathfu::mat4 &viewMat, const HFrameDependantData &f
     }
 
     const Config *config = m_api->getConfig();
-    const float cullFade = config->m2CullFadeBand > 1.0f ? status->m_cullFade : 1.0f;
+    const float cullFade = config->m2CullFading() ? status->m_cullFade : 1.0f;
     const float foliageHeight = !config->foliageTint ? 0.0f :
         std::max(m2File->bounding_box.max.z - std::min(m2File->bounding_box.min.z, 0.0f), 0.01f);
     if (cullFade != m_uploadedCullFade || foliageHeight != m_uploadedFoliageHeight) m_modelWideDataChanged = true;

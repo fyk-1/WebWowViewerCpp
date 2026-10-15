@@ -23,8 +23,8 @@ public:
 };
 
 // Marks culled the visible objects whose bounding sphere spans less than minScreenPercent of the view's height,
-// seen from cameraPos with tanHalfFovY. An object around the camera stays. With fadeBandTop above 1, an object between
-// the percent and the percent times fadeBandTop is kept at a share of itself that grows from 0 to 1 across the band
+// seen from cameraPos with tanHalfFovY. An object around the camera stays. With fadeStartPercent above minScreenPercent,
+// an object between the two is kept at a share of itself that grows from 0 at minScreenPercent to 1 at fadeStartPercent
 // (storeCullFade), and every other kept object is stored at 1. Before any of that, an object whose box has no side longer
 // than minWorldSize yards is culled, wherever it stands; a minWorldSize of 0 or less culls none, and a minScreenPercent of
 // 0 or less leaves only this cull.
@@ -35,7 +35,7 @@ public:
                      const size_t start, const size_t end,
                      const framebased::vector<T> &objects,
                      std::vector<uint32_t> &culling_res,
-                     float fadeBandTop = 1.0f,
+                     float fadeStartPercent = 0.0f,
                      float minWorldSize = 0.0f) {
         if (minWorldSize > 0.0f) {
             for (size_t i = start; i < end; i++) {
@@ -46,7 +46,7 @@ public:
             }
         }
         if (minScreenPercent <= 0.0f || tanHalfFovY <= 0.0f) return;
-        const bool fading = fadeBandTop > 1.0f;
+        const bool fading = fadeStartPercent > minScreenPercent;
         // The shader tells this many shares apart, so a finer fade only costs uploads.
         constexpr float FadeSteps = 16.0f;
         for (size_t i = start; i < end; i++) {
@@ -67,7 +67,7 @@ public:
             }
             if (!fading) continue;
 
-            const float fade = std::floor(std::min((percent - minScreenPercent) / (minScreenPercent * (fadeBandTop - 1.0f)), 1.0f) * FadeSteps) / FadeSteps;
+            const float fade = std::floor(std::min((percent - minScreenPercent) / (fadeStartPercent - minScreenPercent), 1.0f) * FadeSteps) / FadeSteps;
             if (fade <= 0.0f) {
                 culling_res[i] = 0xFFFFFFFF;
             } else {

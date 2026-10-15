@@ -37,7 +37,7 @@ struct FarTerrainFrame {
     bool only = false;
     // The share of the full scene that shows, from 1 (all of it) to 0 (none): Config's farTerrainShare. Below 1 the full tiles,
     // models and liquids are dissolving into the far land, and the far pass takes the rest of the pixels in the screen-door pattern
-    // of Config::m2CullFadeBand. At 0 with the far terrain alone the full scene's draw is skipped as well.
+    // of Config::m2FadeStartPercent. At 0 with the far terrain alone the full scene's draw is skipped as well.
     float share = 1.0f;
     // The far plane of the far pass, in yards.
     float extent = 0;

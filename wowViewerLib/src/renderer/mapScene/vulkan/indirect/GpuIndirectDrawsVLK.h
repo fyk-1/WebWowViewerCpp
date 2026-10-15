@@ -73,7 +73,7 @@ public:
         ISimpleMaterialVLK *material = nullptr;                    // for binding/batching
         uint32_t matId = 0;          // shared material id (bindless run batching)
         uint32_t priorityPlane = 0;
-        bool fades = false;          // a batch of a model inside m2CullFadeBand's band
+        bool fades = false;          // a batch of a model the small-model cull is fading out
         std::shared_ptr<IVertexBufferBindings> vertexBindingsShared;
 #ifdef DEBUG_MESH_NAMES
         std::string debugName;       // copied from the mesh at collection time (renderdoc labels)
@@ -155,7 +155,7 @@ protected:
     // vertex-offset rule (its meshes live in shared mega-buffers).
     virtual VkDrawIndexedIndirectCommand buildStaticCommand(GMeshVLK *mesh);
 
-    // The id of the material that draws a solid batch with the fragment discard m2CullFadeBand needs, 0 for none. The default has
+    // The id of the material that draws a solid batch with the fragment discard m2FadeStartPercent needs, 0 for none. The default has
     // none, so a renderer without one leaves a fading model's solid batches whole.
     virtual uint32_t fadeMaterialId(uint32_t matId);
 

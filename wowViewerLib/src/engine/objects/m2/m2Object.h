@@ -45,7 +45,7 @@ struct M2LoadedStatus {
     // small-model cull measures with whichever is larger.
     float m_screenRadius = 0;
     // The share of the model the small-model cull's fade band draws, 1 for all of it. Set every frame by the cull while
-    // Config::m2CullFadeBand is above 1, and read only then.
+    // Config::m2CullFading() holds, and read only then.
     float m_cullFade = 1;
 };
 
@@ -102,7 +102,7 @@ private:
     mathfu::mat4 m_placementMatrix = mathfu::mat4::Identity();
     bool m_placementMatrixChanged = false;
     bool m_modelWideDataChanged = false;
-    // What the model-wide block last carried of Config::m2CullFadeBand and Config::foliageTint, so a change of either, or of
+    // What the model-wide block last carried of Config::m2FadeStartPercent and Config::foliageTint, so a change of either, or of
     // the cull's fade, uploads the block again.
     float m_uploadedCullFade = 1;
     float m_uploadedFoliageHeight = 0;

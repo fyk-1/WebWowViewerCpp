@@ -207,7 +207,7 @@ protected:
 
     /*virtual*/ std::shared_ptr<ISimpleMaterialVLK> getM2StaticMaterial(const PipelineTemplate &pipelineTemplate);
     std::shared_ptr<ISimpleMaterialVLK> buildM2StaticMaterial(const PipelineTemplate &pipelineTemplate, bool solid);
-    // The id of the material that draws a solid M2 material's batches with the fragment discard of Config::m2CullFadeBand;
+    // The id of the material that draws a solid M2 material's batches with the fragment discard of Config::m2FadeStartPercent;
     // 0 for an id that is not a solid M2 material.
     uint32_t getM2FadeMaterialId(uint32_t matId);
     /*virtual*/ std::shared_ptr<ISimpleMaterialVLK> getM2ProjectiveStaticMaterial(const PipelineTemplate &pipelineTemplate);

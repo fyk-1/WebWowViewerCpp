@@ -34,7 +34,7 @@ layout(location = 0) out vec4 outColor;
 
 layout (set = 2, binding = 0) uniform sampler2D s_Textures[];
 
-// Config::m2CullFadeBand's screen-door is dropsForCullFade (commonCullFade.slang). The opaque pipelines test depth before the shader runs,
+// Config::m2FadeStartPercent's screen-door is dropsForCullFade (commonCullFade.slang). The opaque pipelines test depth before the shader runs,
 // so they cannot drop a fragment; a solid batch of a fading model draws through this shader with its opaque state instead.
 
 #ifdef TRUE_OPAQUE
