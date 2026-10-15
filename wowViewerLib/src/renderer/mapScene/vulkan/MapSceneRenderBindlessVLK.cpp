@@ -2990,6 +2990,10 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                                           0, sizeof(uint32_t), &modeAll);
                     }
                 }
+                // A depth capture that waits for a frame copies the scene's depth here, after the last pass that draws into it.
+                if (currentTargetIndex == 0) {
+                    l_this->m_device->recordDepthCapture(frameBufCmd, currentView->getGBufferFrameBuffer()->getDepthTexture());
+                }
                 {
                     currentView->doPostGlow(frameBufCmd);
                     if (currentView == l_this->defaultView) {

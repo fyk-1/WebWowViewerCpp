@@ -56,6 +56,7 @@ public:
 private:
     void createBuffers(const FarTerrain::Geometry &geometry);
     void createMaterials();
+    bool heightsUsable();
 
     HGDeviceVLK m_device;
     HGBufferVLK m_uboBuffer;
@@ -80,6 +81,13 @@ private:
     // The material every tile derives from, and the one that draws the tiles whose texture has not landed.
     std::shared_ptr<ISimpleMaterialVLK> m_gapMaterial;
     std::vector<std::shared_ptr<ISimpleMaterialVLK>> m_tileMaterials;
+
+    // The baked heights of each tile as a texture, null for a tile with none or one that has not got to its turn. A tile's draw takes the
+    // shared grid once its texture has been seen uploaded (m_heightsLanded), and its own geometry until then.
+    std::vector<HGSamplableTexture> m_heightTextures;
+    std::vector<uint8_t> m_heightsLanded;
+    // Whether the device samples R16_UNORM with a linear filter, as the heights need; unknown (-1) until the first height texture.
+    int m_heightFormatUsable = -1;
 };
 
 #endif //AWEBWOWVIEWERCPP_FARTERRAINVLK_H

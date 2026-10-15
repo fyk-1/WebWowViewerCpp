@@ -34,6 +34,7 @@
 #include <GLFW/glfw3.h>
 
 #include "FlyoverConfig.h"
+#include "HeightBake.h"
 #include "../ui/FrontendUI.h"
 #include "../ui/childWindow/sceneWindow/SceneWindow.h"
 #include "../database/CSqliteDB.h"
@@ -229,6 +230,18 @@ bool FlyoverMode::findDatabase(int argc, char *argv[], std::string &file, std::s
     return true;
 }
 
+
+bool FlyoverMode::findHeights(int argc, char *argv[], std::string &heightsDir, std::string &bakeDir, std::string &error) {
+    if (findValue(argc, argv, "--heights", heightsDir) == Found::NoValue) {
+        error = "--heights needs a value";
+        return false;
+    }
+    if (findValue(argc, argv, "--bake", bakeDir) == Found::NoValue) {
+        error = "--bake needs a value";
+        return false;
+    }
+    return true;
+}
 bool FlyoverMode::canOpenDatabase(const std::string &file) {
     // CSqliteDB opens with OPEN_CREATE, so a missing file is turned away first rather than made.
     if (!std::ifstream(file, std::ios::binary).is_open()) return false;
@@ -416,6 +429,10 @@ bool FlyoverMode::start(const std::string &routeFile, const FlyoverInstall &inst
 
     m_scene = m_frontendUI.getBackgroundScene();
     m_api = m_frontendUI.getApi();
+    m_api->getConfig()->farHeightsDir = m_heightsDir.empty() ? m_bakeDir : m_heightsDir;
+    if (!m_bakeDir.empty()) {
+        m_bake = std::make_unique<HeightBake>(m_scene, m_api, m_bakeDir, [](const std::string &line) { emit(line); });
+    }
     applyRoute(route, true);
 
     std::thread(&FlyoverMode::readStdin, m_queue).detach();
@@ -521,6 +538,8 @@ void FlyoverMode::parseLine(const std::string &rawLine, CommandQueue &queue) {
         post(queue, {CommandType::Take, "", rest});
     } else if (word == "posinterval") {
         post(queue, {CommandType::PosInterval, "", rest});
+    } else if (word == "bake") {
+        post(queue, {CommandType::Bake, "", rest});
     } else if (word == "quit") {
         post(queue, {CommandType::Quit, "", ""});
     } else {
@@ -649,6 +668,18 @@ void FlyoverMode::apply(const Command &command) {
             } else {
                 m_posInterval = ms / 1000.0;
                 m_nextPosReport = 0;
+            }
+            break;
+        }
+        case CommandType::Bake: {
+            int row = 0, col = 0;
+            double timeout = 0;
+            if (std::sscanf(command.text.c_str(), "%d %d %lf", &row, &col, &timeout) != 3 || !(timeout > 0)) {
+                emitError("bake", "expected a tile row, a column and a timeout in seconds");
+            } else if (!m_bake || !m_readySent) {
+                emit("flyover bake " + std::to_string(row) + " " + std::to_string(col) + " error " + (m_bake ? "the viewer is not ready" : "the viewer was not started with --bake"));
+            } else {
+                m_bake->request(m_mapId, row, col, timeout, glfwGetTime());
             }
             break;
         }
@@ -884,6 +915,8 @@ void FlyoverMode::update() {
         return;
     }
 
+
+    if (m_bake) m_bake->update(now, plan.get());
     if (plan && now >= m_nextAreaSample) {
         m_nextAreaSample = now + 0.25;
         if (!m_areaReported || plan->areaId != m_lastAreaId || plan->parentAreaId != m_lastParentAreaId) {
@@ -920,6 +953,7 @@ void FlyoverMode::update() {
 }
 
 std::shared_ptr<ICamera> FlyoverMode::activeCamera() const {
+    if (m_bake && m_bake->camera()) return m_bake->camera();
     return m_isFree && m_free ? std::static_pointer_cast<ICamera>(m_free) : std::static_pointer_cast<ICamera>(m_path);
 }
 

@@ -103,6 +103,8 @@ set(SOURCE_FILES
         src/engine/camera/firstPersonOrthoStaticTopDownCamera.h
         src/include/config.h
         src/engine/camera/CameraInterface.h
+        src/engine/camera/bakeCamera.cpp
+        src/engine/camera/bakeCamera.h
         src/engine/persistance/header/commonFileStructs.h
         src/engine/persistance/header/M2FileHeader.h
         src/engine/geometry/m2Geom.cpp
@@ -175,6 +177,8 @@ set(SOURCE_FILES
         src/engine/objects/wdl/wdlObject.h
         src/engine/objects/farTerrain/farTerrain.cpp
         src/engine/objects/farTerrain/farTerrain.h
+        src/engine/objects/farTerrain/farHeights.cpp
+        src/engine/objects/farTerrain/farHeights.h
         src/engine/managers/particles/CGeneratorAniProp.cpp
         src/engine/managers/particles/CGeneratorAniProp.h
         src/engine/managers/particles/CRndSeed.cpp

@@ -56,6 +56,19 @@ struct MapRenderPlan {
     // The flyover mode reports it.
     bool loadSettled = false;
 
+    // What a height bake waits on, set while Map::setBakeView is on (src/flyover/HeightBake.cpp): the camera the count was taken for, and
+    // how many of the models and WMO groups the square around it draws have not loaded yet.
+    struct BakeResidency {
+        bool valid = false;
+        float x = 0;
+        float y = 0;
+        int total = 0;
+        int pending = 0;
+        // Of those pending, the models, the WMOs and the WMO groups.
+        int pendingBy[3] = {0, 0, 0};
+    };
+    BakeResidency bake;
+
     M2ObjectListContainer m2Array;
     WMOListContainer wmoArray;
     WMOGroupListContainer wmoGroupArray;

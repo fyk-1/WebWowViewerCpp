@@ -341,6 +341,8 @@ int main(int argc, char *argv[]) {
     const bool flyoverRequested = FlyoverMode::findArgument(argc, argv, flyoverRouteFile);
     FlyoverInstall flyoverInstall;
     std::string flyoverDatabase;
+    std::string flyoverHeights;
+    std::string flyoverBake;
     if (flyoverRequested) {
         // Before any output, so that stdout carries protocol lines only.
         FlyoverMode::claimStdout();
@@ -350,6 +352,10 @@ int main(int argc, char *argv[]) {
             return 2;
         }
         if (!FlyoverMode::findDatabase(argc, argv, flyoverDatabase, usageError)) {
+            std::cerr << "flyover: " << usageError << std::endl;
+            return 2;
+        }
+        if (!FlyoverMode::findHeights(argc, argv, flyoverHeights, flyoverBake, usageError)) {
             std::cerr << "flyover: " << usageError << std::endl;
             return 2;
         }
@@ -394,6 +400,13 @@ std::ios_base::Init a;
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
+    // A height bake renders 256 x 256 images, so its window is that size, and hidden: nobody looks at it.
+    if (!flyoverBake.empty()) {
+        windowWidth = 256;
+        windowHeight = 256;
+        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+        glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
+    }
     auto window = glfwCreateWindow(windowWidth, windowHeight, "Wowely-Planet-Farseer", nullptr, nullptr);
 
 #ifdef LINK_VULKAN
@@ -489,8 +502,9 @@ std::ios_base::Init a;
     frontendUI->setFlyoverMode(flyoverRequested);
     frontendUI->initImgui(window);
     {
-        int width = frontendUI->getWindowWidth();
-        int height = frontendUI->getWindowHeight();
+        // A bake keeps the 256 x 256 window it was made with.
+        int width = flyoverBake.empty() ? frontendUI->getWindowWidth() : windowWidth;
+        int height = flyoverBake.empty() ? frontendUI->getWindowHeight() : windowHeight;
 
         glfwSetWindowSize(window, width, height);
         glfwGetFramebufferSize(window, &canvWidth, &canvHeight);
@@ -502,6 +516,7 @@ std::ios_base::Init a;
     std::unique_ptr<FlyoverMode> flyover;
     if (flyoverRequested) {
         flyover = std::make_unique<FlyoverMode>(*frontendUI, window);
+        flyover->setHeights(flyoverHeights, flyoverBake);
         if (flyover->start(flyoverRouteFile, flyoverInstall)) {
             flyoverMode = flyover.get();
         } else {

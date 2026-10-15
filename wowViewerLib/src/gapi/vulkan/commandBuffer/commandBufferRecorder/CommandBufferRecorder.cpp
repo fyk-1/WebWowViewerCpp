@@ -506,7 +506,7 @@ void CmdBufRecorder::createViewPortTypes(const std::array<int32_t, 2> &areaOffse
     usualViewport.y = areaOffset[1];
     if (!invertZ) {
         usualViewport.minDepth = 0;
-        usualViewport.maxDepth = 0.990f;
+        usualViewport.maxDepth = kUsualViewportMaxDepth;
     } else {
         usualViewport.minDepth = 0.06f;
         usualViewport.maxDepth = 1.0f;

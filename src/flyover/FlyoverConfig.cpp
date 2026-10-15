@@ -38,7 +38,7 @@ namespace {
 
 #define FLYOVER_CONFIG_FIELDS(X) \
     X(Bool, renderAdt) \
-    X(Bool, farTerrain)     X(Float, farTerrainFog)     X(Float, farTerrainShare)     X(Bool, farTerrainOnly) \
+    X(Bool, farTerrain)     X(Bool, farTerrainHeights)     X(Float, farTerrainFog)     X(Float, farTerrainShare)     X(Bool, farTerrainOnly) \
     X(Bool, renderWMO) \
     X(Bool, skipUnreachableWmoGroups) \
     X(Bool, renderM2) \

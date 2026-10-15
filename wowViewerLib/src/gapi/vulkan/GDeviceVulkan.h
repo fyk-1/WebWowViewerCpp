@@ -116,6 +116,10 @@ public:
 
     void drawFrame(const FrameRenderFuncs &renderFuncs, bool windowSizeChanged) override;
     bool captureNextFrame(std::function<void(FrameCapture &&)> done) override;
+    bool captureNextDepth(std::function<void(DepthCapture &&)> done) override;
+    // The renderer calls this in the frame's draw stage after its last pass, outside any render pass, with the scene's depth image in
+    // DEPTH_STENCIL_ATTACHMENT_OPTIMAL. It records the copy while a depth capture waits, and does nothing otherwise.
+    void recordDepthCapture(CmdBufRecorder &frameBufCmd, const HGTexture &depthTexture);
 
     bool getIsVulkanAxisSystem() override {return true;}
 
@@ -427,6 +431,18 @@ protected:
     std::function<void(FrameCapture &&)> m_captureDone;
     FrameReadback m_readback;
     void recordFrameCapture(CmdBufRecorder &swapChainCmd, uint32_t imageIndex);
+
+    // The depth capture waiting for its frame, then the frame's readback buffer until the frame has finished. Main thread only.
+    struct DepthReadback {
+        VkBuffer buffer = VK_NULL_HANDLE;
+        VmaAllocation allocation = nullptr;
+        void *mapped = nullptr;
+        VkExtent2D extent = {0, 0};
+        VkFormat format = VK_FORMAT_UNDEFINED;
+    };
+    std::function<void(DepthCapture &&)> m_depthCaptureDone;
+    DepthReadback m_depthReadback;
+    void finishDepthCapture(const std::shared_ptr<GFenceVLK> &frameFence);
     void finishFrameCapture(const std::shared_ptr<GFenceVLK> &frameFence);
 
     std::vector<std::shared_ptr<GFrameBufferVLK>> swapChainFramebuffers;

@@ -418,6 +418,58 @@ std::tuple<HGMesh, std::shared_ptr<IPlanetMaterial>> createPlanetMesh(const HMap
     return {hmesh, material};
 }
 
+void Map::setBakeView(bool on, float x, float y, float half) {
+    m_bakeX = x;
+    m_bakeY = y;
+    m_bakeHalf = half;
+    m_bakeOn = on;
+}
+
+bool Map::wdlGround(float x, float y, float &height) {
+    createFarTerrain();
+    return m_farTerrain != nullptr && m_farTerrain->groundHeight(x, y, height);
+}
+
+/*
+robots@Impl: What a height bake waits on.
+
+The square around the bake camera reaches the tile under it and its neighbours, so the count is taken over those nine: a tile that exists
+and has not loaded is pending, and a loaded one adds what AdtObject::countBakeResidency finds in its placements. A neighbour's WMO that
+reaches into the square is counted by its own tile. A tile with no object yet is a tile the map has none of, or one the frustum has not
+asked for, which the next frame's count catches. Taken on the culling thread, the one that makes the tiles, so the table is read without
+a lock.
+*/
+MapRenderPlan::BakeResidency Map::bakeResidency(float x, float y, float half) {
+    MapRenderPlan::BakeResidency result;
+    result.valid = true;
+    result.x = x;
+    result.y = y;
+
+    const int row = worldCoordinateToAdtIndex(x);
+    const int col = worldCoordinateToAdtIndex(y);
+    for (int r = row - 1; r <= row + 1; r++) {
+        for (int c = col - 1; c <= col + 1; c++) {
+            if (r < 0 || r > 63 || c < 0 || c > 63) continue;
+
+            const auto &tile = mapTiles[c][r];
+            if (tile == nullptr) {
+                if (r == row && c == col) {
+                    result.total++;
+                    result.pending++;
+                }
+                continue;
+            }
+            result.total++;
+            if (!tile->isLoaded()) {
+                result.pending++;
+                continue;
+            }
+            tile->countBakeResidency(x - half, x + half, y - half, y + half, result.total, result.pending, result.pendingBy);
+        }
+    }
+    return result;
+}
+
 void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams, const HMapRenderPlan &mapRenderPlan) {
     ZoneScoped ;
 
@@ -610,6 +662,9 @@ void Map::makeFramePlan(const FrameInputParams<MapSceneParams> &frameInputParams
             break;
         }
     }
+
+    mapRenderPlan->bake = {};
+    if (m_bakeOn) mapRenderPlan->bake = bakeResidency(cameraVec3.x, cameraVec3.y, m_bakeHalf);
 
     if (config->farTerrain) {
         if (m_farTerrain != nullptr) {

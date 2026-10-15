@@ -102,6 +102,10 @@ void GTextureVLK::loadData(int width, int height, void *data, ITextureFormat tex
             vkFormat = VK_FORMAT_R16G16B16A16_UNORM;
             bytesPerPixel = 8;
             break;
+        case ITextureFormat::itR16:
+            vkFormat = VK_FORMAT_R16_UNORM;
+            bytesPerPixel = 2;
+            break;
         case ITextureFormat::itFloat32:
             vkFormat = VK_FORMAT_R32_SFLOAT;
             bytesPerPixel = 4;

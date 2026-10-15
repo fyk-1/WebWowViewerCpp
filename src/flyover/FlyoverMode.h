@@ -40,6 +40,7 @@ class FrontendUI;
 class SceneWindow;
 class PathCamera;
 class FirstPersonCamera;
+class HeightBake;
 class ICamera;
 struct MapRenderPlan;
 
@@ -79,6 +80,9 @@ public:
     static bool findInstall(int argc, char *argv[], FlyoverInstall &install, std::string &error);
     // Reads `--db`; file stays empty when it is absent. False with the usage error in error when it lacks a value.
     static bool findDatabase(int argc, char *argv[], std::string &file, std::string &error);
+    // Reads `--heights` and `--bake`, each the build's folder of baked heights; each stays empty when absent. False with the usage error in
+    // error when one lacks a value.
+    static bool findHeights(int argc, char *argv[], std::string &heightsDir, std::string &bakeDir, std::string &error);
     // True when the file exists and opens as the client database. Never creates one.
     static bool canOpenDatabase(const std::string &file);
     // Moves the process's own logging to stderr and keeps the original stdout for the protocol. Call before any output.
@@ -87,6 +91,8 @@ public:
     FlyoverMode(FrontendUI &frontendUI, GLFWwindow *window);
     ~FlyoverMode();
 
+    // The folders of baked heights from `--heights` and `--bake`, set before start. A bake folder puts the viewer in bake mode.
+    void setHeights(const std::string &heightsDir, const std::string &bakeDir) { m_heightsDir = heightsDir; m_bakeDir = bakeDir; }
     // Opens the install, or the first storage when none is named, then the route's map, and starts reading stdin.
     // False with the reason on stderr; failureExitCode says the status to exit with.
     bool start(const std::string &routeFile, const FlyoverInstall &install);
@@ -100,7 +106,7 @@ public:
     // Seconds the draw of the frame just drawn took, for the next `world` line.
     void noteFrame(double seconds);
 private:
-    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, ModeToggle, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Quit };
+    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, ModeToggle, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Bake, Quit };
     struct Command {
         CommandType type;
         std::string name;
@@ -148,6 +154,9 @@ private:
     int m_wdtFileId = -1;
     FlyoverRoute m_route;
 
+    std::string m_heightsDir;
+    std::string m_bakeDir;
+    std::unique_ptr<HeightBake> m_bake;
     // Shared with the stdin thread, which can outlive this object at exit.
     std::shared_ptr<CommandQueue> m_queue = std::make_shared<CommandQueue>();
 

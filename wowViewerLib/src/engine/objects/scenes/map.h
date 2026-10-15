@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <map>
 #include <set>
+#include <atomic>
 #include "../adt/adtObject.h"
 #include "../m2/m2Object.h"
 #include "../wmo/wmoObject.h"
@@ -73,6 +74,9 @@ protected:
     // The frame's view is the far terrain alone: Config's farTerrainOnly, read in makeFramePlan ahead of the tile requests.
     bool m_farTerrainOnly = false;
     void createFarTerrain();
+    std::atomic<bool> m_bakeOn{false};
+    std::atomic<float> m_bakeX{0}, m_bakeY{0}, m_bakeHalf{0};
+    MapRenderPlan::BakeResidency bakeResidency(float x, float y, float half);
 
     HGMesh skyMesh = nullptr;
     std::shared_ptr<ISkyMeshMaterial> skyMeshMat = nullptr;
@@ -191,6 +195,12 @@ public:
         return m_wdlObject ? m_wdlObject->getSkyScenesByPlayerCondition() : empty;
     }
 
+    // A height bake's view (src/flyover/HeightBake.cpp): while on, every plan counts what is still loading in the square of `half` yards
+    // around (x, y) into MapRenderPlan::bake. Set from the main thread, read by the culling thread.
+    void setBakeView(bool on, float x, float y, float half);
+    // The WDL's ground height at a world position, where the map has a WDL tile there; makes the far terrain's holder if it is not made.
+    // False until the WDL has loaded. Main thread.
+    bool wdlGround(float x, float y, float &height);
     void doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRenderPlan &renderPlan);
 
     // A map is about to open: the Map made next finishes its tiles and geometry without the per-frame budgets until the tiles

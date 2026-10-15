@@ -1545,6 +1545,39 @@ bool AdtObject::checkFrustumCulling(ADTObjRenderRes &adtFrustRes,
     return atLeastOneIsDrawn;
 }
 
+void AdtObject::countBakeResidency(float minX, float maxX, float minY, float maxY, int &total, int &pending, int (&pendingBy)[3]) {
+    auto crosses = [&](const CAaBox &box) {
+        return box.max.x >= minX && box.min.x <= maxX && box.max.y >= minY && box.min.y <= maxY;
+    };
+
+    for (auto const &m2Object : objectLods[0].m2Objects) {
+        if (m2Object == nullptr) continue;
+        // The box the map culls the model by: the placement's own until the model has loaded and measured it.
+        const CAaBox box = m2Object->getAABB();
+        const float size = std::max({box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z});
+        if (size < 30.0f || !crosses(box)) continue;
+        total++;
+        if (!m2Object->getGetIsLoaded()) {
+            pending++;
+            pendingBy[0]++;
+        }
+    }
+
+    for (auto const &wmoObject : objectLods[0].wmoObjects) {
+        if (wmoObject == nullptr) continue;
+        if (!crosses(wmoObject->getAABB())) continue;
+        total++;
+        if (!wmoObject->isLoaded()) {
+            pending++;
+            pendingBy[1]++;
+            continue;
+        }
+        const int before = pending;
+        wmoObject->countBakeGroups(minX, maxX, minY, maxY, total, pending);
+        pendingBy[2] += pending - before;
+    }
+}
+
 AdtObject::AdtObject(const HApiContainer &api, std::string &adtFileTemplate, const std::string &mapname,
     int adt_x, int adt_y, bool useWeightedBlend, const HWdtFile &wdtFile) : adt_x(adt_x), adt_y(adt_y),
 m_useWeightedBlend(useWeightedBlend) {

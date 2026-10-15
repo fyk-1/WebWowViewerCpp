@@ -61,6 +61,11 @@ public:
     // No tile, model or spawn is requested or drawn, and at a share of 0 the full scene's draw is skipped as well. Whoever sets it
     // fades the share to 0 first. Read once per culling pass with farTerrainShare, and only while farTerrain is on.
     bool farTerrainOnly = false;
+    // The folder of baked height tiles (`<build>/<map id>/<row>_<col>.h16`, FarHeights) the far land displaces its tiles by, empty for none.
+    // Set once from the `--heights` launch flag and not a settable field.
+    std::string farHeightsDir;
+    // Draws a far tile that has a baked height file at the file's heights, on the shared grid; off draws every tile at the WDL's.
+    bool farTerrainHeights = false;
     bool renderWMO = true;
     bool renderM2 = true;
     bool renderM2Decals = true;

@@ -1075,6 +1075,15 @@ void WmoObject::triggerExteriorGroupLoads(WMOGroupListContainer &wmoGroupArray) 
     }
 }
 
+void WmoObject::countBakeGroups(float minX, float maxX, float minY, float maxY, int &total, int &pending) {
+    for (size_t i = 0; i < groupObjects.size() && i < m_groupWorldBorders.size(); i++) {
+        const CAaBox &box = m_groupWorldBorders[i];
+        if (isGroupSkipped((int) i) || box.max.x < minX || box.min.x > maxX || box.max.y < minY || box.min.y > maxY) continue;
+        total++;
+        if (!groupObjects[i]->getIsLoaded()) pending++;
+    }
+}
+
 bool WmoObject::isGroupSkipped(int groupId) {
     return m_api->getConfig()->skipUnreachableWmoGroups && this->mainGeom->groups[groupId].flags.UNREACHABLE;
 }

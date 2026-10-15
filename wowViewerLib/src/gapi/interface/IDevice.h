@@ -161,6 +161,15 @@ struct FrameCapture {
     std::string error;
 };
 
+// The depth attachment of one drawn frame read back from the device: width * height window depths, 0 to 1, top row first. error is empty
+// on success and then names why there are none.
+struct DepthCapture {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::vector<float> depth;
+    std::string error;
+};
+
 class IDevice {
     public:
         static const constexpr uint8_t MAX_FRAMES_IN_FLIGHT = 3;
@@ -188,6 +197,9 @@ class IDevice {
         // Reads back the next frame drawn, as the window shows it, and hands it to done on the thread that draws, once that
         // frame has finished. False when a capture is already waiting; done then never runs.
         virtual bool captureNextFrame(std::function<void(FrameCapture &&)> done) = 0;
+        // Reads back the scene's depth attachment of the next frame drawn, once that frame has finished, and hands it to done on the
+        // thread that draws. False when a depth capture is already waiting; done then never runs.
+        virtual bool captureNextDepth(std::function<void(DepthCapture &&)> done) = 0;
 
         virtual bool getIsAnisFiltrationSupported();
         virtual float getAnisLevel() = 0;

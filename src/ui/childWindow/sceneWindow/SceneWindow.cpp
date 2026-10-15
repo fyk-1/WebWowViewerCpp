@@ -312,6 +312,13 @@ std::shared_ptr<WorldObjectManager> SceneWindow::getWorldObjectManager() {
     auto mapScene = std::dynamic_pointer_cast<Map>(m_currentScene);
     return mapScene ? mapScene->getWorldObjectManager() : nullptr;
 }
+void SceneWindow::setBakeView(bool on, float x, float y, float half) {
+    if (auto mapScene = std::dynamic_pointer_cast<Map>(m_currentScene)) mapScene->setBakeView(on, x, y, half);
+}
+bool SceneWindow::wdlGround(float x, float y, float &height) {
+    auto mapScene = std::dynamic_pointer_cast<Map>(m_currentScene);
+    return mapScene && mapScene->wdlGround(x, y, height);
+}
 const std::map<int, std::set<int>> &SceneWindow::getSkyScenesByPlayerCondition() {
     static const std::map<int, std::set<int>> empty = {};
     auto mapScene = std::dynamic_pointer_cast<Map>(m_currentScene);

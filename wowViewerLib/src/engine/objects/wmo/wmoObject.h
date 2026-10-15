@@ -253,6 +253,9 @@ public:
     bool isGroupWmoInterior(int groupId);
     // True for a group the config leaves out: UNREACHABLE with skipUnreachableWmoGroups.
     bool isGroupSkipped(int groupId);
+    // Counts the groups a bake of the square from min to max (world x and y) draws: those the config leaves in whose box the square
+    // reaches. `pending` is how many of `total` have not loaded.
+    void countBakeGroups(float minX, float maxX, float minY, float maxY, int &total, int &pending);
     bool isGroupWmoExteriorLit(int groupId);
     bool isGroupWmoExtSkybox(int groupId);
 

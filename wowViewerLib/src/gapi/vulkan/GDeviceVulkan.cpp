@@ -1601,6 +1601,7 @@ void GDeviceVLK::drawFrame(const FrameRenderFuncs &frameRenderFuncs, bool window
     }
 
     if (m_readback.buffer != VK_NULL_HANDLE) finishFrameCapture(inFlightFences[currentDrawFrame]);
+    if (m_depthReadback.buffer != VK_NULL_HANDLE) finishDepthCapture(inFlightFences[currentDrawFrame]);
 
     executeDeallocators(false);
 
@@ -1726,6 +1727,126 @@ void GDeviceVLK::finishFrameCapture(const std::shared_ptr<GFenceVLK> &frameFence
         dst[0] = src[bgr ? 2 : 0];
         dst[1] = src[1];
         dst[2] = src[bgr ? 0 : 2];
+    }
+    vmaDestroyBuffer(vmaAllocator, readback.buffer, readback.allocation);
+
+    if (done) done(std::move(capture));
+}
+
+/*
+robots@Impl: Depth capture. The image copied is the scene's depth attachment, which the renderer hands over once its last pass has
+ended, so it holds the depth of everything the scene drew opaque. The copy is recorded into the frame's frame-buffer command buffer
+behind a DEPTH_STENCIL_ATTACHMENT_OPTIMAL to TRANSFER_SRC barrier and back, into a host-visible buffer that exists only for that frame, and
+read once the frame's fence has been waited, as the frame capture does. D32_SFLOAT_S8_UINT copies as packed floats. With the
+D24_UNORM_S8_UINT fallback the depth aspect copies as 32-bit words with the depth in the low 24 bits, and is converted to a float here.
+*/
+bool GDeviceVLK::captureNextDepth(std::function<void(DepthCapture &&)> done) {
+    if (m_depthCaptureDone || m_depthReadback.buffer != VK_NULL_HANDLE) return false;
+    m_depthCaptureDone = std::move(done);
+    return true;
+}
+
+void GDeviceVLK::recordDepthCapture(CmdBufRecorder &frameBufCmd, const HGTexture &depthTexture) {
+    if (!m_depthCaptureDone || m_depthReadback.buffer != VK_NULL_HANDLE) return;
+
+    auto fail = [this](const std::string &reason) {
+        DepthCapture capture;
+        capture.error = reason;
+        auto done = std::move(m_depthCaptureDone);
+        m_depthCaptureDone = nullptr;
+        done(std::move(capture));
+    };
+
+    auto depth = std::dynamic_pointer_cast<GTextureVLK>(depthTexture);
+    if (depth == nullptr) return fail("the scene has no depth image");
+
+    const VkFormat format = findDepthFormat();
+    if (format != VK_FORMAT_D32_SFLOAT_S8_UINT && format != VK_FORMAT_D24_UNORM_S8_UINT) {
+        return fail("the depth format " + std::to_string((int) format) + " is not read back");
+    }
+
+    const VkExtent2D extent = {depth->getWidth(), depth->getHeight()};
+    VkBufferCreateInfo bufferInfo = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.size = (VkDeviceSize) extent.width * extent.height * 4;
+    bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo allocCreateInfo = {};
+    allocCreateInfo.usage = VMA_MEMORY_USAGE_GPU_TO_CPU;
+    allocCreateInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    DepthReadback readback;
+    VmaAllocationInfo allocationInfo = {};
+    if (vmaCreateBuffer(vmaAllocator, &bufferInfo, &allocCreateInfo, &readback.buffer, &readback.allocation, &allocationInfo) != VK_SUCCESS ||
+        allocationInfo.pMappedData == nullptr) {
+        if (readback.buffer != VK_NULL_HANDLE) vmaDestroyBuffer(vmaAllocator, readback.buffer, readback.allocation);
+        return fail("the readback buffer could not be made");
+    }
+    readback.mapped = allocationInfo.pMappedData;
+    readback.extent = extent;
+    readback.format = format;
+
+    const VkImage image = depth->texture.image;
+    const VkImageSubresourceRange range = {VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1, 0, 1};
+
+    VkImageMemoryBarrier toTransferSrc = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    toTransferSrc.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    toTransferSrc.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    toTransferSrc.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    toTransferSrc.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    toTransferSrc.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toTransferSrc.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toTransferSrc.image = image;
+    toTransferSrc.subresourceRange = range;
+    frameBufCmd.recordPipelineImageBarrier(VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                                           VK_PIPELINE_STAGE_TRANSFER_BIT, std::vector<VkImageMemoryBarrier>{toTransferSrc});
+
+    VkBufferImageCopy copyRegion = {};
+    copyRegion.imageSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
+    copyRegion.imageExtent = {extent.width, extent.height, 1};
+    vkCmdCopyImageToBuffer(frameBufCmd.getNativeCmdBuffer(), image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, readback.buffer, 1, &copyRegion);
+
+    VkImageMemoryBarrier backToAttachment = toTransferSrc;
+    backToAttachment.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    backToAttachment.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    backToAttachment.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    backToAttachment.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkBufferMemoryBarrier toHost = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    toHost.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    toHost.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    toHost.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toHost.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toHost.buffer = readback.buffer;
+    toHost.offset = 0;
+    toHost.size = VK_WHOLE_SIZE;
+    frameBufCmd.recordPipelineBufferBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, std::vector<VkBufferMemoryBarrier>{toHost});
+    frameBufCmd.recordPipelineImageBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                           VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                           std::vector<VkImageMemoryBarrier>{backToAttachment});
+
+    m_depthReadback = readback;
+}
+
+void GDeviceVLK::finishDepthCapture(const std::shared_ptr<GFenceVLK> &frameFence) {
+    DepthReadback readback = m_depthReadback;
+    m_depthReadback = {};
+    auto done = std::move(m_depthCaptureDone);
+    m_depthCaptureDone = nullptr;
+
+    frameFence->wait(std::numeric_limits<uint64_t>::max());
+    vmaInvalidateAllocation(vmaAllocator, readback.allocation, 0, VK_WHOLE_SIZE);
+
+    DepthCapture capture;
+    capture.width = readback.extent.width;
+    capture.height = readback.extent.height;
+    const size_t pixels = (size_t) capture.width * capture.height;
+    capture.depth.resize(pixels);
+    const uint32_t *words = static_cast<const uint32_t *>(readback.mapped);
+    if (readback.format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
+        std::memcpy(capture.depth.data(), words, pixels * sizeof(float));
+    } else {
+        for (size_t i = 0; i < pixels; i++) capture.depth[i] = (words[i] & 0xFFFFFFu) / 16777215.0f;
     }
     vmaDestroyBuffer(vmaAllocator, readback.buffer, readback.allocation);
 

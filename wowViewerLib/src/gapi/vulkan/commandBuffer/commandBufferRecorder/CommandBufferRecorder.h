@@ -34,6 +34,8 @@ typedef std::shared_ptr<ComputePipelineVLK> HComputePipelineVLK;
 class CmdBufRecorder {
 public:
     enum class ViewportType: int {vp_none = -1, vp_usual = 0, vp_mapArea = 1, vp_skyBox = 2, vp_MAX = 3};
+    // The window depth the usual viewport ends at when the pass is not inverted: a scene fragment lands in 0 to this, and the clear value 1 stays above it.
+    static constexpr float kUsualViewportMaxDepth = 0.990f;
     friend RenderPassHelper;
     friend CommandBufferDebugLabel;
 

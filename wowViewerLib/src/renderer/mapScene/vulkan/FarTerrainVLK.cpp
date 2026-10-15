@@ -129,6 +129,7 @@ void FarTerrainVLK::createMaterials() {
         .createDescriptorSet(2, [white](std::shared_ptr<GDescriptorSet> &ds) {
             ds->beginUpdate()
                 .texture(0, white)
+                .texture(1, white)
                 .delayUpdate();
         })
         .toMaterial();
@@ -154,6 +155,8 @@ void FarTerrainVLK::postLoad(const FarTerrainFrame &frame) {
         m_ready = false;
         m_gapMaterial = nullptr;
         m_tileMaterials.assign(m_terrain->tiles().size(), nullptr);
+        m_heightTextures.assign(m_terrain->tiles().size(), nullptr);
+        m_heightsLanded.assign(m_terrain->tiles().size(), 0);
         m_vertexBytes = 0;
         m_indexBytes = 0;
         m_uploadedBytes = 0;
@@ -201,10 +204,23 @@ void FarTerrainVLK::postLoad(const FarTerrainFrame &frame) {
         if (blp == nullptr || blp->getStatus() != FileStatus::FSLoaded) return;
 
         HGSamplableTexture texture = m_device->createBlpTexture(blp, false, false);
+
+        // The heights go in with the minimap, since a material's set is made once; a file that no longer reads leaves the tile on its own geometry.
+        HGSamplableTexture heights = m_device->getWhiteTexturePixel();
+        if (m_terrain->tiles()[index].hasHeights && heightsUsable()) {
+            HeightTile data;
+            if (m_terrain->readHeights(index, data)) {
+                heights = m_device->createTexture(false, false);
+                heights->getTexture()->loadData(HeightTile::kSize, HeightTile::kSize, data.v.data(), ITextureFormat::itR16);
+                m_heightTextures[index] = heights;
+            }
+        }
+
         m_tileMaterials[index] = MaterialBuilderVLK::fromMaterial(m_device, m_gapMaterial)
-            .createDescriptorSet(2, [texture](std::shared_ptr<GDescriptorSet> &ds) {
+            .createDescriptorSet(2, [texture, heights](std::shared_ptr<GDescriptorSet> &ds) {
                 ds->beginUpdate()
                     .texture(0, texture)
+                    .texture(1, heights)
                     .delayUpdate();
             })
             .toMaterial();
@@ -212,6 +228,26 @@ void FarTerrainVLK::postLoad(const FarTerrainFrame &frame) {
     };
     for (uint16_t index : frame.drawn) make(index);
     for (size_t index = 0; index < m_tileMaterials.size(); index++) make(index);
+
+    // A height texture seen uploaded in an earlier frame is in its descriptor set, so the tile may take the grid from now on.
+    for (size_t index = 0; index < m_heightTextures.size(); index++) {
+        if (m_heightsLanded[index] || m_heightTextures[index] == nullptr) continue;
+        if (m_heightTextures[index]->getTexture()->getIsLoaded()) m_heightsLanded[index] = 1;
+    }
+}
+
+bool FarTerrainVLK::heightsUsable() {
+    if (m_heightFormatUsable < 0) {
+        try {
+            static_cast<IDeviceVulkan &>(*m_device).findSupportedFormat({VK_FORMAT_R16_UNORM}, VK_IMAGE_TILING_OPTIMAL,
+                                          VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT);
+            m_heightFormatUsable = 1;
+        } catch (const std::exception &) {
+            m_heightFormatUsable = 0;
+            std::cerr << "far terrain: the device does not sample R16_UNORM with a linear filter, so baked heights are not used" << std::endl;
+        }
+    }
+    return m_heightFormatUsable == 1;
 }
 
 void FarTerrainVLK::draw(CmdBufRecorder &cmd, const FarTerrainFrame &frame) {
@@ -221,14 +257,21 @@ void FarTerrainVLK::draw(CmdBufRecorder &cmd, const FarTerrainFrame &frame) {
     cmd.bindVertexBindings(m_bindings);
 
     const auto &tiles = m_terrain->tiles();
+    const auto &grid = m_terrain->grid();
     auto drawTiles = [&](uint32_t flags) {
         for (uint16_t index : frame.drawn) {
             const auto &tile = tiles[index];
             const auto &material = m_tileMaterials[index];
 
             cmd.bindMaterial(material != nullptr ? material : m_gapMaterial);
-            // The instance index carries the flags of the vertex shader: bit 0 the minimap, bit 1 the taking draw.
-            cmd.drawIndexed(tile.indexCount, 1, tile.firstIndex, flags | (material != nullptr ? 1u : 0u), tile.vertexOffset);
+            // The instance index carries the flags of the vertex shader: bit 0 the minimap, bit 1 the taking draw, bit 2 the shared grid
+            // displaced by the baked heights, and with it the tile's row from bit 8 and its column from bit 14.
+            const uint32_t instance = flags | (material != nullptr ? 1u : 0u);
+            if (frame.heights && tile.hasHeights && m_heightsLanded[index] && grid.indexCount > 0) {
+                cmd.drawIndexed(grid.indexCount, 1, grid.firstIndex, instance | 4u | ((uint32_t) tile.row << 8) | ((uint32_t) tile.col << 14), grid.vertexOffset);
+            } else {
+                cmd.drawIndexed(tile.indexCount, 1, tile.firstIndex, instance, tile.vertexOffset);
+            }
         }
     };
 

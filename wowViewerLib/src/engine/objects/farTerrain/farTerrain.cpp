@@ -86,14 +86,69 @@ namespace {
     bool isHole(const WdlFile::Tile &tile, int r, int c) {
         return tile.holes != nullptr && ((tile.holes[r] >> c) & 1) != 0;
     }
+
+    // The skirt of a grid of n x n cells whose (n + 1)^2 vertices were just appended at vertexOffset, row-major: a second row of
+    // vertices under each edge, and a quad between the two rows for every cell on the edge that isHole(row, col) does not name.
+    // The vertex positions are in world orientation, so the quads wind away from the grid.
+    template <typename Hole>
+    void appendSkirt(FarTerrain::Geometry &geometry, int32_t vertexOffset, int n, Hole isHole) {
+        auto grid = [n](int r, int c) -> uint16_t { return (uint16_t) (r * (n + 1) + c); };
+
+        struct Edge { int r0, c0, dr, dc, outwardX, outwardY; };
+        const Edge edges[4] = {
+            {0, 0, 0, 1, 1, 0},
+            {n, 0, 0, 1, -1, 0},
+            {0, 0, 1, 0, 0, 1},
+            {0, n, 1, 0, 0, -1},
+        };
+        for (const Edge &edge : edges) {
+            const size_t bottomStart = geometry.vertices.size();
+            for (int k = 0; k <= n; k++) {
+                FarTerrainVertex bottom = geometry.vertices[vertexOffset + grid(edge.r0 + k * edge.dr, edge.c0 + k * edge.dc)];
+                bottom.position[2] -= kSkirtDepth;
+                geometry.vertices.push_back(bottom);
+            }
+            for (int k = 0; k < n; k++) {
+                const int cellRow = edge.dr == 0 ? (edge.r0 == 0 ? 0 : n - 1) : k;
+                const int cellCol = edge.dc == 0 ? (edge.c0 == 0 ? 0 : n - 1) : k;
+                if (isHole(cellRow, cellCol)) continue;
+
+                const uint16_t t0 = grid(edge.r0 + k * edge.dr, edge.c0 + k * edge.dc);
+                const uint16_t t1 = grid(edge.r0 + (k + 1) * edge.dr, edge.c0 + (k + 1) * edge.dc);
+                const uint16_t b0 = (uint16_t) (bottomStart - vertexOffset + k);
+                const uint16_t b1 = (uint16_t) (b0 + 1);
+
+                // Wound so that the quad faces away from the tile, whatever order the edge runs in.
+                const auto &p0 = geometry.vertices[vertexOffset + t0].position;
+                const auto &p1 = geometry.vertices[vertexOffset + t1].position;
+                const auto &q0 = geometry.vertices[vertexOffset + b0].position;
+                const float ux = p1[0] - p0[0], uy = p1[1] - p0[1], uz = p1[2] - p0[2];
+                const float vx = q0[0] - p0[0], vy = q0[1] - p0[1], vz = q0[2] - p0[2];
+                const float nx = uy * vz - uz * vy;
+                const float ny = uz * vx - ux * vz;
+                const bool outward = nx * edge.outwardX + ny * edge.outwardY > 0.0f;
+                if (outward) {
+                    geometry.indices.insert(geometry.indices.end(), {t0, t1, b0, t1, b1, b0});
+                } else {
+                    geometry.indices.insert(geometry.indices.end(), {t0, b0, t1, t1, b0, b1});
+                }
+            }
+        }
+    }
+
+    // The cells of the grid a baked tile is drawn on: its vertices are offsets from the tile's corner, in world orientation (the
+    // vertex shader adds them to the corner), and the baked heights displace them.
+    constexpr int kGridCells = 64;
 }
 
 FarTerrain::FarTerrain(const HApiContainer &api, const HWdlFile &wdl, const HWdtFile &wdt, int mapId, const std::string &mapName) :
     m_api(api), m_wdl(wdl), m_wdt(wdt), m_mapId(mapId), m_mapName(mapName) {
     m_tileOfCell.fill(-1);
+    const std::string &heightsRoot = api->getConfig()->farHeightsDir;
+    if (!heightsRoot.empty()) m_heightsDir = FarHeights::mapDir(heightsRoot, mapId);
 }
 
-std::unique_ptr<FarTerrain::Built> FarTerrain::build(const HWdlFile &wdl, const HWdtFile &wdt) {
+std::unique_ptr<FarTerrain::Built> FarTerrain::build(const HWdlFile &wdl, const HWdtFile &wdt, const std::string &heightsDir) {
     auto built = std::make_unique<Built>();
     built->geometry = std::make_unique<Geometry>();
     built->tileOfCell.fill(-1);
@@ -101,6 +156,7 @@ std::unique_ptr<FarTerrain::Built> FarTerrain::build(const HWdlFile &wdl, const 
 
     const bool hasMaid = wdt->mphd != nullptr && wdt->mphd->flags.wdt_has_maid && wdt->mapFileDataIDs != nullptr;
     bool anyHeight = false;
+    bool anyHeights = false;
 
     for (int row = 0; row < 64; row++) {
         for (int col = 0; col < 64; col++) {
@@ -150,49 +206,16 @@ std::unique_ptr<FarTerrain::Built> FarTerrain::build(const HWdlFile &wdl, const 
                 }
             }
 
-            // The skirt: a second row of vertices under each edge, and a quad between the two rows for every cell on the edge.
-            struct Edge { int r0, c0, dr, dc, outwardX, outwardY; };
-            const Edge edges[4] = {
-                {0, 0, 0, 1, 1, 0},
-                {16, 0, 0, 1, -1, 0},
-                {0, 0, 1, 0, 0, 1},
-                {0, 16, 1, 0, 0, -1},
-            };
-            for (const Edge &edge : edges) {
-                const size_t bottomStart = geometry.vertices.size();
-                for (int k = 0; k <= 16; k++) {
-                    FarTerrainVertex bottom = geometry.vertices[tile.vertexOffset + grid(edge.r0 + k * edge.dr, edge.c0 + k * edge.dc)];
-                    bottom.position[2] -= kSkirtDepth;
-                    geometry.vertices.push_back(bottom);
-                }
-                for (int k = 0; k < 16; k++) {
-                    const int cellRow = edge.dr == 0 ? (edge.r0 == 0 ? 0 : 15) : k;
-                    const int cellCol = edge.dc == 0 ? (edge.c0 == 0 ? 0 : 15) : k;
-                    if (isHole(source, cellRow, cellCol)) continue;
-
-                    const uint16_t t0 = grid(edge.r0 + k * edge.dr, edge.c0 + k * edge.dc);
-                    const uint16_t t1 = grid(edge.r0 + (k + 1) * edge.dr, edge.c0 + (k + 1) * edge.dc);
-                    const uint16_t b0 = (uint16_t) (bottomStart - tile.vertexOffset + k);
-                    const uint16_t b1 = (uint16_t) (b0 + 1);
-
-                    // Wound so that the quad faces away from the tile, whatever order the edge runs in.
-                    const auto &p0 = geometry.vertices[tile.vertexOffset + t0].position;
-                    const auto &p1 = geometry.vertices[tile.vertexOffset + t1].position;
-                    const auto &q0 = geometry.vertices[tile.vertexOffset + b0].position;
-                    const float ux = p1[0] - p0[0], uy = p1[1] - p0[1], uz = p1[2] - p0[2];
-                    const float vx = q0[0] - p0[0], vy = q0[1] - p0[1], vz = q0[2] - p0[2];
-                    const float nx = uy * vz - uz * vy;
-                    const float ny = uz * vx - ux * vz;
-                    const bool outward = nx * edge.outwardX + ny * edge.outwardY > 0.0f;
-                    if (outward) {
-                        geometry.indices.insert(geometry.indices.end(), {t0, t1, b0, t1, b1, b0});
-                    } else {
-                        geometry.indices.insert(geometry.indices.end(), {t0, b0, t1, t1, b0, b1});
-                    }
-                }
-            }
+            appendSkirt(geometry, tile.vertexOffset, 16, [&](int r, int c) { return isHole(source, r, c); });
 
             tile.indexCount = (uint32_t) geometry.indices.size() - tile.firstIndex;
+            // A baked tile's box takes in its baked heights, which stand above the WDL's wherever a building does.
+            if (!heightsDir.empty() && FarHeights::readHeader(FarHeights::path(heightsDir, row, col), tile.zMin, tile.zMax)) {
+                tile.hasHeights = true;
+                minZ = std::min(minZ, tile.zMin);
+                maxZ = std::max(maxZ, tile.zMax);
+                anyHeights = true;
+            }
             tile.aabb = CAaBox(
                 C3Vector(mathfu::vec3(x0 - kTileSize, y0 - kTileSize, minZ - kSkirtDepth)),
                 C3Vector(mathfu::vec3(x0, y0, maxZ))
@@ -216,6 +239,36 @@ std::unique_ptr<FarTerrain::Built> FarTerrain::build(const HWdlFile &wdl, const 
         }
     }
 
+    if (anyHeights) {
+        // The grid the baked tiles share, after every tile's own geometry.
+        built->grid.vertexOffset = (int32_t) geometry.vertices.size();
+        built->grid.firstIndex = (uint32_t) geometry.indices.size();
+
+        const float cell = kTileSize / (float) kGridCells;
+        for (int r = 0; r <= kGridCells; r++) {
+            for (int c = 0; c <= kGridCells; c++) {
+                FarTerrainVertex &vertex = geometry.vertices.emplace_back();
+                vertex.position[0] = -r * cell;
+                vertex.position[1] = -c * cell;
+                vertex.position[2] = 0.0f;
+                vertex.normal[0] = 0.0f;
+                vertex.normal[1] = 0.0f;
+                vertex.normal[2] = 1.0f;
+                vertex.uv[0] = c / (float) kGridCells;
+                vertex.uv[1] = r / (float) kGridCells;
+            }
+        }
+        auto grid = [](int r, int c) -> uint16_t { return (uint16_t) (r * (kGridCells + 1) + c); };
+        for (int r = 0; r < kGridCells; r++) {
+            for (int c = 0; c < kGridCells; c++) {
+                const uint16_t a = grid(r, c), b = grid(r, c + 1), d = grid(r + 1, c), e = grid(r + 1, c + 1);
+                geometry.indices.insert(geometry.indices.end(), {a, d, b, b, d, e});
+            }
+        }
+        appendSkirt(geometry, built->grid.vertexOffset, kGridCells, [](int, int) { return false; });
+        built->grid.indexCount = (uint32_t) geometry.indices.size() - built->grid.firstIndex;
+    }
+
     return built;
 }
 
@@ -227,7 +280,7 @@ bool FarTerrain::poll() {
         if (m_wdl->getStatus() != FileStatus::FSLoaded || m_wdt->getStatus() != FileStatus::FSLoaded) return false;
 
         m_buildStarted = true;
-        m_build = std::async(std::launch::async, [wdl = m_wdl, wdt = m_wdt]() { return build(wdl, wdt); });
+        m_build = std::async(std::launch::async, [wdl = m_wdl, wdt = m_wdt, heightsDir = m_heightsDir]() { return build(wdl, wdt, heightsDir); });
         return false;
     }
 
@@ -236,6 +289,7 @@ bool FarTerrain::poll() {
     auto built = m_build.get();
     m_geometry = std::move(built->geometry);
     m_tiles = std::move(built->tiles);
+    m_grid = built->grid;
     m_textures.assign(m_tiles.size(), nullptr);
     m_tileOfCell = built->tileOfCell;
     m_minHeight = built->minHeight;
@@ -246,9 +300,22 @@ bool FarTerrain::poll() {
     m_maxCol = built->maxCol;
     m_ready = true;
 
-    std::cerr << "far terrain: " << m_tiles.size() << " tiles, " << m_geometry->vertices.size() << " vertices, "
+    size_t baked = 0;
+    for (const auto &tile : m_tiles) baked += tile.hasHeights ? 1 : 0;
+    std::cerr << "far terrain: " << m_tiles.size() << " tiles, " << baked << " with baked heights, " << m_geometry->vertices.size() << " vertices, "
               << m_geometry->indices.size() / 3 << " triangles built for map " << m_mapId << std::endl;
     return true;
+}
+
+bool FarTerrain::readHeights(size_t tile, HeightTile &out) const {
+    if (tile >= m_tiles.size() || !m_tiles[tile].hasHeights) return false;
+
+    const std::string file = FarHeights::path(m_heightsDir, m_tiles[tile].row, m_tiles[tile].col);
+    std::string error;
+    if (FarHeights::read(file, out, error)) return true;
+
+    std::cerr << "far terrain: " << error << std::endl;
+    return false;
 }
 
 HBlpTexture FarTerrain::texture(size_t tile) const {
@@ -299,6 +366,7 @@ the plan altogether. The tiles to draw go nearest first, so the early depth test
 */
 void FarTerrain::makeFrame(const Config &config, const View &view, const std::vector<ADTObjRenderRes> &adtArray, FarTerrainFrame &frame) {
     frame.on = true;
+    frame.heights = config.farTerrainHeights;
     frame.drawn.clear();
     frame.terrain = shared_from_this();
     frame.fogStart = view.drawDistance;

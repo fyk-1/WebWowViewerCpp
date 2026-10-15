@@ -104,6 +104,8 @@ set(SOURCE_FILES
 		src/flyover/FlyoverMode.h
 		src/flyover/FlyoverConfig.cpp
 		src/flyover/FlyoverConfig.h
+		src/flyover/HeightBake.cpp
+		src/flyover/HeightBake.h
 		src/flyover/CrashStack.cpp
 		src/flyover/CrashStack.h
 )

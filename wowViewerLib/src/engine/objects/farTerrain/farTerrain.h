@@ -15,6 +15,7 @@
 #include "../../persistance/wdtFile.h"
 #include "../../texture/BlpTexture.h"
 #include "../ViewsObjects.h"
+#include "farHeights.h"
 
 class AdtObject;
 class Config;
@@ -35,6 +36,8 @@ struct FarTerrainFrame {
     bool on = false;
     // The view is the far terrain alone: Config's farTerrainOnly, no tile, model or spawn requested or drawn.
     bool only = false;
+    // Config's farTerrainHeights: a tile with baked heights draws on the shared grid.
+    bool heights = false;
     // The share of the full scene that shows, from 1 (all of it) to 0 (none): Config's farTerrainShare. Below 1 the full tiles,
     // models and liquids are dissolving into the far land, and the far pass takes the rest of the pixels in the screen-door pattern
     // of Config::m2FadeStartPercent. At 0 with the far terrain alone the full scene's draw is skipped as well.
@@ -75,9 +78,22 @@ public:
         CAaBox aabb;
         // The FileDataID of the tile's minimap BLP, 0 where the map has none.
         uint32_t minimapFileDataId = 0;
+        // The tile has a baked height file (FarHeights), whose lowest and highest heights widen aabb. The renderer draws such a tile on
+        // the shared grid, displaced by the heights, once they have landed, and on its own range until then.
+        bool hasHeights = false;
+        float zMin = 0;
+        float zMax = 0;
     };
 
-    // The geometry of every tile, built on a worker thread.
+    // The draw range of the grid every baked tile shares: 64 x 64 cells with a skirt, its vertices offsets from the tile's corner in
+    // world orientation, at height 0. Empty when no tile has heights.
+    struct Grid {
+        uint32_t firstIndex = 0;
+        uint32_t indexCount = 0;
+        int32_t vertexOffset = 0;
+    };
+
+    // The geometry of every tile and of the grid, built on a worker thread.
     struct Geometry {
         std::vector<FarTerrainVertex> vertices;
         std::vector<uint16_t> indices;
@@ -111,6 +127,9 @@ public:
 
     bool isReady() const { return m_ready; }
     const std::vector<Tile> &tiles() const { return m_tiles; }
+    const Grid &grid() const { return m_grid; }
+    // Reads the baked heights of a tile whose hasHeights is set. False, with the reason on stderr, for a file that no longer reads.
+    bool readHeights(size_t tile, HeightTile &out) const;
     // The tile's minimap texture once makeFrame has asked for it, null before. It lives as long as the map does. The frame thread asks
     // and the render thread reads, so both go through a lock.
     HBlpTexture texture(size_t tile) const;
@@ -122,18 +141,22 @@ private:
     struct Built {
         std::unique_ptr<Geometry> geometry;
         std::vector<Tile> tiles;
+        Grid grid;
         std::array<int16_t, 64 * 64> tileOfCell;
         float minHeight = 0;
         float maxHeight = 0;
         int minRow = 63, maxRow = 0, minCol = 63, maxCol = 0;
     };
-    static std::unique_ptr<Built> build(const HWdlFile &wdl, const HWdtFile &wdt);
+    // heightsDir is the map's folder of baked heights, empty for none.
+    static std::unique_ptr<Built> build(const HWdlFile &wdl, const HWdtFile &wdt, const std::string &heightsDir);
 
     HApiContainer m_api;
     HWdlFile m_wdl;
     HWdtFile m_wdt;
     int m_mapId;
     std::string m_mapName;
+    std::string m_heightsDir;
+    Grid m_grid;
 
     std::future<std::unique_ptr<Built>> m_build;
     bool m_buildStarted = false;

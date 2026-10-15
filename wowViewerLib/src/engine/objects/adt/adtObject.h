@@ -78,6 +78,10 @@ public:
     bool getCullBox(CAaBox &box);
     // Widens the tile's box, for an object added after the tile finished loading.
     void widenCullBox(const CAaBox &box);
+    // Counts what the tile places that a bake of the square from min to max (world x and y) draws: its models of 30 yards or more, its
+    // WMOs and the groups of those the square reaches. `pending` is how many of `total` have not loaded, and `pendingBy` splits
+    // them into models, WMOs and WMO groups. A model counts by the box the map culls it by, which is its placement's until it has loaded.
+    void countBakeResidency(float minX, float maxX, float minY, float maxY, int &total, int &pending, int (&pendingBy)[3]);
     bool getWaterColorFromDB(mathfu::vec4 cameraPos, mathfu::vec3 &closeRiverColor);
 
     bool checkFrustumCulling(

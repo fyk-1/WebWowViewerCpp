@@ -12,6 +12,8 @@ enum class ITextureFormat {
     itNone,
     itRGBA,
     itRGBA16,
+    // One 16-bit channel, unsigned normalized: the far terrain's baked heights.
+    itR16,
     itInt,
     itFloat32,
     itRGBAFloat32,

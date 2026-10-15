@@ -18,8 +18,10 @@ precision highp int;
 // index of the draw is two flags: bit 0 is the tile's texture flag, 1 where the minimap has landed and 0 where it has not, and bit 1
 // marks the draw that takes pixels from the fading full scene (FarTerrain's fade of the swap), which maps the same depth into a
 // band just above 0, through the usual viewport, so that it lies in front of every scene fragment and the far fragments still order
-// among themselves; so a tile costs no block of its own. Light and fog are the fragment shader's, from the view-space position and
-// normal.
+// among themselves; so a tile costs no block of its own. Bit 2 marks a tile drawn on the shared grid, whose vertices are offsets from
+// the tile's corner in world orientation: the tile's row (bits 8 to 13) and column (bits 14 to 19) place the corner, and the baked
+// height texture, 128 x 128 samples with the first and last on the tile's edges, gives each vertex its z and the normal from the four
+// samples around it. Light and fog are the fragment shader's, from the view-space position and normal.
 
 layout(std140, set=1, binding=0) uniform farTerrainBlock {
     mat4 uFarViewProjection;
@@ -32,6 +34,9 @@ layout(std140, set=1, binding=0) uniform farTerrainBlock {
     vec4 uFarCamera;
 };
 
+// The baked heights of the tile, set 2's second binding; the white pixel where the tile has none.
+layout(set=2, binding=1) uniform sampler2D uHeights;
+
 layout(location = 0) in vec3 aPosition;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoord;
@@ -41,12 +46,38 @@ layout(location = 1) out vec3 vNormal;
 layout(location = 2) out vec2 vTexCoord;
 layout(location = 3) out flat int vFlags;
 
+// The size of a map tile in yards, and the baked height's unit: a sample's z is its unorm value times 65535 / 16, less 1024 yards.
+const float kTileSize = 533.33333;
+const float kHeightsPerUnorm = 65535.0 / 16.0;
+const float kHeightsBase = 1024.0;
+const float kHeightsSize = 128.0;
+
 [shader("vertex")]
 void main() {
     vec3 relative = aPosition - uFarCamera.xyz;
+    vec3 normal = aNormal;
+
+    if ((gl_InstanceIndex & 4) != 0) {
+        float row = float((gl_InstanceIndex >> 8) & 63);
+        float col = float((gl_InstanceIndex >> 14) & 63);
+        vec2 corner = vec2((32.0 - row) * kTileSize, (32.0 - col) * kTileSize);
+
+        // The vertex sits on the lattice of the heights: sample i lies i / 127 of the way along the tile, at texel centre (i + 0.5) / 128.
+        vec2 uv = aTexCoord * ((kHeightsSize - 1.0) / kHeightsSize) + 0.5 / kHeightsSize;
+        float texel = 1.0 / kHeightsSize;
+        float height = textureLod(uHeights, uv, 0.0).r * kHeightsPerUnorm - kHeightsBase;
+
+        // The slope along the rows (v, world x falling) and the columns (u, world y falling), in yards a yard, as the tile's own normals are.
+        float spacing = 2.0 * kTileSize / (kHeightsSize - 1.0);
+        float alongRows = (textureLod(uHeights, uv + vec2(0.0, texel), 0.0).r - textureLod(uHeights, uv - vec2(0.0, texel), 0.0).r) * kHeightsPerUnorm / spacing;
+        float alongCols = (textureLod(uHeights, uv + vec2(texel, 0.0), 0.0).r - textureLod(uHeights, uv - vec2(texel, 0.0), 0.0).r) * kHeightsPerUnorm / spacing;
+        normal = normalize(vec3(alongRows, alongCols, 1.0));
+
+        relative = vec3(corner + aPosition.xy - uFarCamera.xy, height + aPosition.z - uFarCamera.z);
+    }
 
     vPosition = (scene.uLookAtMat * vec4(relative, 0.0)).xyz;
-    vNormal = (scene.uLookAtMat * vec4(aNormal, 0.0)).xyz;
+    vNormal = (scene.uLookAtMat * vec4(normal, 0.0)).xyz;
     vTexCoord = aTexCoord;
     vFlags = gl_InstanceIndex;
 

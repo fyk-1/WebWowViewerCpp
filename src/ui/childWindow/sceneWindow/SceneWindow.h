@@ -53,6 +53,10 @@ public:
     // scene isn't a Map (or has none set, e.g. M2/WMO preview scenes).
     std::shared_ptr<WorldObjectManager> getWorldObjectManager();
 
+    // A height bake's view and ground, through the current Map scene (Map::setBakeView, Map::wdlGround); nothing when the scene isn't a Map.
+    void setBakeView(bool on, float x, float y, float half);
+    bool wdlGround(float x, float y, float &height);
+
     // Sky scene ids of the current Map scene's WDL, grouped by the player condition
     // that gates them (SkySceneXPlayerCondition db2). Empty when the current scene
     // isn't a Map or the map has no WDL. Built once at WDL load and static for the
