@@ -105,7 +105,7 @@ public:
     // Seconds the draw of the frame just drawn took, for the next `world` line.
     void noteFrame(double seconds);
 private:
-    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, ModeToggle, Look, Move, FreeSpeed, Route, Config, Ambient, ConfigDump, Dump, RoadLines, Take, PosInterval, Quit };
+    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, ModeToggle, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Quit };
     struct Command {
         CommandType type;
         std::string name;

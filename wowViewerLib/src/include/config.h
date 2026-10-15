@@ -249,7 +249,7 @@ public:
 
     EParameterSource globalLighting = EParameterSource::eDatabase;
     ExteriorColors exteriorColors;
-    mathfu::vec3 exteriorDirectColorDir;
+    mathfu::vec3 exteriorDirectColorDir = {0, 0, 0};
 
     float adtSpecMult = 1.0;
 

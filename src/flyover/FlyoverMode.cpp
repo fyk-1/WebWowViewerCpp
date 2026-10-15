@@ -430,11 +430,7 @@ bool FlyoverMode::start(const std::string &routeFile, const FlyoverInstall &inst
     m_scene = m_frontendUI.getBackgroundScene();
     m_api = m_frontendUI.getApi();
     // Before the route's config, so a file value still wins.
-    m_api->getConfig()->farPlaneForCulling = 1000;
-    m_api->getConfig()->farPlaneForCullingAir = 1500;
-    m_api->getConfig()->frameRateCap = 30;
-    m_api->getConfig()->fsrUpscaling = true;
-    m_api->getConfig()->renderScale = 0.59f;
+    FlyoverConfig::applyDefaults(*m_api->getConfig());
     applyRoute(route, true);
 
     std::thread(&FlyoverMode::readStdin, m_queue).detach();
@@ -525,14 +521,10 @@ void FlyoverMode::parseLine(const std::string &rawLine, CommandQueue &queue) {
     } else if (word == "route") {
         post(queue, {CommandType::Route, "", rest});
     } else if (word == "config") {
-        if (rest.empty()) {
-            post(queue, {CommandType::ConfigDump, "", ""});
-        } else {
-            size_t nameEnd = rest.find_first_of(" \t");
-            std::string name = rest.substr(0, nameEnd);
-            std::string value = nameEnd == std::string::npos ? "" : trim(rest.substr(nameEnd));
-            post(queue, {CommandType::Config, name, value});
-        }
+        size_t nameEnd = rest.find_first_of(" \t");
+        std::string name = rest.substr(0, nameEnd);
+        std::string value = nameEnd == std::string::npos ? "" : trim(rest.substr(nameEnd));
+        post(queue, {CommandType::Config, name, value});
     } else if (word == "ambient") {
         size_t nameEnd = rest.find_first_of(" \t");
         std::string name = rest.substr(0, nameEnd);
@@ -643,9 +635,6 @@ void FlyoverMode::apply(const Command &command) {
             } else {
                 applyConfig(command.name, command.text);
             }
-            break;
-        case CommandType::ConfigDump:
-            emit("flyover config " + FlyoverConfig::dump(*m_api->getConfig()));
             break;
         case CommandType::Dump:
             if (command.text.empty()) {
@@ -919,7 +908,6 @@ void FlyoverMode::update() {
     if (!m_readySent) {
         if (plan && ++m_framesWithPlan >= 2) {
             emit("flyover ready");
-            emit("flyover config " + FlyoverConfig::dump(*m_api->getConfig()));
             m_readySent = true;
             m_nextAreaSample = now;
             m_nextDistanceReport = now + 0.5;

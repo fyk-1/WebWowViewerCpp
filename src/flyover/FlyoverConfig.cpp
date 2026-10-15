@@ -1,5 +1,5 @@
 //
-// Flyover: the render Config exposed by field name, for the stdin `config` command and the route file.
+// Flyover: the render Config exposed by field name, for the stdin `config` command, the route file and `--config-defaults`.
 //
 
 #include "FlyoverConfig.h"
@@ -369,5 +369,13 @@ namespace FlyoverConfig {
         }
 
         return result.dump();
+    }
+
+    void applyDefaults(Config &config) {
+        config.farPlaneForCulling = 1000;
+        config.farPlaneForCullingAir = 1500;
+        config.frameRateCap = 30;
+        config.fsrUpscaling = true;
+        config.renderScale = 0.59f;
     }
 }

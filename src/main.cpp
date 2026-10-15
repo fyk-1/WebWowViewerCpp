@@ -39,6 +39,7 @@
 #include "../wowViewerLib/src/engine/objects/scenes/map.h"
 #include "database/CEmptySqliteDB.h"
 #include "flyover/FlyoverMode.h"
+#include "flyover/FlyoverConfig.h"
 #ifndef SKIP_VULKAN
 #include "../wowViewerLib/src/gapi/vulkan/GDeviceVulkan.h"
 #endif
@@ -327,6 +328,16 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
+    // Prints the renderer fields of a flight's starting Config as one JSON line and exits, with no window or device.
+    for (int i = 1; i < argc; i++) {
+        if (std::string(argv[i]) == "--config-defaults") {
+            Config config;
+            FlyoverConfig::applyDefaults(config);
+            std::cout << FlyoverConfig::dump(config) << std::endl;
+            return 0;
+        }
+    }
+
     std::string flyoverRouteFile;
     const bool flyoverRequested = FlyoverMode::findArgument(argc, argv, flyoverRouteFile);
     FlyoverInstall flyoverInstall;
@@ -350,7 +361,7 @@ int main(int argc, char *argv[]) {
     }
     int exitCode = 0;
     if (!flyoverRequested) {
-        std::cerr << "usage: Wowely-Planet-Farseer --flyover <route.json> | --list-gpus" << std::endl;
+        std::cerr << "usage: Wowely-Planet-Farseer --flyover <route.json> | --list-gpus | --config-defaults"<< std::endl;
         return 2;
     }
 

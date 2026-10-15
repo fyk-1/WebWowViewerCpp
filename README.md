@@ -12,6 +12,7 @@ The executable is `Wowely-Planet-Farseer.exe`. It needs `export.db3` (the client
 | --- | --- |
 | `--flyover <route.json>` | Opens the route's map on the first storage and flies the route. Reports on stdout and takes commands on stdin; the protocol is in `src/flyover/FlyoverMode.h`. |
 | `--list-gpus` | Prints the Vulkan devices and exits. |
+| `--config-defaults` | Prints every settable renderer field with its default, as one JSON object on one line, and exits. It creates no window and opens no game data. |
 
 The host also passes `--wow`, `--product` and `--db`; `src/flyover/FlyoverMode.h` has their current state. The environment variable `WWV_GPU` picks the Vulkan device, as `vvvv:dddd` hex vendor and device ids or as part of the device name.
 
