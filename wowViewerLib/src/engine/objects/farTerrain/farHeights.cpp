@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 
 namespace {
     constexpr char kMagic[4] = {'W', 'P', 'H', '1'};
@@ -83,6 +84,51 @@ bool FarHeights::read(const std::string &file, HeightTile &out, std::string &err
     out.zMin = header.zMin;
     out.zMax = header.zMax;
     return true;
+}
+
+std::string FarHeights::landmarksPath(const std::string &mapDir) {
+    return mapDir + "/landmarks.ids";
+}
+
+bool FarHeights::writeLandmarks(const std::string &mapDir, const std::vector<int> &ids, std::string &error) {
+    const auto native = std::filesystem::u8path(landmarksPath(mapDir));
+    auto temp = native;
+    temp += ".tmp";
+
+    std::error_code code;
+    std::filesystem::create_directories(native.parent_path(), code);
+    {
+        std::ofstream stream(temp, std::ios::trunc);
+        for (int id : ids) stream << id << "\n";
+        stream.flush();
+        if (!stream) {
+            error = "cannot write " + temp.string();
+            return false;
+        }
+    }
+    std::filesystem::rename(temp, native, code);
+    if (code) {
+        error = "cannot rename " + temp.string() + ": " + code.message();
+        return false;
+    }
+    return true;
+}
+
+std::vector<int> FarHeights::readLandmarks(const std::string &mapDir) {
+    std::ifstream stream(std::filesystem::u8path(landmarksPath(mapDir)));
+    std::vector<int> ids;
+    std::string line;
+    while (std::getline(stream, line)) {
+        if (line.empty()) continue;
+        try {
+            ids.push_back(std::stoi(line));
+        } catch (const std::exception &) {
+            std::cerr << "far heights: " << landmarksPath(mapDir) << ": \"" << line << "\" is no id, so the map has no landmarks" << std::endl;
+            return {};
+        }
+    }
+    std::sort(ids.begin(), ids.end());
+    return ids;
 }
 
 bool FarHeights::writeAtomic(const std::string &file, const HeightTile &tile, std::string &error) {

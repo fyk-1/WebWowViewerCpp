@@ -176,6 +176,7 @@ set(SOURCE_FILES
         src/engine/objects/wdl/wdlObject.cpp
         src/engine/objects/wdl/wdlObject.h
         src/engine/objects/farTerrain/farTerrain.cpp
+        src/engine/objects/farTerrain/farLandmarks.cpp
         src/engine/objects/farTerrain/farTerrain.h
         src/engine/objects/farTerrain/farHeights.cpp
         src/engine/objects/farTerrain/farHeights.h

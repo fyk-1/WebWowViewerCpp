@@ -8,8 +8,8 @@
 //   flyover bake <row> <col> error <reason>
 //
 // The steps are the largest height difference in yards along the edge the tile shares with the neighbour north (row - 1), south
-// (row + 1), east (column + 1) and west (column - 1), `-` where that neighbour has no file. The renderer is set by the host's
-// script (Modules/Flyover/scripts/bake.lua); nothing here sets a Config field.
+// (row + 1), east (column + 1) and west (column - 1), `-` where that neighbour has no file. The renderer is set by the Lua file
+// the host's `--script` names; nothing here sets a Config field.
 //
 
 #ifndef AWEBWOWVIEWERCPP_HEIGHTBAKE_H

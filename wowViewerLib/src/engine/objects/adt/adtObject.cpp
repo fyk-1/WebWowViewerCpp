@@ -1550,12 +1550,16 @@ void AdtObject::countBakeResidency(float minX, float maxX, float minY, float max
         return box.max.x >= minX && box.min.x <= maxX && box.max.y >= minY && box.min.y <= maxY;
     };
 
+    const Config &config = *m_api->getConfig();
+    std::shared_lock blockLock(config.modelBlock.lock);
     for (auto const &m2Object : objectLods[0].m2Objects) {
         if (m2Object == nullptr) continue;
-        // The box the map culls the model by: the placement's own until the model has loaded and measured it.
+        // The box the map culls the model by: the placement's own until the model has loaded and measured it. A model under
+        // minM2WorldSize, or on the modelBlock list, is culled, so it is never requested and never counted.
+        if (config.modelBlock.ids.count(m2Object->getModelFileId()) > 0) continue;
         const CAaBox box = m2Object->getAABB();
         const float size = std::max({box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z});
-        if (size < 30.0f || !crosses(box)) continue;
+        if (size < config.minM2WorldSize || !crosses(box)) continue;
         total++;
         if (!m2Object->getGetIsLoaded()) {
             pending++;
@@ -1565,6 +1569,8 @@ void AdtObject::countBakeResidency(float minX, float maxX, float minY, float max
 
     for (auto const &wmoObject : objectLods[0].wmoObjects) {
         if (wmoObject == nullptr) continue;
+        // A blocked WMO draws no group, so none of its groups is ever requested.
+        if (config.modelBlock.ids.count(wmoObject->getModelFileId()) > 0) continue;
         if (!crosses(wmoObject->getAABB())) continue;
         total++;
         if (!wmoObject->isLoaded()) {

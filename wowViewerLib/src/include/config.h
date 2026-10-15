@@ -37,6 +37,12 @@ enum class EFreeStrategy : char {
     eFrameBase
 };
 
+// A set of ids the culling threads read while the command thread replaces it, so both go through lock.
+struct IdSet {
+    std::unordered_set<int> ids;
+    mutable std::shared_mutex lock;
+};
+
 struct ConfigWMOVertFlags {
     uint32_t useMOCV: 1;
 };
@@ -66,6 +72,10 @@ public:
     std::string farHeightsDir;
     // Draws a far tile that has a baked height file at the file's heights, on the shared grid; off draws every tile at the WDL's.
     bool farTerrainHeights = false;
+    // The yards from the camera to a baked far tile's box from which it draws with half as many cells a side (32 x 32), and with a
+    // quarter (16 x 16).
+    float farGridHalfDistance = 1500.0f;
+    float farGridQuarterDistance = 6000.0f;
     bool renderWMO = true;
     bool renderM2 = true;
     bool renderM2Decals = true;
@@ -84,10 +94,14 @@ public:
     bool renderGameObjectSpawns = true;
     // The ids of the world events whose spawns stand, as the host sends them. A spawn tied to a positive event (the Events column of
     // CreatureSpawn and GameObjectSpawn) draws only while one of its events is in the set, and one tied to a negative event is gone
-    // while that event's id is in it. Empty draws the spawns no event ties and the ones that are gone only while an event runs. The culling
-    // threads read the set while the command thread replaces it, so both go through activeSpawnEventsLock.
-    std::unordered_set<int> activeSpawnEvents;
-    mutable std::shared_mutex activeSpawnEventsLock;
+    // while that event's id is in it. Empty draws the spawns no event ties and the ones that are gone only while an event runs.
+    IdSet activeSpawnEvents;
+    // The FileDataIDs of the M2 models and the WMOs the cull drops wherever they stand, as it drops one outside the view: what a height
+    // bake leaves out of the heights. Only the bake sets it, and empty drops none.
+    IdSet modelBlock;
+    // The FileDataIDs of the M2 models and the WMOs a height bake records beside its tiles (FarHeights::writeLandmarks), for the far
+    // pass to draw as themselves at any distance. Only the bake reads it.
+    IdSet landmarks;
     bool renderBSP = false;
     bool renderPortals = false;
     bool renderAntiPortals = false;

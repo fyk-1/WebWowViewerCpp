@@ -38,7 +38,7 @@ namespace {
 
 #define FLYOVER_CONFIG_FIELDS(X) \
     X(Bool, renderAdt) \
-    X(Bool, farTerrain)     X(Bool, farTerrainHeights)     X(Float, farTerrainFog)     X(Float, farTerrainShare)     X(Bool, farTerrainOnly) \
+    X(Bool, farTerrain)     X(Bool, farTerrainHeights)     X(Float, farGridHalfDistance)     X(Float, farGridQuarterDistance)     X(Float, farTerrainFog)     X(Float, farTerrainShare)     X(Bool, farTerrainOnly) \
     X(Bool, renderWMO) \
     X(Bool, skipUnreachableWmoGroups) \
     X(Bool, renderM2) \
@@ -51,6 +51,8 @@ namespace {
     X(Bool, renderHumanoids) \
     X(Bool, renderGameObjectSpawns) \
     X(IntSet, activeSpawnEvents) \
+    X(IntSet, modelBlock) \
+    X(IntSet, landmarks) \
     X(Bool, renderBSP) \
     X(Bool, renderPortals) \
     X(Bool, renderAntiPortals) \
@@ -292,8 +294,9 @@ namespace FlyoverConfig {
                     }
                     if (ids.empty()) return "expected comma-separated integers, or none";
                 }
-                std::unique_lock lock(config.activeSpawnEventsLock);
-                config.activeSpawnEvents = std::move(ids);
+                auto &set = *(IdSet *) target;
+                std::unique_lock lock(set.lock);
+                set.ids = std::move(ids);
                 return "";
             }
             case Kind::ParamSource: {
@@ -350,8 +353,9 @@ namespace FlyoverConfig {
                     break;
                 }
                 case Kind::IntSet: {
-                    std::shared_lock lock(config.activeSpawnEventsLock);
-                    std::vector<int> sorted(config.activeSpawnEvents.begin(), config.activeSpawnEvents.end());
+                    auto &set = *(const IdSet *) source;
+                    std::shared_lock lock(set.lock);
+                    std::vector<int> sorted(set.ids.begin(), set.ids.end());
                     std::sort(sorted.begin(), sorted.end());
                     result[field.name] = sorted;
                     break;

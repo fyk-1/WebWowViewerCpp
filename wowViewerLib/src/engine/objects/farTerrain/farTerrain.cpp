@@ -8,6 +8,7 @@
 #include <sstream>
 #include "../../algorithms/mathHelper.h"
 #include "../adt/adtObject.h"
+#include "farLandmarks.h"
 
 namespace {
     constexpr float kTileSize = MathHelper::TILESIZE;
@@ -19,7 +20,10 @@ namespace {
     Each tile hangs a strip of quads below its four edges, so a crack between two tiles, or between a tile and the full terrain that
     meets it, shows the strip and not the sky behind. The WDL's outer vertices are the ADT's chunk corners, so the heights agree at
     every corner, and between corners the ADT's own surface differs from the straight line by a few yards at most. The strip drops
-    32 yards, a margin of several times that, and not more, since a long skirt is seen edge-on from the air as a wall.
+    32 yards, a margin of several times that, and not more, since a long skirt is seen edge-on from the air as a wall. The same strip
+    covers the edge between two baked tiles drawn on grids of different levels, where the coarser edge cuts straight between samples
+    the finer one follows. A building taller than the strip that straddles such an edge leaves a crack, and the strip is kept short
+    anyway: such an edge lies Config::farGridHalfDistance off or more, where the crack is a few pixels.
     */
     constexpr float kSkirtDepth = 32.0f;
 
@@ -239,14 +243,16 @@ std::unique_ptr<FarTerrain::Built> FarTerrain::build(const HWdlFile &wdl, const 
         }
     }
 
-    if (anyHeights) {
-        // The grid the baked tiles share, after every tile's own geometry.
-        built->grid.vertexOffset = (int32_t) geometry.vertices.size();
-        built->grid.firstIndex = (uint32_t) geometry.indices.size();
+    // The grids the baked tiles share, after every tile's own geometry, one for each level.
+    for (int level = 0; anyHeights && level < kGridLevels; level++) {
+        Grid &range = built->grids[level];
+        range.vertexOffset = (int32_t) geometry.vertices.size();
+        range.firstIndex = (uint32_t) geometry.indices.size();
 
-        const float cell = kTileSize / (float) kGridCells;
-        for (int r = 0; r <= kGridCells; r++) {
-            for (int c = 0; c <= kGridCells; c++) {
+        const int cells = kGridCells >> level;
+        const float cell = kTileSize / (float) cells;
+        for (int r = 0; r <= cells; r++) {
+            for (int c = 0; c <= cells; c++) {
                 FarTerrainVertex &vertex = geometry.vertices.emplace_back();
                 vertex.position[0] = -r * cell;
                 vertex.position[1] = -c * cell;
@@ -254,19 +260,19 @@ std::unique_ptr<FarTerrain::Built> FarTerrain::build(const HWdlFile &wdl, const 
                 vertex.normal[0] = 0.0f;
                 vertex.normal[1] = 0.0f;
                 vertex.normal[2] = 1.0f;
-                vertex.uv[0] = c / (float) kGridCells;
-                vertex.uv[1] = r / (float) kGridCells;
+                vertex.uv[0] = c / (float) cells;
+                vertex.uv[1] = r / (float) cells;
             }
         }
-        auto grid = [](int r, int c) -> uint16_t { return (uint16_t) (r * (kGridCells + 1) + c); };
-        for (int r = 0; r < kGridCells; r++) {
-            for (int c = 0; c < kGridCells; c++) {
+        auto grid = [cells](int r, int c) -> uint16_t { return (uint16_t) (r * (cells + 1) + c); };
+        for (int r = 0; r < cells; r++) {
+            for (int c = 0; c < cells; c++) {
                 const uint16_t a = grid(r, c), b = grid(r, c + 1), d = grid(r + 1, c), e = grid(r + 1, c + 1);
                 geometry.indices.insert(geometry.indices.end(), {a, d, b, b, d, e});
             }
         }
-        appendSkirt(geometry, built->grid.vertexOffset, kGridCells, [](int, int) { return false; });
-        built->grid.indexCount = (uint32_t) geometry.indices.size() - built->grid.firstIndex;
+        appendSkirt(geometry, range.vertexOffset, cells, [](int, int) { return false; });
+        range.indexCount = (uint32_t) geometry.indices.size() - range.firstIndex;
     }
 
     return built;
@@ -289,7 +295,7 @@ bool FarTerrain::poll() {
     auto built = m_build.get();
     m_geometry = std::move(built->geometry);
     m_tiles = std::move(built->tiles);
-    m_grid = built->grid;
+    m_grids = built->grids;
     m_textures.assign(m_tiles.size(), nullptr);
     m_tileOfCell = built->tileOfCell;
     m_minHeight = built->minHeight;
@@ -368,7 +374,16 @@ void FarTerrain::makeFrame(const Config &config, const View &view, const std::ve
     frame.on = true;
     frame.heights = config.farTerrainHeights;
     frame.drawn.clear();
+    frame.levels.clear();
     frame.terrain = shared_from_this();
+
+    // The landmarks the bake recorded beside the heights (FarHeights::readLandmarks), read once; the frame carries them once built.
+    if (!m_landmarksRead) {
+        m_landmarksRead = true;
+        const std::vector<int> ids = m_heightsDir.empty() ? std::vector<int>() : FarHeights::readLandmarks(m_heightsDir);
+        if (!ids.empty()) m_landmarks = std::make_shared<FarLandmarks>(m_api, m_wdt, ids);
+    }
+    frame.landmarks = m_landmarks != nullptr && m_landmarks->poll() ? m_landmarks : nullptr;
     frame.fogStart = view.drawDistance;
     frame.fogStrength = std::max(config.farTerrainFog, 0.0f);
     frame.only = view.only;
@@ -439,6 +454,7 @@ void FarTerrain::makeFrame(const Config &config, const View &view, const std::ve
     struct Candidate {
         uint16_t index;
         float distance;
+        uint8_t level;
     };
     std::vector<Candidate> candidates;
     candidates.reserve(m_tiles.size());
@@ -462,18 +478,26 @@ void FarTerrain::makeFrame(const Config &config, const View &view, const std::ve
         }
         if (outside) continue;
 
-        const float cx = (box.min.x + box.max.x) * 0.5f - view.cameraPos.x;
-        const float cy = (box.min.y + box.max.y) * 0.5f - view.cameraPos.y;
-        candidates.push_back({(uint16_t) i, cx * cx + cy * cy});
-
         const float bx = std::max(std::max(box.min.x - view.cameraPos.x, view.cameraPos.x - box.max.x), 0.0f);
         const float by = std::max(std::max(box.min.y - view.cameraPos.y, view.cameraPos.y - box.max.y), 0.0f);
         const float bz = std::max(std::max(box.min.z - view.cameraPos.z, view.cameraPos.z - box.max.z), 0.0f);
-        nearestBox = std::min(nearestBox, std::sqrt(bx * bx + by * by + bz * bz));
+        const float boxDistance = std::sqrt(bx * bx + by * by + bz * bz);
+        nearestBox = std::min(nearestBox, boxDistance);
+
+        // The coarser grids from Config's distances, whose cells are 8.3, 16.7 and 33 yards.
+        const uint8_t level = boxDistance >= config.farGridQuarterDistance ? 2 : boxDistance >= config.farGridHalfDistance ? 1 : 0;
+
+        const float cx = (box.min.x + box.max.x) * 0.5f - view.cameraPos.x;
+        const float cy = (box.min.y + box.max.y) * 0.5f - view.cameraPos.y;
+        candidates.push_back({(uint16_t) i, cx * cx + cy * cy, level});
     }
     std::sort(candidates.begin(), candidates.end(), [](const Candidate &l, const Candidate &r) { return l.distance < r.distance; });
     frame.drawn.reserve(candidates.size());
-    for (const auto &candidate : candidates) frame.drawn.push_back(candidate.index);
+    frame.levels.reserve(candidates.size());
+    for (const auto &candidate : candidates) {
+        frame.drawn.push_back(candidate.index);
+        frame.levels.push_back(candidate.level);
+    }
 
     // The near plane of the depth, and with it the clip: the nearest the visible far land can be where the view is alone or fading.
     float depthNear = nearPlane;

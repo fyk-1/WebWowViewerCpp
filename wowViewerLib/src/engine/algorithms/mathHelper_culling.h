@@ -7,6 +7,7 @@
 
 #include <array>
 #include "mathHelper.h"
+#include "../../include/config.h"
 
 template<typename T>
 class ObjectCulling {
@@ -26,8 +27,8 @@ public:
 // seen from cameraPos with tanHalfFovY. An object around the camera stays. With fadeStartPercent above minScreenPercent,
 // an object between the two is kept at a share of itself that grows from 0 at minScreenPercent to 1 at fadeStartPercent
 // (storeCullFade), and every other kept object is stored at 1. Before any of that, an object whose box has no side longer
-// than minWorldSize yards is culled, wherever it stands; a minWorldSize of 0 or less culls none, and a minScreenPercent of
-// 0 or less leaves only this cull.
+// than minWorldSize yards is culled, wherever it stands, and so is one whose FileDataID is in blocked; a minWorldSize of 0 or
+// less culls none, and a minScreenPercent of 0 or less leaves only these culls.
 template<typename T>
 class ScreenSizeCulling {
 public:
@@ -36,7 +37,16 @@ public:
                      const framebased::vector<T> &objects,
                      std::vector<uint32_t> &culling_res,
                      float fadeStartPercent = 0.0f,
-                     float minWorldSize = 0.0f) {
+                     float minWorldSize = 0.0f,
+                     const IdSet *blocked = nullptr) {
+        if (blocked != nullptr) {
+            std::shared_lock lock(blocked->lock);
+            if (!blocked->ids.empty()) {
+                for (size_t i = start; i < end; i++) {
+                    if (!culling_res[i] && blocked->ids.count(retrieveFileId(objects[i])) > 0) culling_res[i] = 0xFFFFFFFF;
+                }
+            }
+        }
         if (minWorldSize > 0.0f) {
             for (size_t i = start; i < end; i++) {
                 if (culling_res[i]) continue;

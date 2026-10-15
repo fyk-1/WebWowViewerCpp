@@ -1,4 +1,5 @@
 #include "FarTerrainVLK.h"
+#include "../../../engine/objects/farTerrain/farLandmarks.h"
 #include "../../../gapi/vulkan/materials/MaterialBuilderVLK.h"
 #include "../../../gapi/vulkan/commandBuffer/commandBufferRecorder/CommandBufferRecorder_inline.h"
 
@@ -148,6 +149,7 @@ HPipelineVLK FarTerrainVLK::createPipelineAhead() {
 }
 
 void FarTerrainVLK::postLoad(const FarTerrainFrame &frame) {
+    if (frame.on) postLoadLandmarks(frame);
     if (!frame.on || frame.tiles == 0 || frame.terrain == nullptr) return;
 
     if (m_terrain != frame.terrain) {
@@ -251,24 +253,35 @@ bool FarTerrainVLK::heightsUsable() {
 }
 
 void FarTerrainVLK::draw(CmdBufRecorder &cmd, const FarTerrainFrame &frame) {
-    if (!m_ready || frame.terrain != m_terrain || frame.drawn.empty()) return;
+    // While the full scene fades, the far land takes the pixels the scene's screen-door drops, through the usual viewport and in
+    // front of the scene. With the far land alone and the scene gone there is nothing to take from.
+    const bool taking = frame.share < 1.0f && !(frame.share <= 0.0f && frame.only);
+
+    if (!m_ready || frame.terrain != m_terrain || frame.drawn.empty()) {
+        drawLandmarks(cmd, frame, 0);
+        if (taking) drawLandmarks(cmd, frame, 2);
+        return;
+    }
 
     cmd.setDefaultScissors();
     cmd.bindVertexBindings(m_bindings);
 
     const auto &tiles = m_terrain->tiles();
-    const auto &grid = m_terrain->grid();
     auto drawTiles = [&](uint32_t flags) {
-        for (uint16_t index : frame.drawn) {
+        for (size_t k = 0; k < frame.drawn.size(); k++) {
+            const uint16_t index = frame.drawn[k];
             const auto &tile = tiles[index];
             const auto &material = m_tileMaterials[index];
+            const uint32_t level = frame.levels[k];
+            const auto &grid = m_terrain->grid((int) level);
 
             cmd.bindMaterial(material != nullptr ? material : m_gapMaterial);
             // The instance index carries the flags of the vertex shader: bit 0 the minimap, bit 1 the taking draw, bit 2 the shared grid
-            // displaced by the baked heights, and with it the tile's row from bit 8 and its column from bit 14.
+            // displaced by the baked heights, and with it the tile's row from bit 8, its column from bit 14 and the grid's level from bit 20.
             const uint32_t instance = flags | (material != nullptr ? 1u : 0u);
             if (frame.heights && tile.hasHeights && m_heightsLanded[index] && grid.indexCount > 0) {
-                cmd.drawIndexed(grid.indexCount, 1, grid.firstIndex, instance | 4u | ((uint32_t) tile.row << 8) | ((uint32_t) tile.col << 14), grid.vertexOffset);
+                cmd.drawIndexed(grid.indexCount, 1, grid.firstIndex,
+                                instance | 4u | ((uint32_t) tile.row << 8) | ((uint32_t) tile.col << 14) | (level << 20), grid.vertexOffset);
             } else {
                 cmd.drawIndexed(tile.indexCount, 1, tile.firstIndex, instance, tile.vertexOffset);
             }
@@ -278,11 +291,143 @@ void FarTerrainVLK::draw(CmdBufRecorder &cmd, const FarTerrainFrame &frame) {
     // The map-area viewport, whose depth range lies above every scene fragment and below the sky (FarTerrain: the band of depth).
     cmd.setViewPort(CmdBufRecorder::ViewportType::vp_mapArea);
     drawTiles(0);
+    drawLandmarks(cmd, frame, 0);
 
-    // While the full scene fades, the far land takes the pixels the scene's screen-door drops, through the usual viewport and in
-    // front of the scene. With the far land alone and the scene gone there is nothing to take from.
-    if (frame.share < 1.0f && !(frame.share <= 0.0f && frame.only)) {
+    // The landmarks take their pixels with the far land, or the taken tiles in front of everything would cover them.
+    if (taking) {
         cmd.setViewPort(CmdBufRecorder::ViewportType::vp_usual);
+        cmd.bindVertexBindings(m_bindings);
         drawTiles(2);
+        drawLandmarks(cmd, frame, 2);
+    }
+}
+
+void FarTerrainVLK::postLoadLandmarks(const FarTerrainFrame &frame) {
+    // A map with none lets go of the last one's geometry and materials. The two buffers stay, since the renderer's upload list
+    // reads every buffer it was given.
+    if (frame.landmarks == nullptr) {
+        if (m_landmarks != nullptr) {
+            m_landmarks = nullptr;
+            m_landmarksReady = false;
+            m_landmarkMaterials.clear();
+            m_landmarkBase = nullptr;
+            m_landmarkBindings = nullptr;
+            m_landmarkVertexBytes = 0;
+            m_landmarkIndexBytes = 0;
+        }
+        return;
+    }
+
+    const FarLandmarks::Geometry &geometry = frame.landmarks->geometry();
+    if (frame.landmarks != m_landmarks) {
+        m_landmarks = frame.landmarks;
+        m_landmarksReady = false;
+        m_landmarkMaterials.assign(geometry.textures.size(), nullptr);
+        m_landmarkVertexBytes = geometry.vertices.size() * sizeof(FarTerrainVertex);
+        m_landmarkIndexBytes = geometry.indices.size() * sizeof(uint16_t);
+        m_landmarkUploadedBytes = 0;
+        if (m_landmarkVertexBytes == 0 || m_landmarkIndexBytes == 0) return;
+
+        // The buffers are replaced when the landmarks are, and the renderer's upload list keeps pointing at these two members.
+        HGBufferVLK vertexBuffer = m_device->createVertexBuffer("Scene_VBO_FarLandmarks", m_landmarkVertexBytes, sizeof(FarTerrainVertex));
+        HGBufferVLK indexBuffer = m_device->createIndexBuffer("Scene_IBO_FarLandmarks", m_landmarkIndexBytes);
+        m_landmarkVertexBuffer = vertexBuffer;
+        m_landmarkIndexBuffer = indexBuffer;
+        if (!m_landmarkRegistered) {
+            m_uploadBuffers.push_back(std::ref(m_landmarkVertexBuffer));
+            m_uploadBuffers.push_back(std::ref(m_landmarkIndexBuffer));
+            m_landmarkRegistered = true;
+        }
+        m_landmarkBindings = m_device->createVertexBufferBindings();
+        m_landmarkBindings->addVertexBufferBinding(m_landmarkVertexBuffer, kBindings);
+        m_landmarkBindings->setIndexBuffer(m_landmarkIndexBuffer);
+        m_landmarkBindings->save();
+    }
+    if (m_landmarkVertexBytes == 0 || m_landmarkIndexBytes == 0) return;
+
+    if (!m_landmarksReady) {
+        size_t budget = kUploadBytesPerFrame;
+        const size_t total = m_landmarkVertexBytes + m_landmarkIndexBytes;
+        while (budget > 0 && m_landmarkUploadedBytes < total) {
+            if (m_landmarkUploadedBytes < m_landmarkVertexBytes) {
+                const size_t length = std::min(budget, m_landmarkVertexBytes - m_landmarkUploadedBytes);
+                m_landmarkVertexBuffer->uploadDataAtOffset((const uint8_t *) geometry.vertices.data() + m_landmarkUploadedBytes, (int) length, m_landmarkUploadedBytes);
+                m_landmarkUploadedBytes += length;
+                budget -= length;
+            } else {
+                const size_t indexOffset = m_landmarkUploadedBytes - m_landmarkVertexBytes;
+                const size_t length = std::min(budget, m_landmarkIndexBytes - indexOffset);
+                m_landmarkIndexBuffer->uploadDataAtOffset((const uint8_t *) geometry.indices.data() + indexOffset, (int) length, indexOffset);
+                m_landmarkUploadedBytes += length;
+                budget -= length;
+            }
+        }
+        if (m_landmarkUploadedBytes < total) return;
+
+        // Both faces, since a leaf card or a thin wall is seen from either side.
+        static const PipelineTemplate pipeline = {
+            DrawElementMode::TRIANGLES,
+            false,
+            true,
+            EGxBlendEnum::GxBlend_Opaque,
+            true,
+            true,
+            0xFF
+        };
+        auto block = m_block;
+        auto white = m_device->getWhiteTexturePixel();
+        m_landmarkBase = MaterialBuilderVLK::fromShader(m_device, {"farTerrain", "farTerrain"}, m_shaderConfig)
+            .createPipeline(m_landmarkBindings, m_forwardPass, pipeline)
+            .bindDescriptorSet(0, m_sceneWideDS)
+            .createDescriptorSet(1, [block](std::shared_ptr<GDescriptorSet> &ds) {
+                ds->beginUpdate()
+                    .ubo(0, *block)
+                    .delayUpdate();
+            })
+            .createDescriptorSet(2, [white](std::shared_ptr<GDescriptorSet> &ds) {
+                ds->beginUpdate()
+                    .texture(0, white)
+                    .texture(1, white)
+                    .delayUpdate();
+            })
+            .toMaterial();
+        m_landmarksReady = true;
+    }
+
+    // A material for each texture that has landed.
+    int made = 0;
+    auto white = m_device->getWhiteTexturePixel();
+    for (size_t slot = 0; slot < m_landmarkMaterials.size() && made < kMaterialsPerFrame; slot++) {
+        if (m_landmarkMaterials[slot] != nullptr) continue;
+        HBlpTexture blp = geometry.textures[slot];
+        if (blp == nullptr || blp->getStatus() != FileStatus::FSLoaded) continue;
+
+        HGSamplableTexture texture = m_device->createBlpTexture(blp, true, true);
+        m_landmarkMaterials[slot] = MaterialBuilderVLK::fromMaterial(m_device, m_landmarkBase)
+            .createDescriptorSet(2, [texture, white](std::shared_ptr<GDescriptorSet> &ds) {
+                ds->beginUpdate()
+                    .texture(0, texture)
+                    .texture(1, white)
+                    .delayUpdate();
+            })
+            .toMaterial();
+        made++;
+    }
+}
+
+void FarTerrainVLK::drawLandmarks(CmdBufRecorder &cmd, const FarTerrainFrame &frame, uint32_t flags) {
+    if (!m_landmarksReady || frame.landmarks == nullptr || frame.landmarks != m_landmarks) return;
+
+    cmd.setDefaultScissors();
+    cmd.setViewPort(flags & 2u ? CmdBufRecorder::ViewportType::vp_usual : CmdBufRecorder::ViewportType::vp_mapArea);
+    cmd.bindVertexBindings(m_landmarkBindings);
+    for (const auto &draw : m_landmarks->geometry().draws) {
+        const auto &material = m_landmarkMaterials[draw.texture];
+        if (material == nullptr) continue;
+
+        cmd.bindMaterial(material);
+        // The instance index carries the flags of the shaders: bit 0 the texture, bit 1 the taking draw, bit 3 a landmark, bit 4 an
+        // alpha-keyed material.
+        cmd.drawIndexed(draw.indexCount, 1, draw.firstIndex, flags | 1u | 8u | (draw.alphaTest ? 16u : 0u), draw.vertexOffset);
     }
 }

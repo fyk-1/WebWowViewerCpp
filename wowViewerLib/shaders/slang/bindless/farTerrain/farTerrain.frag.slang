@@ -20,7 +20,8 @@ precision highp int;
 // the draw distance and would paint all of this land in fog colour. A tile whose minimap has not landed is the fog colour outright, so
 // the gap reads as haze. The draw that takes pixels from the fading full scene keeps the fragments the scene's screen-door drops
 // (dropsForCullFade, the pattern of Config::m2FadeStartPercent), and writes no depth in the others, which is why this shader tests depth
-// after it runs: a discard must not leave a depth write behind.
+// after it runs: a discard must not leave a depth write behind. A landmark (FarLandmarks) wears its model's texture through the same
+// path, lit alike and unfogged.
 
 layout(std140, set=1, binding=0) uniform farTerrainBlock {
     mat4 uFarViewProjection;
@@ -56,7 +57,10 @@ void main() {
     vec3 color = fogColor;
 
     if ((vFlags & 1) != 0) {
-        vec3 matDiffuse = texture(uMinimap, vTexCoord).rgb;
+        vec4 texel = texture(uMinimap, vTexCoord);
+        // A landmark (bit 3) with an alpha-keyed material (bit 4) cuts its transparent texels away.
+        if ((vFlags & 16) != 0 && texel.a < 0.5) discard;
+        vec3 matDiffuse = texel.rgb;
         vec3 normal = normalize(vNormal);
 
         vec3 lit;
@@ -68,7 +72,8 @@ void main() {
         }
 
         float span = max(uFarParams.y - uFarParams.x, 1.0);
-        float fog = clamp((length(vPosition) - uFarParams.x) / span * uFarParams.z, 0.0, 1.0);
+        // A landmark takes no fog, so it stands out at any distance.
+        float fog = (vFlags & 8) != 0 ? 0.0 : clamp((length(vPosition) - uFarParams.x) / span * uFarParams.z, 0.0, 1.0);
         color = mix(lit, fogColor, fog);
     }
 

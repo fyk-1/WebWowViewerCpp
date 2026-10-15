@@ -942,10 +942,13 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
     }
 
     const bool renderAntiPortals = m_api->getConfig()->renderAntiPortals;
+    const IdSet &modelBlock = m_api->getConfig()->modelBlock;
+    std::shared_lock blockLock(modelBlock.lock);
     for (int wmoCandInd = 0; wmoCandInd < wmoCandidates.size(); wmoCandInd++) {
         auto &wmoId = wmoCandidates[wmoCandInd];
         auto wmoCandidate = wmoFactory->getObjectById<0>(wmoId);
         if (wmoCandidate!= nullptr && !wmoCandidate->isLoaded()) continue;
+        if (wmoCandidate != nullptr && modelBlock.ids.count(wmoCandidate->getModelFileId()) > 0) continue;
 
         wmoCandidate->queueCreatureGroupLoads(mapRenderPlan->wmoGroupArray);
 
@@ -999,7 +1002,8 @@ void Map::checkExterior(mathfu::vec4 &cameraPos,
                                                                      results);
 #endif
                       ScreenSizeCulling<M2ObjId>::cull(cullCameraPos, tanHalfFov, minScreenPercent,
-                                                       r.begin(), r.end(), candidates, results, fadeStartPercent, minWorldSize);
+                                                       r.begin(), r.end(), candidates, results, fadeStartPercent, minWorldSize,
+                                                       &m_api->getConfig()->modelBlock);
     //            }
                 }, tbb::auto_partitioner());
             });
@@ -1347,6 +1351,36 @@ float distanceSqToBox(const CAaBox &box, const mathfu::vec3 &point) {
     mathfu::vec3 closest = mathfu::vec3::Max(mathfu::vec3(box.min), mathfu::vec3::Min(mathfu::vec3(box.max), point));
     return (closest - point).LengthSquared();
 }
+
+/*
+robots@Impl: A line on cout, at most once a second, when the budget stopped the queue short in any frame of that second: how
+many of the budgeted frames it did, and the most items one of them left unvisited. An item left may be one whose file has not
+arrived, which no budget would have finished. Only the main thread finishes geometry, so the tally needs no lock.
+*/
+struct BudgetShortfall {
+    std::chrono::steady_clock::time_point since = std::chrono::steady_clock::now();
+    int frames = 0;
+    int shortFrames = 0;
+    size_t mostLeft = 0;
+    size_t mostQueued = 0;
+
+    void note(size_t left, size_t queued) {
+        frames++;
+        if (left > 0) {
+            shortFrames++;
+            if (left > mostLeft) { mostLeft = left; mostQueued = queued; }
+        }
+        const auto now = std::chrono::steady_clock::now();
+        if (now - since < std::chrono::seconds(1)) return;
+        if (shortFrames > 0) {
+            std::cout << "post-load: budget ran out in " << shortFrames << " of " << frames << " frames over "
+                      << std::chrono::duration<double>(now - since).count() << " s, up to " << mostLeft << " of "
+                      << mostQueued << " queued items left" << std::endl;
+        }
+        *this = BudgetShortfall();
+    }
+};
+BudgetShortfall g_budgetShortfall;
 }
 
 size_t Map::finishLoadedGeometry(const HMapSceneBufferCreate &sceneRenderer, const HMapRenderPlan &renderPlan, bool fastLoad) {
@@ -1395,7 +1429,9 @@ size_t Map::finishLoadedGeometry(const HMapSceneBufferCreate &sceneRenderer, con
 
     const auto start = std::chrono::steady_clock::now();
     int finished = 0;
-    for (auto &item: queue) {
+    size_t left = 0;
+    for (size_t index = 0; index < queue.size(); index++) {
+        auto &item = queue[index];
         bool done = false;
         switch (item.kind) {
             case PostLoadItem::Kind::M2: {
@@ -1417,8 +1453,12 @@ size_t Map::finishLoadedGeometry(const HMapSceneBufferCreate &sceneRenderer, con
         }
 
         if (done) finished++;
-        if (!fastLoad && finished >= 1 && (std::chrono::steady_clock::now() - start) >= POST_LOAD_BUDGET) break;
+        if (!fastLoad && finished >= 1 && (std::chrono::steady_clock::now() - start) >= POST_LOAD_BUDGET) {
+            left = queue.size() - index - 1;
+            break;
+        }
     }
+    if (!fastLoad) g_budgetShortfall.note(left, queue.size());
     return queue.size();
 }
 

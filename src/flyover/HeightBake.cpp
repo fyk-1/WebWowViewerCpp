@@ -155,6 +155,26 @@ void HeightBake::update(double now, const MapRenderPlan *plan) {
     const std::string mapDir = FarHeights::mapDir(m_buildDir, m_mapId);
     std::error_code code;
     std::filesystem::create_directories(std::filesystem::path(mapDir), code);
+
+    // The landmarks the bake script named, which it leaves out of the heights, for the far land to draw as themselves. The map's file
+    // is written by its first tile, and a tile baked with another list is refused: the tiles already there carry the old one.
+    std::vector<int> landmarks;
+    {
+        const Config &config = *m_api->getConfig();
+        std::shared_lock lock(config.landmarks.lock);
+        landmarks.assign(config.landmarks.ids.begin(), config.landmarks.ids.end());
+    }
+    std::sort(landmarks.begin(), landmarks.end());
+    if (!std::filesystem::exists(std::filesystem::u8path(FarHeights::landmarksPath(mapDir)), code)) {
+        if (!FarHeights::writeLandmarks(mapDir, landmarks, error)) {
+            finish("error " + error);
+            return;
+        }
+    } else if (FarHeights::readLandmarks(mapDir) != landmarks) {
+        finish("error the script's landmarks differ from " + FarHeights::landmarksPath(mapDir) + "; delete the map's tiles and that file to bake with the new list");
+        return;
+    }
+
     if (!FarHeights::writeAtomic(FarHeights::path(mapDir, m_row, m_col), tile, error)) {
         finish("error " + error);
         return;

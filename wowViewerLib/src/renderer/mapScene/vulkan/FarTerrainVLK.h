@@ -57,6 +57,9 @@ private:
     void createBuffers(const FarTerrain::Geometry &geometry);
     void createMaterials();
     bool heightsUsable();
+    void postLoadLandmarks(const FarTerrainFrame &frame);
+    // flags are the draw's own instance flags: 0 for the far land's band, 2 for the draw that takes pixels from the fading full scene.
+    void drawLandmarks(CmdBufRecorder &cmd, const FarTerrainFrame &frame, uint32_t flags);
 
     HGDeviceVLK m_device;
     HGBufferVLK m_uboBuffer;
@@ -88,6 +91,20 @@ private:
     std::vector<uint8_t> m_heightsLanded;
     // Whether the device samples R16_UNORM with a linear filter, as the heights need; unknown (-1) until the first height texture.
     int m_heightFormatUsable = -1;
+
+    // The landmarks in the buffers below (FarLandmarks): their geometry, uploaded in slices as the far land's is, a material for each of
+    // their textures once it has landed, all from a base that draws both faces.
+    std::shared_ptr<const FarLandmarks> m_landmarks;
+    HGBufferVLK m_landmarkVertexBuffer;
+    HGBufferVLK m_landmarkIndexBuffer;
+    HGVertexBufferBindings m_landmarkBindings;
+    size_t m_landmarkVertexBytes = 0;
+    size_t m_landmarkIndexBytes = 0;
+    size_t m_landmarkUploadedBytes = 0;
+    bool m_landmarkRegistered = false;
+    bool m_landmarksReady = false;
+    std::shared_ptr<ISimpleMaterialVLK> m_landmarkBase;
+    std::vector<std::shared_ptr<ISimpleMaterialVLK>> m_landmarkMaterials;
 };
 
 #endif //AWEBWOWVIEWERCPP_FARTERRAINVLK_H

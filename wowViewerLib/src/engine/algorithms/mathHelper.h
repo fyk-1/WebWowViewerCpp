@@ -28,6 +28,10 @@ inline const CAaBox &retrieveAABB(T &object);
 template<typename T>
 inline float retrieveScreenRadius(const T &object) { return 0.0f; }
 
+// The FileDataID an object is drawn from, for the cull's block list; -1 when it has none.
+template<typename T>
+inline int retrieveFileId(const T &object) { return -1; }
+
 // Leaves the share of itself an object draws at, 1 for all of it, for the small-model cull's fade band; an object with
 // nowhere to keep one is drawn whole.
 template<typename T>

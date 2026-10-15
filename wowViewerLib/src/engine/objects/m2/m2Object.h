@@ -529,6 +529,12 @@ inline float retrieveScreenRadius<>(const M2ObjId &objectId) {
 }
 
 template<>
+inline int retrieveFileId<>(const M2ObjId &objectId) {
+    auto * ptr = m2Factory->getObjectById<0>(objectId);
+    return ptr ? ptr->getModelFileId() : -1;
+}
+
+template<>
 inline void storeCullFade<>(const M2ObjId &objectId, float fade) {
     auto * ptr = m2Factory->getObjectById<2>(objectId);
     if (ptr && ptr->m_cullFade != fade) ptr->m_cullFade = fade;

@@ -25,10 +25,10 @@ enum class CreatureHome : uint8_t {
 inline bool spawnEventsStand(const std::vector<int> &events, const Config &config) {
     if (events.empty()) return true;
 
-    std::shared_lock lock(config.activeSpawnEventsLock);
+    std::shared_lock lock(config.activeSpawnEvents.lock);
     bool tied = false, running = false;
     for (int event : events) {
-        bool active = config.activeSpawnEvents.count(event < 0 ? -event : event) > 0;
+        bool active = config.activeSpawnEvents.ids.count(event < 0 ? -event : event) > 0;
         if (event < 0 && active) return false;
         if (event > 0) {
             tied = true;

@@ -770,8 +770,8 @@ void FlyoverMode::answerDump(const std::string &pngFile, FrameCapture &&capture)
     const Config &config = *m_api->getConfig();
     std::vector<int> spawnEvents;
     {
-        std::shared_lock lock(config.activeSpawnEventsLock);
-        spawnEvents.assign(config.activeSpawnEvents.begin(), config.activeSpawnEvents.end());
+        std::shared_lock lock(config.activeSpawnEvents.lock);
+        spawnEvents.assign(config.activeSpawnEvents.ids.begin(), config.activeSpawnEvents.ids.end());
     }
     std::sort(spawnEvents.begin(), spawnEvents.end());
     dump["timeOfDay"] = config.currentTime;

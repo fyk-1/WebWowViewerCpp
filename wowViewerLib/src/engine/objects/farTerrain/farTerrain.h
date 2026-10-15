@@ -19,6 +19,7 @@
 
 class AdtObject;
 class Config;
+class FarLandmarks;
 
 // One vertex of the far terrain: world position, normal and the minimap's uv.
 struct FarTerrainVertex {
@@ -49,6 +50,8 @@ struct FarTerrainFrame {
     int textures = 0;
     // The tiles to draw, as indices into FarTerrain::tiles, nearest first.
     std::vector<uint16_t> drawn;
+    // The level of the shared grid each tile of drawn takes when it has heights, 0 the finest (FarTerrain::grid).
+    std::vector<uint8_t> levels;
     // The far pass's projection times the view's rotation, for Vulkan, without the upscaler's jitter. It is of camera-relative
     // positions: the shader subtracts cameraPos from each vertex first.
     mathfu::mat4 viewProjection = mathfu::mat4::Identity();
@@ -58,6 +61,9 @@ struct FarTerrainFrame {
     float fogStrength = 0;
     // Keeps the geometry and the textures alive for the renderer, which reads them by tile index.
     std::shared_ptr<FarTerrain> terrain;
+    // The landmarks of the map's landmarks.ids once their geometry is built, null before and for a map with none. Drawn at any distance,
+    // unfogged, after the far land and in its band of depth.
+    std::shared_ptr<const FarLandmarks> landmarks;
 };
 
 /*
@@ -85,8 +91,9 @@ public:
         float zMax = 0;
     };
 
-    // The draw range of the grid every baked tile shares: 64 x 64 cells with a skirt, its vertices offsets from the tile's corner in
-    // world orientation, at height 0. Empty when no tile has heights.
+    // The draw range of a grid the baked tiles share: 64 x 64 cells at level 0, half as many a side at each level after, with a skirt,
+    // its vertices offsets from the tile's corner in world orientation, at height 0. Empty when no tile has heights.
+    static constexpr int kGridLevels = 3;
     struct Grid {
         uint32_t firstIndex = 0;
         uint32_t indexCount = 0;
@@ -127,7 +134,7 @@ public:
 
     bool isReady() const { return m_ready; }
     const std::vector<Tile> &tiles() const { return m_tiles; }
-    const Grid &grid() const { return m_grid; }
+    const Grid &grid(int level) const { return m_grids[level]; }
     // Reads the baked heights of a tile whose hasHeights is set. False, with the reason on stderr, for a file that no longer reads.
     bool readHeights(size_t tile, HeightTile &out) const;
     // The tile's minimap texture once makeFrame has asked for it, null before. It lives as long as the map does. The frame thread asks
@@ -141,7 +148,7 @@ private:
     struct Built {
         std::unique_ptr<Geometry> geometry;
         std::vector<Tile> tiles;
-        Grid grid;
+        std::array<Grid, kGridLevels> grids;
         std::array<int16_t, 64 * 64> tileOfCell;
         float minHeight = 0;
         float maxHeight = 0;
@@ -156,7 +163,7 @@ private:
     int m_mapId;
     std::string m_mapName;
     std::string m_heightsDir;
-    Grid m_grid;
+    std::array<Grid, kGridLevels> m_grids;
 
     std::future<std::unique_ptr<Built>> m_build;
     bool m_buildStarted = false;
@@ -173,6 +180,10 @@ private:
 
     bool m_cornersChecked = false;
     bool m_reachLogged = false;
+
+    // The landmarks of the map's landmarks.ids, loading or built, and whether the file has been read.
+    std::shared_ptr<FarLandmarks> m_landmarks;
+    bool m_landmarksRead = false;
 };
 
 #endif //WOWVIEWERLIB_FARTERRAIN_H

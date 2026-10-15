@@ -113,7 +113,8 @@ void GeneralView::addM2FromGroups(const MathHelper::FrustumCullingData &frustumD
                                                               candCullRes);
 #endif
             ScreenSizeCulling<M2ObjId>::cull(cullCameraPos, tanHalfFov, minScreenPercent,
-                                             r.begin(), r.end(), candidatesArr, candCullRes, fadeStartPercent, minWorldSize);
+                                             r.begin(), r.end(), candidatesArr, candCullRes, fadeStartPercent, minWorldSize,
+                                             &config->modelBlock);
         }, tbb::auto_partitioner());
     });
 

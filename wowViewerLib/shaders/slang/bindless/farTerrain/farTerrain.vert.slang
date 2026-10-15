@@ -19,7 +19,8 @@ precision highp int;
 // marks the draw that takes pixels from the fading full scene (FarTerrain's fade of the swap), which maps the same depth into a
 // band just above 0, through the usual viewport, so that it lies in front of every scene fragment and the far fragments still order
 // among themselves; so a tile costs no block of its own. Bit 2 marks a tile drawn on the shared grid, whose vertices are offsets from
-// the tile's corner in world orientation: the tile's row (bits 8 to 13) and column (bits 14 to 19) place the corner, and the baked
+// the tile's corner in world orientation: the tile's row (bits 8 to 13) and column (bits 14 to 19) place the corner, the grid's level (bits 20 and 21) is
+// how coarse it is, and the baked
 // height texture, 128 x 128 samples with the first and last on the tile's edges, gives each vertex its z and the normal from the four
 // samples around it. Light and fog are the fragment shader's, from the view-space position and normal.
 
@@ -64,11 +65,14 @@ void main() {
 
         // The vertex sits on the lattice of the heights: sample i lies i / 127 of the way along the tile, at texel centre (i + 0.5) / 128.
         vec2 uv = aTexCoord * ((kHeightsSize - 1.0) / kHeightsSize) + 0.5 / kHeightsSize;
-        float texel = 1.0 / kHeightsSize;
+        // A coarser grid (the level, bits 20 and 21) takes its slope over as many samples as its cell spans, so it shades as smoothly
+        // as its geometry.
+        float step = float(2 << ((gl_InstanceIndex >> 20) & 3));
+        float texel = step * 0.5 / kHeightsSize;
         float height = textureLod(uHeights, uv, 0.0).r * kHeightsPerUnorm - kHeightsBase;
 
         // The slope along the rows (v, world x falling) and the columns (u, world y falling), in yards a yard, as the tile's own normals are.
-        float spacing = 2.0 * kTileSize / (kHeightsSize - 1.0);
+        float spacing = step * kTileSize / (kHeightsSize - 1.0);
         float alongRows = (textureLod(uHeights, uv + vec2(0.0, texel), 0.0).r - textureLod(uHeights, uv - vec2(0.0, texel), 0.0).r) * kHeightsPerUnorm / spacing;
         float alongCols = (textureLod(uHeights, uv + vec2(texel, 0.0), 0.0).r - textureLod(uHeights, uv - vec2(texel, 0.0), 0.0).r) * kHeightsPerUnorm / spacing;
         normal = normalize(vec3(alongRows, alongCols, 1.0));
