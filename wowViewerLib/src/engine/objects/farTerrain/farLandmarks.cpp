@@ -16,10 +16,15 @@ waits for keep their place in the loading queue, each dropped once read. A WMO
 is listed in every tile it overlaps under one uniqueId, and so is a large model, so a uniqueId counts once. The placement matrix is
 the one M2Object and WmoObject build from the same entry. Then each model is loaded with its first skin, and each WMO with its
 exterior groups, the ones seen from outside; the rest add vertices nobody sees from afar. The geometry is in world space, so every
-placement holds its own copy, and the far pass's vertex shader takes the camera off each vertex as it does for the far land.
+placement holds its own copy, and the far pass's vertex shader takes the camera off each vertex as it does for the far land. A WMO
+named by some of its groups alone loads those groups, exterior or not, and no other. A GameObjectSpawn row whose model is named counts as
+a placement too, once the tiles are scanned, at its world position, turned by its quaternion and at its scale, as WorldObjectManager places
+it; its events are ignored. Naxxramas is one: no tile places it.
 
 A model draws the batches of its skin whose texture is a plain file and whose material is opaque or alpha-keyed; a replaceable
-texture (a creature's skin) and a blended material (glows, particles) are left out. A WMO draws every batch of its exterior groups
+texture (a creature's skin) and a blended material (glows, particles) are left out. A model named by some of its batches draws those
+alone, solid whatever their material, each with the vertices of its own skin section: a Netherstorm biodome is additive shells, one of
+which stands for the dome. A WMO draws every batch of its exterior groups
 with its material's first texture. Animation is ignored: a model stands in its bind pose. A batch whose lookups or indices fall outside
 its file is skipped, so an odd file costs that batch and never the flight.
 */
@@ -49,8 +54,14 @@ namespace {
     }
 }
 
-FarLandmarks::FarLandmarks(const HApiContainer &api, const HWdtFile &wdt, std::vector<int> ids) :
-    m_api(api), m_wdt(wdt), m_ids(std::move(ids)), m_idSet(m_ids.begin(), m_ids.end()) {
+FarLandmarks::FarLandmarks(const HApiContainer &api, const HWdtFile &wdt, int mapId, const std::vector<IdEntry> &ids) :
+    m_api(api), m_wdt(wdt), m_mapId(mapId) {
+    for (const IdEntry &entry : ids) {
+        if (entry.group < 0) m_whole.insert(entry.fileId);
+        else m_onlyGroups[entry.fileId].insert(entry.group);
+    }
+    // A WMO named whole draws its exterior groups, whatever groups another entry names.
+    for (int id : m_whole) m_onlyGroups.erase(id);
 }
 
 bool FarLandmarks::poll() {
@@ -70,6 +81,7 @@ bool FarLandmarks::poll() {
         }
         if (!m_objectFiles.empty() || m_nextTile < 64 * 64) return false;
 
+        scanSpawns();
         request();
         m_phase = Phase::Load;
     }
@@ -90,15 +102,29 @@ bool FarLandmarks::poll() {
 void FarLandmarks::scan(const AdtFile &file) {
     for (int i = 0; i < file.doodadDef_len; i++) {
         const SMDoodadDef &def = file.doodadDef[i];
-        if (!def.flags.mddf_entry_is_filedata_id || m_idSet.count((int) def.nameId) == 0) continue;
+        if (!def.flags.mddf_entry_is_filedata_id || (m_whole.count((int) def.nameId) == 0 && m_onlyGroups.count((int) def.nameId) == 0)) continue;
         if (!m_seen.insert(def.uniqueId).second) continue;
         m_placements.push_back({false, (int) def.nameId, placementMatrix(def.position, def.rotation, def.scale / 1024.0f)});
     }
     for (int i = 0; i < file.mapObjDef_len; i++) {
         const SMMapObjDef &def = file.mapObjDef[i];
-        if (!def.flags.modf_entry_is_filedata_id || m_idSet.count((int) def.nameId) == 0) continue;
+        if (!def.flags.modf_entry_is_filedata_id || (m_whole.count((int) def.nameId) == 0 && m_onlyGroups.count((int) def.nameId) == 0)) continue;
         if (!m_seen.insert(def.uniqueId).second) continue;
         m_placements.push_back({true, (int) def.nameId, placementMatrix(def.position, def.rotation, def.unk != 0 ? def.unk / 1024.0f : 1.0f)});
+    }
+}
+
+void FarLandmarks::scanSpawns() {
+    if (m_api->databaseHandler == nullptr) return;
+    std::vector<GameObjectSpawnRecord> spawns;
+    m_api->databaseHandler->getGameObjectSpawnsForMap(m_mapId, spawns);
+    for (const auto &spawn : spawns) {
+        const int id = spawn.ModelFileDataID;
+        if (m_whole.count(id) == 0 && (!spawn.IsWmo || m_onlyGroups.count(id) == 0)) continue;
+        mathfu::mat4 matrix = mathfu::mat4::FromTranslationVector(mathfu::vec3(spawn.Pos[0], spawn.Pos[1], spawn.Pos[2]));
+        matrix *= mathfu::quat(spawn.Rotation[3], spawn.Rotation[0], spawn.Rotation[1], spawn.Rotation[2]).ToMatrix4();
+        matrix *= mathfu::mat4::FromScaleVector(mathfu::vec3(spawn.Scale, spawn.Scale, spawn.Scale));
+        m_placements.push_back({spawn.IsWmo, id, matrix});
     }
 }
 
@@ -129,8 +155,10 @@ bool FarLandmarks::loaded() {
         auto &groups = m_groups[fileId];
         if (groups.empty()) {
             groups.resize(wmo->groupsLen);
+            const auto only = m_onlyGroups.find(fileId);
             for (int i = 0; i < wmo->groupsLen && i < (int) wmo->gfids[0].size(); i++) {
-                if (wmo->groups[i].flags.EXTERIOR && wmo->gfids[0][i] != 0) {
+                const bool wanted = only != m_onlyGroups.end() ? only->second.count(i) > 0 : wmo->groups[i].flags.EXTERIOR != 0;
+                if (wanted && wmo->gfids[0][i] != 0) {
                     groups[i] = cache->getWmoGroupGeomCache()->getFileId((int) wmo->gfids[0][i]);
                 }
             }
@@ -163,26 +191,34 @@ void FarLandmarks::build() {
             M2SkinProfile *skin = skinIt->second->getSkinData();
             if (m2 == nullptr || skin == nullptr) continue;
 
-            const auto base = (int32_t) m_geometry.vertices.size();
-            bool vertices = true;
-            for (int k = 0; k < skin->vertices.size && vertices; k++) {
-                const unsigned short *index = skin->vertices.getElement(k);
-                const M2Vertex *v = index != nullptr ? m2->vertices.getElement(*index) : nullptr;
-                if (v == nullptr) { vertices = false; break; }
-                m_geometry.vertices.push_back(vertexOf(placement.matrix, mathfu::vec3(v->pos), mathfu::vec3(v->normal), mathfu::vec2(v->tex_coords[0])));
-            }
-            if (!vertices) {
-                m_geometry.vertices.resize(base);
-                continue;
-            }
+            // Copies the skin's vertices from first to first + count into the geometry; false, with none copied, on an index outside the file.
+            auto copyVertices = [&](int first, int count) {
+                const auto at = m_geometry.vertices.size();
+                for (int k = first; k < first + count; k++) {
+                    const unsigned short *index = skin->vertices.getElement(k);
+                    const M2Vertex *v = index != nullptr ? m2->vertices.getElement(*index) : nullptr;
+                    if (v == nullptr) {
+                        m_geometry.vertices.resize(at);
+                        return false;
+                    }
+                    m_geometry.vertices.push_back(vertexOf(placement.matrix, mathfu::vec3(v->pos), mathfu::vec3(v->normal), mathfu::vec2(v->tex_coords[0])));
+                }
+                return true;
+            };
+
+            const auto only = m_onlyGroups.find(placement.fileId);
+            const std::unordered_set<int> *batches = only != m_onlyGroups.end() ? &only->second : nullptr;
+            auto base = (int32_t) m_geometry.vertices.size();
+            if (batches == nullptr && !copyVertices(0, skin->vertices.size)) continue;
             for (int b = 0; b < skin->batches.size; b++) {
+                if (batches != nullptr && batches->count(b) == 0) continue;
                 const M2Batch &batch = *skin->batches.getElement(b);
                 const M2Material *materialOf = m2->materials.getElement(batch.materialIndex);
                 const int16_t *lookup = m2->texture_lookup_table.getElement(batch.textureComboIndex);
                 const M2SkinSection *sectionOf = skin->skinSections.getElement(batch.skinSectionIndex);
                 if (materialOf == nullptr || lookup == nullptr || *lookup < 0 || sectionOf == nullptr) continue;
                 const M2Material &material = *materialOf;
-                if (material.blending_mode > 1) continue;
+                if (batches == nullptr && material.blending_mode > 1) continue;
                 const int textureIndex = *lookup;
                 const M2Texture *textureOf = m2->textures.getElement(textureIndex);
                 if (textureOf == nullptr || textureOf->type != 0) continue;
@@ -199,13 +235,27 @@ void FarLandmarks::build() {
                 const M2SkinSection &section = *sectionOf;
                 const uint32_t start = section.indexStart + ((uint32_t) section.Level << 16);
                 if (start + section.indexCount > (uint32_t) skin->indices.size) continue;
+                // A batch named alone carries its own vertices, the range of its section, and is drawn solid whatever its blending.
+                const int firstVertex = batches != nullptr ? section.vertexStart : 0;
+                if (batches != nullptr) {
+                    bool inSection = true;
+                    for (uint32_t i = 0; i < section.indexCount && inSection; i++) {
+                        const int index = *skin->indices.getElement((int) (start + i));
+                        inSection = index >= section.vertexStart && index < section.vertexStart + section.vertexCount;
+                    }
+                    if (!inSection) continue;
+                    base = (int32_t) m_geometry.vertices.size();
+                    if (!copyVertices(section.vertexStart, section.vertexCount)) continue;
+                }
                 FarLandmarks::Draw draw;
                 draw.firstIndex = (uint32_t) m_geometry.indices.size();
                 draw.indexCount = section.indexCount;
                 draw.vertexOffset = base;
                 draw.texture = textureSlot(blp);
-                draw.alphaTest = material.blending_mode == 1;
-                for (uint32_t i = 0; i < section.indexCount; i++) m_geometry.indices.push_back(*skin->indices.getElement((int) (start + i)));
+                draw.alphaTest = batches == nullptr && material.blending_mode == 1;
+                for (uint32_t i = 0; i < section.indexCount; i++) {
+                    m_geometry.indices.push_back((uint16_t) (*skin->indices.getElement((int) (start + i)) - firstVertex));
+                }
                 m_geometry.draws.push_back(draw);
             }
             continue;

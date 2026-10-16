@@ -18,7 +18,8 @@ class WmoGroupGeom;
 
 /*
  * The landmarks of a map: every placement of the M2 models and WMOs its landmarks.ids names (FarHeights), found in the object file of every
- * tile, flattened into world-space geometry with one draw for each texture batch. The far pass draws them at any distance, unfogged.
+ * tile and in the map's GameObjectSpawn rows, flattened into world-space geometry with one draw for each texture batch. The far pass draws
+ * them at any distance, unfogged.
  * The map's FarTerrain makes one when it opens a map whose file names any.
  */
 class FarLandmarks {
@@ -40,12 +41,13 @@ public:
         std::vector<HBlpTexture> textures;
     };
 
-    FarLandmarks(const HApiContainer &api, const HWdtFile &wdt, std::vector<int> ids);
+    // An entry naming a group of a WMO, or a batch of a model's first skin, draws that alone, a batch solid whatever its material; one
+    // naming a WMO whole draws its exterior groups.
+    FarLandmarks(const HApiContainer &api, const HWdtFile &wdt, int mapId, const std::vector<IdEntry> &ids);
 
     // Steps the load: the tiles' object files, then the models and WMOs, then the geometry. True once the geometry is built.
     bool poll();
 
-    const std::vector<int> &ids() const { return m_ids; }
     // The geometry, once poll has returned true; empty when no placement matched.
     const Geometry &geometry() const { return m_geometry; }
 
@@ -57,6 +59,7 @@ private:
     };
 
     void scan(const AdtFile &file);
+    void scanSpawns();
     void request();
     bool loaded();
     void build();
@@ -64,8 +67,10 @@ private:
 
     HApiContainer m_api;
     HWdtFile m_wdt;
-    std::vector<int> m_ids;
-    std::unordered_set<int> m_idSet;
+    int m_mapId;
+    // The models and WMOs named whole, and the WMOs named by some groups alone with those groups.
+    std::unordered_set<int> m_whole;
+    std::unordered_map<int, std::unordered_set<int>> m_onlyGroups;
 
     enum class Phase { Scan, Load, Done };
     Phase m_phase = Phase::Scan;

@@ -1085,7 +1085,10 @@ void WmoObject::countBakeGroups(float minX, float maxX, float minY, float maxY, 
 }
 
 bool WmoObject::isGroupSkipped(int groupId) {
-    return m_api->getConfig()->skipUnreachableWmoGroups && this->mainGeom->groups[groupId].flags.UNREACHABLE;
+    const Config &config = *m_api->getConfig();
+    if (config.skipUnreachableWmoGroups && this->mainGeom->groups[groupId].flags.UNREACHABLE) return true;
+    const auto blocked = config.modelBlock.groups.find(getModelFileId());
+    return blocked != config.modelBlock.groups.end() && blocked->second.count(groupId) > 0;
 }
 
 bool WmoObject::isGroupWmoInterior(int groupId) {

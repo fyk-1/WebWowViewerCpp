@@ -5,8 +5,13 @@
 #ifndef WOWVIEWERLIB_CONFIG_H
 #define WOWVIEWERLIB_CONFIG_H
 
+#include <algorithm>
+#include <compare>
+#include <limits>
 #include <shared_mutex>
+#include <stdexcept>
 #include <string>
+#include <vector>
 #include <unordered_set>
 #include <unordered_map>
 #include <thread>
@@ -37,10 +42,59 @@ enum class EFreeStrategy : char {
     eFrameBase
 };
 
-// A set of ids the culling threads read while the command thread replaces it, so both go through lock.
+// One entry of an IdSet: a FileDataID, and the index of one of the WMO's groups where the entry names that group alone, else -1.
+// Its text form is `<id>` or `<id>:<group>`.
+struct IdEntry {
+    int fileId = 0;
+    int group = -1;
+    auto operator<=>(const IdEntry &) const = default;
+
+    std::string text() const { return group < 0 ? std::to_string(fileId) : std::to_string(fileId) + ":" + std::to_string(group); }
+    // Reads the text form; false for anything else.
+    static bool parse(const std::string &text, IdEntry &entry);
+};
+
+inline bool IdEntry::parse(const std::string &text, IdEntry &entry) {
+    const auto colon = text.find(':');
+    try {
+        size_t used = 0;
+        const std::string idText = text.substr(0, colon);
+        const long long id = std::stoll(idText, &used);
+        if (used != idText.size() || id < (std::numeric_limits<int>::min)() || id > (std::numeric_limits<int>::max)()) return false;
+        entry.fileId = (int) id;
+        entry.group = -1;
+        if (colon == std::string::npos) return true;
+        const std::string groupText = text.substr(colon + 1);
+        const long long group = std::stoll(groupText, &used);
+        if (used != groupText.size() || group < 0 || group > (std::numeric_limits<int>::max)()) return false;
+        entry.group = (int) group;
+        return true;
+    } catch (const std::exception &) {
+        return false;
+    }
+}
+
+// A set of ids the culling threads read while the command thread replaces it, so both go through lock. An entry names a model or a
+// WMO whole, in `ids`, or names some groups of a WMO alone, in `groups`; a field whose reader looks at `ids` only ignores the latter.
 struct IdSet {
     std::unordered_set<int> ids;
+    std::unordered_map<int, std::unordered_set<int>> groups;
     mutable std::shared_mutex lock;
+
+    // Whether the WMO's group is named, by the WMO whole or by that group. The caller holds lock.
+    bool namesGroup(int fileId, int group) const {
+        if (ids.count(fileId) > 0) return true;
+        const auto it = groups.find(fileId);
+        return it != groups.end() && it->second.count(group) > 0;
+    }
+    // Every entry, sorted. The caller holds lock.
+    std::vector<IdEntry> entries() const {
+        std::vector<IdEntry> result;
+        for (int id : ids) result.push_back({id, -1});
+        for (const auto &[id, groupIds] : groups) for (int group : groupIds) result.push_back({id, group});
+        std::sort(result.begin(), result.end());
+        return result;
+    }
 };
 
 struct ConfigWMOVertFlags {
@@ -97,10 +151,10 @@ public:
     // while that event's id is in it. Empty draws the spawns no event ties and the ones that are gone only while an event runs.
     IdSet activeSpawnEvents;
     // The FileDataIDs of the M2 models and the WMOs the cull drops wherever they stand, as it drops one outside the view: what a height
-    // bake leaves out of the heights. Only the bake sets it, and empty drops none.
+    // bake leaves out of the heights. A WMO entry naming a group drops that group alone. Only the bake sets it, and empty drops none.
     IdSet modelBlock;
     // The FileDataIDs of the M2 models and the WMOs a height bake records beside its tiles (FarHeights::writeLandmarks), for the far
-    // pass to draw as themselves at any distance. Only the bake reads it.
+    // pass to draw as themselves at any distance; a WMO entry naming a group draws that group alone. Only the bake reads it.
     IdSet landmarks;
     bool renderBSP = false;
     bool renderPortals = false;

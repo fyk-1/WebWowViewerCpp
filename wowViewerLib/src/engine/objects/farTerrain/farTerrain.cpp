@@ -380,8 +380,8 @@ void FarTerrain::makeFrame(const Config &config, const View &view, const std::ve
     // The landmarks the bake recorded beside the heights (FarHeights::readLandmarks), read once; the frame carries them once built.
     if (!m_landmarksRead) {
         m_landmarksRead = true;
-        const std::vector<int> ids = m_heightsDir.empty() ? std::vector<int>() : FarHeights::readLandmarks(m_heightsDir);
-        if (!ids.empty()) m_landmarks = std::make_shared<FarLandmarks>(m_api, m_wdt, ids);
+        const std::vector<IdEntry> ids = m_heightsDir.empty() ? std::vector<IdEntry>() : FarHeights::readLandmarks(m_heightsDir);
+        if (!ids.empty()) m_landmarks = std::make_shared<FarLandmarks>(m_api, m_wdt, m_mapId, ids);
     }
     frame.landmarks = m_landmarks != nullptr && m_landmarks->poll() ? m_landmarks : nullptr;
     frame.fogStart = view.drawDistance;

@@ -18,8 +18,9 @@ robots@Impl: The name table.
 
 FLYOVER_CONFIG_FIELDS is the one list of settable fields. Each entry is a kind and a member path from Config,
 and the name is that path as written, so `exteriorColors.exteriorAmbientColor` is the name of the member of
-that path. A field is added or removed here and nowhere else. An IntSet field is set from comma-separated integers, or from
-`none` for the empty set, and dumped as a sorted array.
+that path. A field is added or removed here and nowhere else. An IntSet field is set from comma-separated entries, each an integer
+or `<id>:<group>`, or from `none` for the empty set, and dumped as a sorted array, an integer for each id and a string for each
+`<id>:<group>`.
 
 The debug toggles that break the frame are left out on purpose: stopBufferUpdates, stepBufferUpdate,
 doubleCameraDebug, controlSecondCamera, swapMainAndDebug, cameraM2 and drawDepthBuffer. The structs
@@ -280,23 +281,27 @@ namespace FlyoverConfig {
                 return "";
             }
             case Kind::IntSet: {
-                // Comma-separated integers, or none for the empty set: a stdin config command carries no empty value.
+                // Comma-separated entries, each an integer or <id>:<group>, or none for the empty set: a stdin config command carries no
+                // empty value.
                 std::unordered_set<int> ids;
+                std::unordered_map<int, std::unordered_set<int>> groups;
                 if (!equalsNoCase(text, "none")) {
                     std::stringstream stream(text);
                     std::string part;
+                    bool any = false;
                     while (std::getline(stream, part, ',')) {
-                        long long number;
-                        if (!parseLong(part, number) || number < std::numeric_limits<int>::min() || number > std::numeric_limits<int>::max()) {
-                            return "expected comma-separated integers, or none";
-                        }
-                        ids.insert((int) number);
+                        IdEntry entry;
+                        if (!IdEntry::parse(trim(part), entry)) return "expected comma-separated integers or id:group, or none";
+                        if (entry.group < 0) ids.insert(entry.fileId);
+                        else groups[entry.fileId].insert(entry.group);
+                        any = true;
                     }
-                    if (ids.empty()) return "expected comma-separated integers, or none";
+                    if (!any) return "expected comma-separated integers or id:group, or none";
                 }
                 auto &set = *(IdSet *) target;
                 std::unique_lock lock(set.lock);
                 set.ids = std::move(ids);
+                set.groups = std::move(groups);
                 return "";
             }
             case Kind::ParamSource: {
@@ -355,9 +360,12 @@ namespace FlyoverConfig {
                 case Kind::IntSet: {
                     auto &set = *(const IdSet *) source;
                     std::shared_lock lock(set.lock);
-                    std::vector<int> sorted(set.ids.begin(), set.ids.end());
-                    std::sort(sorted.begin(), sorted.end());
-                    result[field.name] = sorted;
+                    auto list = nlohmann::ordered_json::array();
+                    for (const IdEntry &entry : set.entries()) {
+                        if (entry.group < 0) list.push_back(entry.fileId);
+                        else list.push_back(entry.text());
+                    }
+                    result[field.name] = list;
                     break;
                 }
                 case Kind::ParamSource:

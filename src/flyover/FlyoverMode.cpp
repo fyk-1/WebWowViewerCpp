@@ -145,9 +145,9 @@ namespace {
         } else if (value.is_array()) {
             out.clear();
             for (const auto &item : value) {
-                if (!item.is_number()) return false;
+                if (!item.is_number() && !item.is_string()) return false;
                 if (!out.empty()) out += ",";
-                out += item.dump();
+                out += item.is_string() ? item.get<std::string>() : item.dump();
             }
         } else {
             return false;

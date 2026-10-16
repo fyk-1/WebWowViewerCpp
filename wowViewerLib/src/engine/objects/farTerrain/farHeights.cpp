@@ -90,7 +90,7 @@ std::string FarHeights::landmarksPath(const std::string &mapDir) {
     return mapDir + "/landmarks.ids";
 }
 
-bool FarHeights::writeLandmarks(const std::string &mapDir, const std::vector<int> &ids, std::string &error) {
+bool FarHeights::writeLandmarks(const std::string &mapDir, const std::vector<IdEntry> &ids, std::string &error) {
     const auto native = std::filesystem::u8path(landmarksPath(mapDir));
     auto temp = native;
     temp += ".tmp";
@@ -99,7 +99,7 @@ bool FarHeights::writeLandmarks(const std::string &mapDir, const std::vector<int
     std::filesystem::create_directories(native.parent_path(), code);
     {
         std::ofstream stream(temp, std::ios::trunc);
-        for (int id : ids) stream << id << "\n";
+        for (const IdEntry &id : ids) stream << id.text() << "\n";
         stream.flush();
         if (!stream) {
             error = "cannot write " + temp.string();
@@ -114,18 +114,19 @@ bool FarHeights::writeLandmarks(const std::string &mapDir, const std::vector<int
     return true;
 }
 
-std::vector<int> FarHeights::readLandmarks(const std::string &mapDir) {
+std::vector<IdEntry> FarHeights::readLandmarks(const std::string &mapDir) {
     std::ifstream stream(std::filesystem::u8path(landmarksPath(mapDir)));
-    std::vector<int> ids;
+    std::vector<IdEntry> ids;
     std::string line;
     while (std::getline(stream, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
-        try {
-            ids.push_back(std::stoi(line));
-        } catch (const std::exception &) {
+        IdEntry entry;
+        if (!IdEntry::parse(line, entry)) {
             std::cerr << "far heights: " << landmarksPath(mapDir) << ": \"" << line << "\" is no id, so the map has no landmarks" << std::endl;
             return {};
         }
+        ids.push_back(entry);
     }
     std::sort(ids.begin(), ids.end());
     return ids;

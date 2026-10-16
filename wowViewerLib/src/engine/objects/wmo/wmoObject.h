@@ -251,7 +251,8 @@ public:
     bool getGroupWmoThatCameraIsInside(mathfu::vec4 cameraVec4, WmoGroupResult &result, float &bottomBorder);
 
     bool isGroupWmoInterior(int groupId);
-    // True for a group the config leaves out: UNREACHABLE with skipUnreachableWmoGroups.
+    // True for a group the config leaves out: UNREACHABLE with skipUnreachableWmoGroups, or named alone by modelBlock. The caller
+    // holds modelBlock's lock.
     bool isGroupSkipped(int groupId);
     // Counts the groups a bake of the square from min to max (world x and y) draws: those the config leaves in whose box the square
     // reaches. `pending` is how many of `total` have not loaded.
