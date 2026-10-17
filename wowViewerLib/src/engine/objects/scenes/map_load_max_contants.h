@@ -1,6 +1,6 @@
 #include <chrono>
 
-const int MAX_LOAD_ADT_PER_FRAME = 2;
+const int MAX_LOAD_ADT_PER_FRAME = 1;
 
 /*
 robots@Impl: The time one frame spends finishing loaded M2 geometry, WMO roots and WMO groups (Map::doPostLoad). The count caps
