@@ -6,6 +6,8 @@
 #define AWEBWOWVIEWERCPP_FRAMEDEPENDENTDATA_H
 
 #include <array>
+#include <memory>
+#include <vector>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -200,6 +202,11 @@ struct FrameDependantData {
     bool useCloseRiverColorForDB;
 
     LiquidColors liquidColors;
+
+// Tile light (Config::tileLight): the grid TileLightGrid coloured, as the shaders read it, or null while the setting is off or the grid has no
+// colouring yet. The grid is never written once published; a new colouring is a new vector under a new version, which the renderer uploads.
+    std::shared_ptr<const std::vector<mathfu::vec4_packed>> tileLight;
+    uint32_t tileLightVersion = 0;
 
 // Planet (sun/moon discs) + stars data, computed per frame by DayNightLightHolder
     struct PlanetRenderData {

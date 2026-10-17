@@ -319,6 +319,10 @@ bool SceneWindow::wdlGround(float x, float y, float &height) {
     auto mapScene = std::dynamic_pointer_cast<Map>(m_currentScene);
     return mapScene && mapScene->wdlGround(x, y, height);
 }
+uint32_t SceneWindow::rootAdtFileDataId(int row, int col) {
+    auto mapScene = std::dynamic_pointer_cast<Map>(m_currentScene);
+    return mapScene ? mapScene->rootAdtFileDataId(row, col) : 0;
+}
 const std::map<int, std::set<int>> &SceneWindow::getSkyScenesByPlayerCondition() {
     static const std::map<int, std::set<int>> empty = {};
     auto mapScene = std::dynamic_pointer_cast<Map>(m_currentScene);

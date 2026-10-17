@@ -325,6 +325,10 @@ protected:
     // Liquid render mode for the scene-wide descriptor set: 0=below, 1=above, 2=all
     HGBufferVLK m_renderModeBuffer;
 
+    // The tile-light grid of the scene-wide descriptor set (binding 5), and the version of the colouring last uploaded to it.
+    HGBufferVLK m_tileLightBuffer;
+    uint32_t m_tileLightUploaded = 0;
+
     // AABB debug wireframe rendering (drawM2BB / drawWmoBB), reusing the GPU-culling AABB buffer
     HGBufferVLK m_iboAabbDebugLine;
     HGVertexBufferBindings m_drawAabbDebugVao = nullptr;

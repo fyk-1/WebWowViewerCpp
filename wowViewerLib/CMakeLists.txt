@@ -305,6 +305,8 @@ set(SOURCE_FILES
         src/engine/objects/lights/CEngineLight.h
         src/engine/objects/scenes/dayNightDataHolder/DayNightLightHolder.cpp
         src/engine/objects/scenes/dayNightDataHolder/DayNightLightHolder.h
+        src/engine/objects/scenes/dayNightDataHolder/TileLightGrid.cpp
+        src/engine/objects/scenes/dayNightDataHolder/TileLightGrid.h
         src/engine/objects/liquid/liquidMaterials/LiquidMaterialManager.cpp
         src/engine/objects/liquid/liquidMaterials/LiquidMaterialManager.h
         src/engine/objects/liquid/liquidMaterials/LiquidWater.cpp

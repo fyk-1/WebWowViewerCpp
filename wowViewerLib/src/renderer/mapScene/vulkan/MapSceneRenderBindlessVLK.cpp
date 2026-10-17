@@ -22,7 +22,8 @@ static const DescTypeSetBindingConfig SceneDataSetConfig = {
     {1, {VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false, 1, VK_SHADER_STAGE_FRAGMENT_BIT}},
     {2, {VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false, 1, VK_SHADER_STAGE_FRAGMENT_BIT}},
     {3, {VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false, 1, VK_SHADER_STAGE_FRAGMENT_BIT}},
-    {4, {VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, false, 1, VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT}}
+    {4, {VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, false, 1, VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT}},
+    {5, {VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, false, 1, VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT}}
 };
 
 static const ShaderConfig SceneDataSetStubShaderConfig = {
@@ -582,6 +583,15 @@ MapSceneRenderBindlessVLK::MapSceneRenderBindlessVLK(const HGDeviceVLK &hDevice,
         m_renderModeBuffer->uploadData(&defaultMode, sizeof(uint32_t));
     }
 
+    // The tile-light grid, zero until the first colouring: a tile with a zero flag weighs nothing in the shaders.
+    {
+        const std::vector<mathfu::vec4_packed> empty(TileLightGrid::kVec4s);
+        m_tileLightBuffer = m_device->createSSBOBuffer("TileLight", TileLightGrid::kVec4s * sizeof(mathfu::vec4_packed),
+                                                       sizeof(mathfu::vec4_packed));
+        m_tileLightBuffer->uploadData(empty.data(), (int) (empty.size() * sizeof(mathfu::vec4_packed)));
+        allBuffers.push_back(m_tileLightBuffer);
+    }
+
     {
         //Create SceneWide descriptor
         sceneWideChunk = std::make_shared<GBufferChunkDynamicVersionedVLK<sceneWideBlockVSPS>>(hDevice, 3, uboBuffer);
@@ -592,7 +602,8 @@ MapSceneRenderBindlessVLK::MapSceneRenderBindlessVLK(const HGDeviceVLK &hDevice,
                     .texture(1, hDevice->getBlackTexturePixel())
                     .texture(2, hDevice->getWhiteTexturePixel())
                     .texture_depth(3, hDevice->getEmptyDepthTexture())
-                    .ssbo(4, m_renderModeBuffer);
+                    .ssbo(4, m_renderModeBuffer)
+                    .ssbo(5, m_tileLightBuffer);
 
                 sceneWideDS = ds;
             }).toMaterial();
@@ -2522,6 +2533,13 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
     }
 
     if (stepBufferUpdates) {
+        // Only a frame whose grid is a new colouring pays for the upload.
+        const auto &tileLight = framePlan->frameDependentData->tileLight;
+        if (tileLight != nullptr && framePlan->frameDependentData->tileLightVersion != m_tileLightUploaded) {
+            m_tileLightBuffer->uploadData(tileLight->data(), (int) (tileLight->size() * sizeof(mathfu::vec4_packed)));
+            m_tileLightUploaded = framePlan->frameDependentData->tileLightVersion;
+        }
+
         updateSceneWideChunk(sceneWideChunk,
                              renderingMatricessAndSizes,
                              framePlan->frameDependentData,
@@ -2626,7 +2644,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                     updatingTarget->update(
                         renderTarget.viewPortDimensions.maxs[0],
                         renderTarget.viewPortDimensions.maxs[1],
-                        framePlan->frameDependentData->currentGlow,
+                        l_this->m_config->disableGlow ? 0.0f : framePlan->frameDependentData->currentGlow,
                         framePlan->pointLights,
                         framePlan->spotLights,
                         framePlan->insideSpotLights

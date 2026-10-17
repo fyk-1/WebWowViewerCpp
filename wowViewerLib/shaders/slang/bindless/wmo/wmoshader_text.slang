@@ -11,6 +11,7 @@ precision highp int;
 #include "../../common/commonWoweeSwitch.slang"
 #include "../../common/commonBackFace.slang"
 #include "../../common/commonUboSceneData.slang"
+#include "../../common/commonTileLight.slang"
 #include "../../common/commonLiquidDepthTest.slang"
 
 layout (location = 0) in vec2 vTexCoord;
@@ -95,6 +96,7 @@ void main() {
 
     vec4 finalColor = vec4(0.0, 0.0, 0.0, 1.0);
 #ifndef DEFERRED
+    SceneWideParams lit = tileLit(scene, vPosition.xyz);
     vec3 accumLight = vec3(0.0);
     if (scene.uSceneSize_DisableLightBuffer.z == 0.0 && wmoMeshWide.UseLitColor_EnableAlpha_PixelShader_BlendMode.w <= 1) {
         accumLight = texture(lightBuffer, (gl_FragCoord.xy / scene.uSceneSize_DisableLightBuffer.xy)).xyz;
@@ -103,13 +105,16 @@ void main() {
 //    matDiffuse.rbg = vec3(0, 0, 1);
 
     vec3 litColor;
-    if (woweeOn(scene, WOWEE_WMO)) {
+    // The bake's unlit frame keeps the material colour as it is.
+    if (woweeOn(scene, WOWEE_UNLIT)) {
+        litColor = matDiffuse;
+    } else if (woweeOn(scene, WOWEE_WMO)) {
         litColor = wo_calcLight(
             matDiffuse,
             normal,
             vPosition.xyz,
             wmoMeshWide.UseLitColor_EnableAlpha_PixelShader_BlendMode.x == 1,
-            scene,
+            lit,
             intLight,
             accumLight,
             vColor.rgb * 2.0,
@@ -122,7 +127,7 @@ void main() {
             normal,
             vPosition.xyz,
             wmoMeshWide.UseLitColor_EnableAlpha_PixelShader_BlendMode.x == 1,
-            scene,
+            lit,
             intLight,
             accumLight /*accumLight*/,
             vColor.rgb * 2.0,
@@ -161,7 +166,7 @@ void main() {
                 normal,
                 vPosition.xyz,
                 applyLight,
-                scene,
+                lit,
                 extLight,
                 accumLight,
                 vec3(0.0),
@@ -176,12 +181,14 @@ void main() {
 #endif
 
 #ifndef DEFERRED
-    finalColor = makeFog2(fogData,
-                          finalColor,
-                          scene.uViewUpSceneTime.xyz,
-                          vPosition.xyz,
-                          scene.extLight.uExteriorDirectColorDir.xyz,
-                          wmoMeshWide.UseLitColor_EnableAlpha_PixelShader_BlendMode.w);
+    if (!woweeOn(scene, WOWEE_UNLIT)) {
+        finalColor = makeFog2(fogData,
+                              finalColor,
+                              scene.uViewUpSceneTime.xyz,
+                              vPosition.xyz,
+                              scene.extLight.uExteriorDirectColorDir.xyz,
+                              wmoMeshWide.UseLitColor_EnableAlpha_PixelShader_BlendMode.w);
+    }
 #endif
 
 finalColor.a = 1.0;

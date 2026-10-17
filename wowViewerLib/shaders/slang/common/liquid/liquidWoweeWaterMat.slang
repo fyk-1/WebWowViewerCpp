@@ -17,7 +17,7 @@ import glsl;
 // planar reflection, wake froth, wave crests and subsurface scattering (WoWee feeds those from its own vertex
 // displacement and player state); Config::waterSkyReflection stands a sky gradient in for the reflection. The body
 // colours and alphas are WoWee's per-type constants. Scene time arrives in milliseconds; WoWee's constants are tuned in
-// seconds.
+// seconds. With the tile light on, the caller hands in the scene block with the tile's water colours (tileLit).
 
 float ww_hash21(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);

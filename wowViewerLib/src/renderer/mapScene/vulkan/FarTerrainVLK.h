@@ -89,6 +89,8 @@ private:
     // shared grid once its texture has been seen uploaded (m_heightsLanded), and its own geometry until then.
     std::vector<HGSamplableTexture> m_heightTextures;
     std::vector<uint8_t> m_heightsLanded;
+    // The baked colour of each tile as a texture, null for a tile that wears its minimap.
+    std::vector<HGSamplableTexture> m_colorTextures;
     // Whether the device samples R16_UNORM with a linear filter, as the heights need; unknown (-1) until the first height texture.
     int m_heightFormatUsable = -1;
 

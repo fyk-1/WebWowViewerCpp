@@ -45,7 +45,7 @@ struct FarTerrainFrame {
     float share = 1.0f;
     // The far plane of the far pass, in yards.
     float extent = 0;
-    // The tiles with a low-detail entry, and how many of their minimap textures have landed.
+    // The tiles with a low-detail entry, and how many minimap textures have landed: a tile wearing baked colour asks for none.
     int tiles = 0;
     int textures = 0;
     // The tiles to draw, as indices into FarTerrain::tiles, nearest first.
@@ -87,6 +87,9 @@ public:
         // The tile has a baked height file (FarHeights), whose lowest and highest heights widen aabb. The renderer draws such a tile on
         // the shared grid, displaced by the heights, once they have landed, and on its own range until then.
         bool hasHeights = false;
+        // The tile has a baked colour file (FarHeights::colorPath). The renderer dresses such a tile in it, once it has read it, in
+        // place of the minimap, which is then never requested.
+        bool hasColor = false;
         float zMin = 0;
         float zMax = 0;
     };
@@ -137,6 +140,9 @@ public:
     const Grid &grid(int level) const { return m_grids[level]; }
     // Reads the baked heights of a tile whose hasHeights is set. False, with the reason on stderr, for a file that no longer reads.
     bool readHeights(size_t tile, HeightTile &out) const;
+    // Reads the baked colour of a tile whose hasColor is set. False, with the reason on stderr, for a file that no longer reads.
+    // 🤖 A tile whose colour fails to read is asked for as a minimap from then on.
+    bool readColor(size_t tile, ColorTile &out) const;
     // The tile's minimap texture once makeFrame has asked for it, null before. It lives as long as the map does. The frame thread asks
     // and the render thread reads, so both go through a lock.
     HBlpTexture texture(size_t tile) const;
@@ -173,6 +179,8 @@ private:
     std::vector<Tile> m_tiles;
     mutable std::mutex m_textureMutex;
     std::vector<HBlpTexture> m_textures;
+    // 🤖 1 for a tile whose colour file no longer reads, which then takes its minimap; guarded by m_textureMutex.
+    mutable std::vector<uint8_t> m_colorFailed;
     std::array<int16_t, 64 * 64> m_tileOfCell;
     float m_minHeight = 0;
     float m_maxHeight = 0;

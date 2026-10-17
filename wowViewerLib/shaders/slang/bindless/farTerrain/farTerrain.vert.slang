@@ -15,7 +15,8 @@ precision highp int;
 // view's rotation without its translation and the shader takes the camera off the vertex first, since a world position of 17 000
 // yards through a matrix carrying the camera's translation loses a thousandth of a yard of depth to the float, and the same
 // vertex through the rotation alone loses a ten-thousandth at 2 000 yards. The instance
-// index of the draw is two flags: bit 0 is the tile's texture flag, 1 where the minimap has landed and 0 where it has not, and bit 1
+// index of the draw is a set of flags: bit 0 is the tile's texture flag, 1 where its texture (the minimap or the baked colour) has
+// landed and 0 where it has not, bit 5 marks a tile wearing its baked colour, and bit 1
 // marks the draw that takes pixels from the fading full scene (FarTerrain's fade of the swap), which maps the same depth into a
 // band just above 0, through the usual viewport, so that it lies in front of every scene fragment and the far fragments still order
 // among themselves; so a tile costs no block of its own. Bit 2 marks a tile drawn on the shared grid, whose vertices are offsets from

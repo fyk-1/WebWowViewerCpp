@@ -65,6 +65,7 @@ namespace {
     X(Bool, ignoreWMOColoring) \
     X(Bool, renderAllWmoDoodads) \
     X(Bool, disableFog) \
+    X(Bool, bakeUnlit) \
     X(Bool, drawDebugLights) \
     X(Bool, drawWmoBB) \
     X(Bool, drawM2BB) \
@@ -96,7 +97,7 @@ namespace {
     X(Float, renderScale) \
     X(Float, fsrSharpness)     X(Float, fsrOutputScale)     X(Float, minM2ScreenPercent)     X(Float, minM2WorldSize) \
     X(Int, woweeShaders)     X(Bool, randomAnimationPhase)   X(Bool, foliageTint)   X(Float, foliageTintStrength)   X(Float, m2FadeStartPercent) \
-    X(Bool, skyGlow)   X(Bool, lightSmoothing)   X(Bool, waterSkyReflection)   X(Bool, drawBackFaces)     X(Int, weatherType)   X(Float, weatherIntensity) \
+    X(Bool, skyGlow)   X(Bool, lightSmoothing)   X(Bool, tileLight)   X(Bool, waterSkyReflection)   X(Bool, drawBackFaces)     X(Int, weatherType)   X(Float, weatherIntensity) \
     X(Float, fogDensityIncreaser)     X(Float, classicFogStrength) X(Float, classicFogFalloff) X(Float, classicFogGroundZ) \
     X(Float, adtSpecMult) \
     X(Float, currentGlow) \

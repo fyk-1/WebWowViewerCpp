@@ -12,6 +12,7 @@
 #include "../../../../renderer/mapScene/MapScenePlan.h"
 #include "../../../../../3rdparty/mathfu/include/mathfu/glsl_mappings.h"
 #include "LightParamCalculate.h"
+#include "TileLightGrid.h"
 
 
 class DayNightLightHolder {
@@ -46,6 +47,8 @@ private:
     int m_mapId = -1;
 public:
     void loadZoneLights();
+    // How the map answers the tile light: which tiles it has, and the ground under their centres. Set once by the map.
+    void setTileLightSource(TileLightGrid::Source source) { m_tileLightSource = std::move(source); }
     void updateLightAndSkyboxData(const HMapRenderPlan &mapRenderPlan, MathHelper::FrustumCullingData &frustumData,
                                    StateForConditions &stateForConditions, const AreaRecord &areaRecord);
 
@@ -93,6 +96,13 @@ private:
     } m_smoothedLight;
 
     void smoothLight(const HFrameDependantData &fdd, animTime_t deltaTime);
+
+    // The per-tile light of Config::tileLight. Its blends are worked out a few tiles a frame, then the grid is coloured on the
+    // frame the time of day changes and published to the frame data.
+    TileLightGrid m_tileLight;
+    TileLightGrid::Source m_tileLightSource;
+    void updateTileLight(const HFrameDependantData &fdd, const Config *config);
+    void colourTileLight(const Config *config);
 
     void
     inline calcLightParamResult(int lightParamId, const Config *config,

@@ -10,6 +10,7 @@ precision highp int;
 #include "../../common/commonWoweeAdtLight.slang"
 #include "../../common/commonWoweeSwitch.slang"
 #include "../../common/commonUboSceneData.slang"
+#include "../../common/commonTileLight.slang"
 #include "../../common/commonAdtIndirectDescriptorSet.slang"
 
 
@@ -52,6 +53,7 @@ void main() {
     ivec4 animation_speedPerLayer[2] = adtMeshWidePS.animation_speedPerLayer;
     vec4 scaleFactorPerLayer[2] = adtMeshWidePS.scaleFactorPerLayer;
     float sceneTime = scene.uViewUpSceneTime.w;
+    SceneWideParams lit = tileLit(scene, vPosition.xyz);
 
     vec2 tcLayer[8];
     for (int i = 0; i < 4; i++) {
@@ -145,8 +147,11 @@ void main() {
 //    matDiffuse.rbg = vec3(0, 0, 1);
 
 
-    if (woweeOn(scene, WOWEE_ADT)) {
-        finalColor = vec4(wt_calcLight(matDiffuse, normalize(vNormal), scene, accumLight, ao), 1.0);
+    // The bake's unlit frame keeps the albedo as it is.
+    if (woweeOn(scene, WOWEE_UNLIT)) {
+        finalColor = vec4(matDiffuse, 1.0);
+    } else if (woweeOn(scene, WOWEE_ADT)) {
+        finalColor = vec4(wt_calcLight(matDiffuse, normalize(vNormal), lit, accumLight, ao), 1.0);
     } else {
         finalColor = vec4(
             calcLight(
@@ -154,7 +159,7 @@ void main() {
                 vNormal,
                 vPosition.xyz,
                 true,
-                scene,
+                lit,
                 intLight,
                 accumLight, /* accumLight */
                 vec3(0.0), /*precomputedLight*/
@@ -170,14 +175,16 @@ void main() {
     //Spec part
     float specBlend = final.a;
     vec3 halfVec = -(normalize((scene.extLight.uExteriorDirectColorDir.xyz + normalize(vPosition))));
-    vec3 lSpecular = ((scene.extLight.uExteriorDirectColor.xyz * pow(max(0.0, dot(halfVec, normalize(vNormal))), 20.0)));
+    vec3 lSpecular = ((lit.extLight.uExteriorDirectColor.xyz * pow(max(0.0, dot(halfVec, normalize(vNormal))), 20.0)));
     vec3 specTerm = (vec3(specBlend) * lSpecular) * scene.extLight.adtSpecMult_fogCount.x;
 #ifndef DEFERRED
-    finalColor.rgb += specTerm;
+    if (!woweeOn(scene, WOWEE_UNLIT)) finalColor.rgb += specTerm;
 #endif
 
-    finalColor = makeFog2(fogData/*, int(scene.extLight.adtSpecMult_fogCount.y)*/, finalColor, scene.uViewUpSceneTime.xyz,
-                          vPosition.xyz, scene.extLight.uExteriorDirectColorDir.xyz, 0);
+    if (!woweeOn(scene, WOWEE_UNLIT)) {
+        finalColor = makeFog2(fogData/*, int(scene.extLight.adtSpecMult_fogCount.y)*/, finalColor, scene.uViewUpSceneTime.xyz,
+                              vPosition.xyz, scene.extLight.uExteriorDirectColorDir.xyz, 0);
+    }
 
 
     finalColor.a = 1.0;

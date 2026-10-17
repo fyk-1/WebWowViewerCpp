@@ -17,6 +17,11 @@
  * The file is `<row>_<col>.h16`, little-endian: "WPH1", u16 version 1, u16 size 128, f32 zMin, f32 zMax (the baked heights' own
  * lowest and highest, in yards), then 128 x 128 u16 heights in row-major [r][c]. A height v is the z of v / 16 - 1024 yards; 0
  * means no data and no baked file holds one.
+ *
+ * The colour file beside it is `<row>_<col>.rgb8`, little-endian: "WPC1", u16 version 2, u16 size 128, then 128 x 128 RGBA bytes in
+ * row-major [r][c] (ColorTile), sample (r, c) at the same world position as the height tile's. RGB is the ground's unlit colour seen
+ * from straight above, buildings included, with no relief shading in it, so the far pass lights it on its slope. A is the liquid kind
+ * of the sample, from the ADT's liquid data: 0 none, 1 river or lake water, 2 ocean, 3 magma, 4 any other liquid.
  */
 struct HeightTile {
     static constexpr int kSize = 128;
@@ -30,16 +35,28 @@ struct HeightTile {
     float z(int r, int c) const { return toZ(v[r * kSize + c]); }
 };
 
+struct ColorTile {
+    static constexpr int kSize = HeightTile::kSize;
+    std::array<uint8_t, kSize * kSize * 4> rgba = {};
+};
+
 struct FarHeights {
     static constexpr size_t kFileBytes = 16 + sizeof(HeightTile::v);
+    static constexpr size_t kColorFileBytes = 8 + sizeof(ColorTile::rgba);
 
     // The tile's file under a map's folder.
     static std::string path(const std::string &mapDir, int row, int col);
+    // The tile's colour file under a map's folder.
+    static std::string colorPath(const std::string &mapDir, int row, int col);
     // The map's folder under the build's: `<buildDir>/<mapId>`.
     static std::string mapDir(const std::string &buildDir, int mapId);
 
     // False with the reason in error when the file is missing, is not kFileBytes long, or has another magic, version or size.
     static bool read(const std::string &file, HeightTile &out, std::string &error);
+    // False with the reason in error when the file is missing, is not kColorFileBytes long, or has another magic, version or size.
+    static bool readColor(const std::string &file, ColorTile &out, std::string &error);
+    // Writes `<file>.tmp` and renames it over `file`, as writeAtomic does.
+    static bool writeColorAtomic(const std::string &file, const ColorTile &tile, std::string &error);
     // The header alone, false on the same grounds.
     static bool readHeader(const std::string &file, float &zMin, float &zMax);
     // Writes `<file>.tmp` and renames it over `file`, so a reader never sees half of one.

@@ -159,6 +159,7 @@ void FarTerrainVLK::postLoad(const FarTerrainFrame &frame) {
         m_tileMaterials.assign(m_terrain->tiles().size(), nullptr);
         m_heightTextures.assign(m_terrain->tiles().size(), nullptr);
         m_heightsLanded.assign(m_terrain->tiles().size(), 0);
+        m_colorTextures.assign(m_terrain->tiles().size(), nullptr);
         m_vertexBytes = 0;
         m_indexBytes = 0;
         m_uploadedBytes = 0;
@@ -202,12 +203,21 @@ void FarTerrainVLK::postLoad(const FarTerrainFrame &frame) {
     auto make = [&](size_t index) {
         if (made >= kMaterialsPerFrame || m_tileMaterials[index] != nullptr) return;
 
-        auto blp = m_terrain->texture(index);
-        if (blp == nullptr || blp->getStatus() != FileStatus::FSLoaded) return;
+        // A tile with baked colour wears it and waits for no minimap; one whose file no longer reads takes its minimap.
+        HGSamplableTexture texture = nullptr;
+        ColorTile color;
+        if (m_terrain->tiles()[index].hasColor && m_terrain->readColor(index, color)) {
+            texture = m_device->createTexture(false, false);
+            texture->getTexture()->loadData(ColorTile::kSize, ColorTile::kSize, color.rgba.data(), ITextureFormat::itRGBA);
+            m_colorTextures[index] = texture;
+        } else {
+            auto blp = m_terrain->texture(index);
+            if (blp == nullptr || blp->getStatus() != FileStatus::FSLoaded) return;
 
-        HGSamplableTexture texture = m_device->createBlpTexture(blp, false, false);
+            texture = m_device->createBlpTexture(blp, false, false);
+        }
 
-        // The heights go in with the minimap, since a material's set is made once; a file that no longer reads leaves the tile on its own geometry.
+        // The heights go in with the ground texture, since a material's set is made once; a file that no longer reads leaves the tile on its own geometry.
         HGSamplableTexture heights = m_device->getWhiteTexturePixel();
         if (m_terrain->tiles()[index].hasHeights && heightsUsable()) {
             HeightTile data;
@@ -276,9 +286,11 @@ void FarTerrainVLK::draw(CmdBufRecorder &cmd, const FarTerrainFrame &frame) {
             const auto &grid = m_terrain->grid((int) level);
 
             cmd.bindMaterial(material != nullptr ? material : m_gapMaterial);
-            // The instance index carries the flags of the vertex shader: bit 0 the minimap, bit 1 the taking draw, bit 2 the shared grid
-            // displaced by the baked heights, and with it the tile's row from bit 8, its column from bit 14 and the grid's level from bit 20.
-            const uint32_t instance = flags | (material != nullptr ? 1u : 0u);
+            // The instance index carries the flags of the vertex shader: bit 0 the tile's texture, bit 1 the taking draw, bit 2 the shared
+            // grid displaced by the baked heights, and with it the tile's row from bit 8, its column from bit 14 and the grid's level from
+            // bit 20, and bit 5 the baked colour as that texture.
+            const bool wearsColor = material != nullptr && m_colorTextures[index] != nullptr;
+            const uint32_t instance = flags | (material != nullptr ? 1u : 0u) | (wearsColor ? 32u : 0u);
             if (frame.heights && tile.hasHeights && m_heightsLanded[index] && grid.indexCount > 0) {
                 cmd.drawIndexed(grid.indexCount, 1, grid.firstIndex,
                                 instance | 4u | ((uint32_t) tile.row << 8) | ((uint32_t) tile.col << 14) | (level << 20), grid.vertexOffset);

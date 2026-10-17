@@ -201,6 +201,12 @@ public:
     // The WDL's ground height at a world position, where the map has a WDL tile there; makes the far terrain's holder if it is not made.
     // False until the WDL has loaded. Main thread.
     bool wdlGround(float x, float y, float &height);
+    // 🤖 The FileDataID of a continent tile's root ADT from the WDT, 0 where the tile has none or the WDT has not loaded. Main thread.
+    uint32_t rootAdtFileDataId(int row, int col) const;
+    // 🤖 The tile light's questions to the map (DayNightLightHolder::setTileLightSource): whether the WDT and the WDL have answered, and
+    // whether the WDT has an ADT at a tile. Both run on the culling thread.
+    bool tileLightSourceReady() const;
+    bool adtTileExists(int row, int col) const;
     void doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRenderPlan &renderPlan);
 
     // A map is about to open: the Map made next finishes its tiles and geometry without the per-frame budgets until the tiles

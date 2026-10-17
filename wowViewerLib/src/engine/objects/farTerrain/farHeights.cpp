@@ -33,11 +33,21 @@ namespace {
         return true;
     }
 
-    bool sizeIsRight(const std::filesystem::path &file, std::string &error) {
+    constexpr char kColorMagic[4] = {'W', 'P', 'C', '1'};
+    constexpr uint16_t kColorVersion = 2;
+
+    struct ColorHeader {
+        char magic[4];
+        uint16_t version;
+        uint16_t size;
+    };
+    static_assert(sizeof(ColorHeader) == 8);
+
+    bool sizeIsRight(const std::filesystem::path &file, size_t bytes, std::string &error) {
         std::error_code code;
         const auto size = std::filesystem::file_size(file, code);
-        if (code || size != FarHeights::kFileBytes) {
-            error = code ? "cannot read " + file.string() : file.string() + " is not " + std::to_string(FarHeights::kFileBytes) + " bytes";
+        if (code || size != bytes) {
+            error = code ? "cannot read " + file.string() : file.string() + " is not " + std::to_string(bytes) + " bytes";
             return false;
         }
         return true;
@@ -53,6 +63,10 @@ std::string FarHeights::path(const std::string &mapDir, int row, int col) {
     return (std::filesystem::path(mapDir) / (std::to_string(row) + "_" + std::to_string(col) + ".h16")).string();
 }
 
+std::string FarHeights::colorPath(const std::string &mapDir, int row, int col) {
+    return (std::filesystem::path(mapDir) / (std::to_string(row) + "_" + std::to_string(col) + ".rgb8")).string();
+}
+
 std::string FarHeights::mapDir(const std::string &buildDir, int mapId) {
     return (std::filesystem::path(buildDir) / std::to_string(mapId)).string();
 }
@@ -60,7 +74,7 @@ std::string FarHeights::mapDir(const std::string &buildDir, int mapId) {
 bool FarHeights::readHeader(const std::string &file, float &zMin, float &zMax) {
     std::string error;
     const auto native = std::filesystem::u8path(file);
-    if (!sizeIsRight(native, error)) return false;
+    if (!sizeIsRight(native, FarHeights::kFileBytes, error)) return false;
 
     std::ifstream stream(native, std::ios::binary);
     Header header;
@@ -72,7 +86,7 @@ bool FarHeights::readHeader(const std::string &file, float &zMin, float &zMax) {
 
 bool FarHeights::read(const std::string &file, HeightTile &out, std::string &error) {
     const auto native = std::filesystem::u8path(file);
-    if (!sizeIsRight(native, error)) return false;
+    if (!sizeIsRight(native, FarHeights::kFileBytes, error)) return false;
 
     std::ifstream stream(native, std::ios::binary);
     Header header;
@@ -83,6 +97,27 @@ bool FarHeights::read(const std::string &file, HeightTile &out, std::string &err
     }
     out.zMin = header.zMin;
     out.zMax = header.zMax;
+    return true;
+}
+
+bool FarHeights::readColor(const std::string &file, ColorTile &out, std::string &error) {
+    const auto native = std::filesystem::u8path(file);
+    if (!sizeIsRight(native, kColorFileBytes, error)) return false;
+
+    std::ifstream stream(native, std::ios::binary);
+    ColorHeader header;
+    if (!stream.read(reinterpret_cast<char *>(&header), sizeof(header))) {
+        error = "no header";
+        return false;
+    }
+    if (std::memcmp(header.magic, kColorMagic, 4) != 0 || header.version != kColorVersion || header.size != ColorTile::kSize) {
+        error = "not a version 2 colour tile of 128";
+        return false;
+    }
+    if (!stream.read(reinterpret_cast<char *>(out.rgba.data()), sizeof(out.rgba))) {
+        error = "cannot read " + file;
+        return false;
+    }
     return true;
 }
 
@@ -144,6 +179,32 @@ bool FarHeights::writeAtomic(const std::string &file, const HeightTile &tile, st
         Header header = {{kMagic[0], kMagic[1], kMagic[2], kMagic[3]}, kVersion, HeightTile::kSize, tile.zMin, tile.zMax};
         stream.write(reinterpret_cast<const char *>(&header), sizeof(header));
         stream.write(reinterpret_cast<const char *>(tile.v.data()), sizeof(tile.v));
+        stream.flush();
+        if (!stream) {
+            error = "cannot write " + temp.string();
+            return false;
+        }
+    }
+    std::filesystem::rename(temp, native, code);
+    if (code) {
+        error = "cannot rename " + temp.string() + ": " + code.message();
+        return false;
+    }
+    return true;
+}
+
+bool FarHeights::writeColorAtomic(const std::string &file, const ColorTile &tile, std::string &error) {
+    const auto native = std::filesystem::u8path(file);
+    auto temp = native;
+    temp += ".tmp";
+
+    std::error_code code;
+    std::filesystem::create_directories(native.parent_path(), code);
+    {
+        std::ofstream stream(temp, std::ios::binary | std::ios::trunc);
+        ColorHeader header = {{kColorMagic[0], kColorMagic[1], kColorMagic[2], kColorMagic[3]}, kColorVersion, ColorTile::kSize};
+        stream.write(reinterpret_cast<const char *>(&header), sizeof(header));
+        stream.write(reinterpret_cast<const char *>(tile.rgba.data()), sizeof(tile.rgba));
         stream.flush();
         if (!stream) {
             error = "cannot write " + temp.string();

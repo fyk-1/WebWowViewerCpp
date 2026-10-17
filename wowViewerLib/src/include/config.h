@@ -177,6 +177,8 @@ public:
 
 
     bool disableFog = false;
+    // The forward ADT, WMO and M2 shaders output their material colour with no lighting, for the bake.
+    bool bakeUnlit = false;
 
 
     bool drawDebugLights = false;
@@ -260,6 +262,8 @@ public:
     // Zone light is eased toward its target with a time constant of a fifth of a second, so a jump at a light volume,
     // a zone light or a WMO fog does not show as a pop. Time that does not pass, a paused animation, takes the target.
     bool lightSmoothing = false;
+    // Each map tile takes the exterior and water light a camera standing at its centre would get, blended between tile centres by world position.
+    bool tileLight = false;
     // Water above the surface mixes in the sky at grazing angles, as WoWee's water does with its planar reflection,
     // here from a gradient of the zone's sky colours. Takes effect where the WoWee water shading draws, woweeShaders
     // bit 1, and not on water inside a WMO.
@@ -290,6 +294,7 @@ public:
     // own z is read every frame, so a moving camera needs no new value.
     float classicFogGroundZ = 0;
 
+    // The final composite adds no glow, so the frame is the scene's colours alone (the height bake sets it).
     bool disableGlow = false;
 
     bool pauseAnimation = false;

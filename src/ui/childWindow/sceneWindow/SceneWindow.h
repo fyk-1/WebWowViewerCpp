@@ -56,6 +56,8 @@ public:
     // A height bake's view and ground, through the current Map scene (Map::setBakeView, Map::wdlGround); nothing when the scene isn't a Map.
     void setBakeView(bool on, float x, float y, float half);
     bool wdlGround(float x, float y, float &height);
+    // 🤖 Map::rootAdtFileDataId through the current Map scene; 0 when the scene isn't a Map.
+    uint32_t rootAdtFileDataId(int row, int col);
 
     // Sky scene ids of the current Map scene's WDL, grouped by the player condition
     // that gates them (SkySceneXPlayerCondition db2). Empty when the current scene

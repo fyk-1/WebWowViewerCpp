@@ -3,10 +3,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
+#include <map>
 #include "../ui/childWindow/sceneWindow/SceneWindow.h"
 #include "../../wowViewerLib/src/engine/algorithms/mathHelper.h"
 #include "../../wowViewerLib/src/engine/camera/bakeCamera.h"
+#include "../../wowViewerLib/src/engine/persistance/adtFile.h"
 #include "../../wowViewerLib/src/engine/objects/farTerrain/farHeights.h"
 #include "../../wowViewerLib/src/renderer/mapScene/MapScenePlan.h"
 
@@ -28,6 +31,19 @@ drawn is read back (IDevice::captureNextDepth), and the camera is checked agains
 
 A depth of 1 is the clear value and means nothing was drawn there; a texel whose 4 pixels are all clear takes the WDL's ground, and
 the tile is not written when the WDL has none either.
+
+The frame's colour is read back with its depth (IDevice::captureNextFrame, armed on the same frame) and reduced to the colour tile on
+the same lattice. The bake script sets Config::bakeUnlit and disableFog, so the pixels are the ground's albedo and not a lit picture.
+A colour texel is the mean of the drawn pixels of its 2 x 2 block, or of the tile's drawn pixels when the block has none.
+
+The colour texel's alpha is the liquid kind, read from the tile's root ADT and never from the render, so the liquid stays out of the
+heights. The ADT comes from the cache the scene uses (its FileDataID from the WDT), and the tile waits for it to load before the captures
+are armed. The kind grid is 128 x 128, one entry for each liquid cell (8 x 8 to a chunk, 16 x 16 chunks), and MH2O is walked as
+AdtObject::loadWater walks it. A cell is placed by its world position: the centre x, y that LiquidInstance builds its vertices from, taken
+to the cell of the lattice in `reduce`'s frame. Colour sample i lies at i / 127 of the tile and cell k spans k / 128 to (k + 1) / 128, so a
+sample takes cell i * 128 / 127, held to 127. The kinds are 0 none, 1 river or lake, 2 ocean, 3 magma, 4 other. An instance's kind comes
+from its LiquidType (the LiquidObject's, when the instance names one): ocean for type 2, else the type's material decides, 1 or 3
+water except type 4, 2 or 4 magma, the rest other. Where layers overlap the higher kind stays.
 */
 namespace {
     constexpr float kTop = 3072.0f;
@@ -76,9 +92,18 @@ void HeightBake::request(int mapId, int row, int col, double timeoutSeconds, dou
     m_started = now;
     m_quietSince = now;
     m_stableFrames = 0;
+    m_serial++;
     m_captured = false;
+    m_colorCaptured = false;
     m_pending = m_total = 0;
     m_loadSettled = false;
+
+    m_adt = nullptr;
+    if (const uint32_t rootAdt = m_scene->rootAdtFileDataId(row, col); rootAdt != 0) {
+        m_adt = m_api->cacheStorage->getAdtGeomCache()->getFileId((int) rootAdt);
+        // As AdtObject does, so a tile the scene makes from the same file still reads its chunks.
+        m_adt->setIsMain(true);
+    }
 
     m_x = tileOrigin(row) - MathHelper::TILESIZE * 0.5f;
     m_y = tileOrigin(col) - MathHelper::TILESIZE * 0.5f;
@@ -93,6 +118,7 @@ void HeightBake::request(int mapId, int row, int col, double timeoutSeconds, dou
 
 void HeightBake::finish(const std::string &line) {
     m_phase = Phase::Idle;
+    m_adt = nullptr;
     m_scene->setBakeView(false, 0, 0, 0);
     m_emit("flyover bake " + std::to_string(m_row) + " " + std::to_string(m_col) + " " + line);
 }
@@ -115,17 +141,32 @@ void HeightBake::update(double now, const MapRenderPlan *plan) {
                    (m_loadSettled ? "settled" : "loading"));
             return;
         }
+        if (m_adt != nullptr && m_adt->getStatus() == FileStatus::FSRejected) {
+            finish("error the ADT did not load");
+            return;
+        }
         const bool quiet = planIsOurs && m_pending == 0;
         if (!quiet) m_quietSince = now;
         m_stableFrames = quiet && (m_loadSettled || now - m_quietSince > kSettleGrace) ? m_stableFrames + 1 : 0;
         if (m_stableFrames < kStableFrames) return;
+        if (m_adt != nullptr && m_adt->getStatus() != FileStatus::FSLoaded) return;
 
         m_captured = false;
-        if (!m_api->hDevice->captureNextDepth([this](DepthCapture &&capture) {
+        m_colorCaptured = false;
+        if (!m_api->hDevice->captureNextDepth([this, serial = m_serial](DepthCapture &&capture) {
+                if (serial != m_serial) return;
                 m_capture = std::move(capture);
                 m_captured = true;
             })) {
             finish("error another depth capture is waiting");
+            return;
+        }
+        if (!m_api->hDevice->captureNextFrame([this, serial = m_serial](FrameCapture &&capture) {
+                if (serial != m_serial) return;
+                m_colorCapture = std::move(capture);
+                m_colorCaptured = true;
+            })) {
+            finish("error another frame capture is waiting");
             return;
         }
         m_armed = now;
@@ -133,8 +174,8 @@ void HeightBake::update(double now, const MapRenderPlan *plan) {
         return;
     }
 
-    if (!m_captured) {
-        if (now - m_started > m_timeout + 30.0) finish("error the depth capture never came");
+    if (!m_captured || !m_colorCaptured) {
+        if (now - m_started > m_timeout + 30.0) finish("error the depth or frame capture never came");
         return;
     }
 
@@ -148,6 +189,13 @@ void HeightBake::update(double now, const MapRenderPlan *plan) {
     HeightTile tile;
     std::string error;
     if (!reduce(m_capture, tile, error)) {
+        finish("error " + error);
+        return;
+    }
+    ColorTile color;
+    bool colorDrawn = false;
+    buildLiquidKinds();
+    if (!reduceColor(m_colorCapture, m_capture, color, colorDrawn, error)) {
         finish("error " + error);
         return;
     }
@@ -175,6 +223,10 @@ void HeightBake::update(double now, const MapRenderPlan *plan) {
     }
 
     if (!FarHeights::writeAtomic(FarHeights::path(mapDir, m_row, m_col), tile, error)) {
+        finish("error " + error);
+        return;
+    }
+    if (colorDrawn && !FarHeights::writeColorAtomic(FarHeights::colorPath(mapDir, m_row, m_col), color, error)) {
         finish("error " + error);
         return;
     }
@@ -240,5 +292,144 @@ bool HeightBake::reduce(const DepthCapture &capture, HeightTile &tile, std::stri
     tile.zMin = lowest;
     tile.zMax = highest;
     if (noData > 0) std::fprintf(stderr, "heightbake %d_%d: %d of 16384 texels took the WDL ground\n", m_row, m_col, noData);
+    return true;
+}
+
+void HeightBake::buildLiquidKinds() {
+    constexpr int kCells = ColorTile::kSize;
+    m_kinds.assign((size_t) kCells * kCells, 0);
+    if (m_adt == nullptr || m_adt->mH2OHeader == nullptr || (size_t) m_adt->mH2OBlob_len < sizeof(M2HOHeader)) return;
+
+    // One database lookup for each distinct (LiquidObject, LiquidType) pair of the tile.
+    std::map<uint32_t, uint8_t> kindOfPair;
+    auto kindOf = [&](const SMLiquidInstance &instance) -> uint8_t {
+        const uint32_t key = ((uint32_t) instance.liquid_object_or_lvf << 16) | instance.liquid_type;
+        if (auto found = kindOfPair.find(key); found != kindOfPair.end()) return found->second;
+
+        int type = instance.liquid_type;
+        if (instance.liquid_object_or_lvf >= 42) {
+            LiquidObjectRec object;
+            object.liquid_object_or_lvf = instance.liquid_object_or_lvf;
+            object.liquidTypeId = type;
+            m_api->databaseHandler->getLiquidObjectData(instance.liquid_object_or_lvf, type, object);
+            type = object.liquidTypeId;
+        }
+
+        uint8_t kind = 4;
+        if (type == 2) {
+            kind = 2;
+        } else {
+            LiquidTypeAndMat material{};
+            std::vector<LiquidTextureData> textures;
+            m_api->databaseHandler->getLiquidTypeData(type, material, textures);
+            if (material.materialID == 2 || material.materialID == 4) kind = 3;
+            else if ((material.materialID == 1 || material.materialID == 3) && type != 4) kind = 1;
+        }
+        kindOfPair[key] = kind;
+        return kind;
+    };
+
+    const float x0 = tileOrigin(m_row), y0 = tileOrigin(m_col);
+    const float cellSize = MathHelper::TILESIZE / kCells;
+    const size_t blobLength = (size_t) m_adt->mH2OBlob_len;
+    const char *blob = &m_adt->mH2OBlob[0];
+
+    for (int yChunk = 0; yChunk < 16; yChunk++) {
+        for (int xChunk = 0; xChunk < 16; xChunk++) {
+            const M2HOHeader::SMLiquidChunk &chunk = m_adt->mH2OHeader->chunks[yChunk * 16 + xChunk];
+            if (chunk.layer_count == 0) continue;
+            if ((size_t) chunk.offset_instances + (size_t) chunk.layer_count * sizeof(SMLiquidInstance) > blobLength) continue;
+
+            // The chunk's base as AdtObject::loadWater makes it: x falls along the chunk's y index, y along its x.
+            const float baseX = x0 - MathHelper::CHUNKSIZE * yChunk;
+            const float baseY = y0 - MathHelper::CHUNKSIZE * xChunk;
+
+            for (uint32_t layer = 0; layer < chunk.layer_count; layer++) {
+                SMLiquidInstance instance;
+                std::memcpy(&instance, blob + chunk.offset_instances + layer * sizeof(SMLiquidInstance), sizeof(instance));
+
+                const bool object = instance.liquid_object_or_lvf >= 42;
+                const int xOffset = object ? 0 : instance.x_offset, yOffset = object ? 0 : instance.y_offset;
+                const int width = object ? 8 : instance.width, height = object ? 8 : instance.height;
+                if (width <= 0 || height <= 0) continue;
+
+                const uint8_t *exists = nullptr;
+                if (instance.offset_exists_bitmap != 0) {
+                    if ((size_t) instance.offset_exists_bitmap + (size_t) (width * height + 7) / 8 > blobLength) continue;
+                    exists = (const uint8_t *) blob + instance.offset_exists_bitmap;
+                }
+                const uint8_t kind = kindOf(instance);
+
+                for (int cy = 0; cy < height; cy++) {
+                    for (int cx = 0; cx < width; cx++) {
+                        const int bit = cy * width + cx;
+                        if (exists != nullptr && ((exists[bit >> 3] >> (bit & 7)) & 1) == 0) continue;
+
+                        // The cell's centre, midway between its four vertices.
+                        const float x = baseX - MathHelper::UNITSIZE * (cy + yOffset + 0.5f);
+                        const float y = baseY - MathHelper::UNITSIZE * (cx + xOffset + 0.5f);
+                        const int r = std::clamp((int) std::floor((x0 - x) / cellSize), 0, kCells - 1);
+                        const int c = std::clamp((int) std::floor((y0 - y) / cellSize), 0, kCells - 1);
+                        uint8_t &held = m_kinds[(size_t) r * kCells + c];
+                        held = (std::max)(held, kind);
+                    }
+                }
+            }
+        }
+    }
+}
+
+bool HeightBake::reduceColor(const FrameCapture &capture, const DepthCapture &depth, ColorTile &tile, bool &drawn, std::string &error) {
+    drawn = false;
+    if (!capture.error.empty()) {
+        error = capture.error;
+        return false;
+    }
+    if (capture.width != kImage || capture.height != kImage || capture.rgb.size() != (size_t) kImage * kImage * 3) {
+        error = "the colour image is " + std::to_string(capture.width) + " x " + std::to_string(capture.height) + ", not 256 x 256";
+        return false;
+    }
+    if (depth.depth.size() != (size_t) kImage * kImage) {
+        error = "the depth image is not 256 x 256";
+        return false;
+    }
+
+    constexpr int kTexels = ColorTile::kSize * ColorTile::kSize;
+    std::vector<int> sum(kTexels * 3, 0), count(kTexels, 0);
+    long long tileSum[3] = {0, 0, 0};
+    long long tileCount = 0;
+
+    for (int y = 0; y < kImage; y++) {
+        for (int x = 0; x < kImage; x++) {
+            const size_t pixel = (size_t) y * kImage + x;
+            if (depth.depth[pixel] >= kClear) continue;
+
+            const int texel = (y / 2) * ColorTile::kSize + (x / 2);
+            count[texel]++;
+            tileCount++;
+            for (int i = 0; i < 3; i++) {
+                const int value = capture.rgb[pixel * 3 + i];
+                sum[texel * 3 + i] += value;
+                tileSum[i] += value;
+            }
+        }
+    }
+    if (tileCount == 0) {
+        std::fprintf(stderr, "heightbake %d_%d: nothing drawn, no colour file\n", m_row, m_col);
+        return true;
+    }
+
+    for (int texel = 0; texel < kTexels; texel++) {
+        for (int i = 0; i < 3; i++) {
+            const long long total = count[texel] > 0 ? sum[texel * 3 + i] : tileSum[i];
+            const long long n = count[texel] > 0 ? count[texel] : tileCount;
+            tile.rgba[texel * 4 + i] = (uint8_t) ((total + n / 2) / n);
+        }
+        const int r = texel / ColorTile::kSize, c = texel % ColorTile::kSize;
+        const int cell = (std::min)(ColorTile::kSize - 1, r * ColorTile::kSize / (ColorTile::kSize - 1)) * ColorTile::kSize +
+                         (std::min)(ColorTile::kSize - 1, c * ColorTile::kSize / (ColorTile::kSize - 1));
+        tile.rgba[texel * 4 + 3] = m_kinds[cell];
+    }
+    drawn = true;
     return true;
 }

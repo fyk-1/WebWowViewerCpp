@@ -338,6 +338,11 @@ void Map::initialize(HApiContainer api, int mapId) {
     }
 
     m_dayNightLightHolder.loadZoneLights();
+    m_dayNightLightHolder.setTileLightSource({
+        [this]() { return tileLightSourceReady(); },
+        [this](int row, int col) { return adtTileExists(row, col); },
+        [this](float x, float y, float &height) { return wdlGround(x, y, height); }
+    });
 
     m_sceneWideBlockVSPSChunk = nullptr;
 }
@@ -428,6 +433,26 @@ void Map::setBakeView(bool on, float x, float y, float half) {
 bool Map::wdlGround(float x, float y, float &height) {
     createFarTerrain();
     return m_farTerrain != nullptr && m_farTerrain->groundHeight(x, y, height);
+}
+
+bool Map::tileLightSourceReady() const {
+    if (m_wdtfile == nullptr || m_wdtfile->getStatus() == FileStatus::FSNotLoaded) return false;
+    if (m_wdlObject != nullptr && m_wdlObject->getWdlFile() != nullptr && m_wdlObject->getWdlFile()->getStatus() == FileStatus::FSNotLoaded) return false;
+    return true;
+}
+
+bool Map::adtTileExists(int row, int col) const {
+    if (m_wdtfile == nullptr || m_wdtfile->getStatus() != FileStatus::FSLoaded || m_wdtfile->mphd == nullptr) return false;
+    if (m_wdtfile->mphd->flags.wdt_uses_global_map_obj || row < 0 || row > 63 || col < 0 || col > 63) return false;
+    if (m_wdtfile->mphd->flags.wdt_has_maid) return rootAdtFileDataId(row, col) > 0;
+    return m_wdtfile->mapTileTable != nullptr && m_wdtfile->mapTileTable->mainInfo[row][col].Flag_HasADT != 0;
+}
+
+uint32_t Map::rootAdtFileDataId(int row, int col) const {
+    if (m_wdtfile == nullptr || m_wdtfile->getStatus() != FileStatus::FSLoaded) return 0;
+    if (m_wdtfile->mphd == nullptr || !m_wdtfile->mphd->flags.wdt_has_maid || m_wdtfile->mapFileDataIDs == nullptr) return 0;
+    if (row < 0 || row > 63 || col < 0 || col > 63) return 0;
+    return m_wdtfile->mapFileDataIDs->array[row * 64 + col].rootADT;
 }
 
 /*

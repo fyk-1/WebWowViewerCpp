@@ -3,6 +3,7 @@
 //
 
 #include "DayNightLightHolder.h"
+#include <algorithm>
 #include "../../../../include/database/dbStructs.h"
 #include "../../../algorithms/mathHelper.h"
 #include "LightParamCalculate.h"
@@ -481,6 +482,8 @@ void DayNightLightHolder::updateLightAndSkyboxData(const HMapRenderPlan &mapRend
         }
 
         updatePlanetsAndStars(frustumData.cameraPos, skyBodyData, fdd);
+
+        updateTileLight(fdd, config);
     }
 
     //Mix the WMO fog into the DB fogs
@@ -529,6 +532,63 @@ void DayNightLightHolder::updateLightAndSkyboxData(const HMapRenderPlan &mapRend
     } else {
         m_smoothedLight.valid = false;
     }
+}
+
+// robots@Impl: The tile light (Config::tileLight) gives each map tile the exterior and water colours the camera path would compute for a
+// camera at the tile's centre, and the shaders blend them by world position (commonTileLight.slang). The camera's own light still
+// drives the sky, the fog, the sun and the planets, and is smoothed as before; the grid is not smoothed. The blends of zone lights at
+// the centres cost a database query or more apiece and are worked out once per map, kTileBlendsPerFrame tiles a frame on this thread,
+// since the database's statements are shared with the camera's query and no other thread may use them. The colours follow the time of
+// day: the grid is recoloured on the frame Config::currentTime differs from the last colouring, once per distinct light param and then
+// once per tile through the mixers the camera's light uses. It is on only while the exterior and water colours come from the database.
+void DayNightLightHolder::updateTileLight(const HFrameDependantData &fdd, const Config *config) {
+    constexpr int kTileBlendsPerFrame = 8;
+
+    fdd->tileLight = nullptr;
+    if (!config->tileLight || config->globalLighting != EParameterSource::eDatabase ||
+        config->waterColorParams != EParameterSource::eDatabase) return;
+
+    m_tileLight.advanceBlends(m_api->databaseHandler, m_mapId, m_zoneLights, m_tileLightSource, kTileBlendsPerFrame);
+    if (!m_tileLight.blendsReady()) return;
+
+    if (m_tileLight.colouredAt() != config->currentTime) colourTileLight(config);
+
+    fdd->tileLight = m_tileLight.published();
+    fdd->tileLightVersion = m_tileLight.version();
+}
+
+void DayNightLightHolder::colourTileLight(const Config *config) {
+    struct ParamColours {
+        ExteriorColors exterior;
+        LiquidColors liquid;
+    };
+    const auto &ids = m_tileLight.paramIds();
+    std::vector<ParamColours> colours(ids.size());
+    for (size_t i = 0; i < ids.size(); i++) {
+        float glow = 0.0f;
+        SkyBodyData skyBodyData;
+        FogResult fogResult;
+        SkyColors skyColors;
+        calcLightParamResult(ids[i], config, glow, skyBodyData, colours[i].exterior, fogResult, colours[i].liquid, skyColors);
+    }
+
+    for (int tile = 0; tile < TileLightGrid::kTiles; tile++) {
+        const auto &blends = m_tileLight.blendsOf(tile);
+        ExteriorColors exterior;
+        LiquidColors liquid;
+        if (!blends.empty()) {
+            exterior.assignZeros();
+            liquid.assignZeros();
+        }
+        for (const auto &blend : blends) {
+            auto found = std::lower_bound(ids.begin(), ids.end(), blend.id);
+            ParamColours param = colours[found - ids.begin()];
+            mixStructure(exterior, param.exterior, blend.blend);
+            mixStructure(liquid, param.liquid, blend.blend);
+        }
+        m_tileLight.setTile(tile, !blends.empty(), exterior, liquid);
+    }
+    m_tileLight.publish(config->currentTime);
 }
 
 // robots@Impl: The light a frame computes is the target. The shown light follows it as WoWee's lighting manager does,

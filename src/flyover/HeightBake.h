@@ -1,7 +1,7 @@
 //
 // Height bake: `--bake <dir>` makes the viewer render the ground of one continent tile with its buildings from straight above, as a
-// depth image, and write the heights of it to the far terrain's cache (FarHeights). The host drives it with `bake <row> <col>
-// <timeoutSeconds>` on stdin and reads one `flyover bake` line back per tile:
+// depth image and a colour image of the same frame, and write the heights and the ground colour of it to the far terrain's cache
+// (FarHeights). The host drives it with `bake <row> <col> <timeoutSeconds>` on stdin and reads one `flyover bake` line back per tile:
 //
 //   flyover bake <row> <col> ok <waitS> <renderS> <stepN> <stepS> <stepE> <stepW>
 //   flyover bake <row> <col> timeout <s> <pending>/<total> (m2 <n> wmo <n> groups <n>) settled or loading
@@ -9,7 +9,8 @@
 //
 // The steps are the largest height difference in yards along the edge the tile shares with the neighbour north (row - 1), south
 // (row + 1), east (column + 1) and west (column - 1), `-` where that neighbour has no file. The renderer is set by the Lua file
-// the host's `--script` names; nothing here sets a Config field.
+// the host's `--script` names; nothing here sets a Config field. The colour is unlit and unfogged because that script sets
+// `bakeUnlit` and `disableFog`. The colour file's alpha is the liquid kind from the tile's ADT, never from the render.
 //
 
 #ifndef AWEBWOWVIEWERCPP_HEIGHTBAKE_H
@@ -18,6 +19,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 #include "../../wowViewerLib/src/engine/ApiContainer.h"
 #include "../../wowViewerLib/src/gapi/interface/IDevice.h"
 
@@ -26,6 +28,7 @@ class BakeCamera;
 class ICamera;
 struct MapRenderPlan;
 struct HeightTile;
+struct ColorTile;
 
 class HeightBake {
 public:
@@ -45,6 +48,10 @@ private:
 
     void finish(const std::string &line);
     bool reduce(const DepthCapture &capture, HeightTile &tile, std::string &error);
+    // 🤖 `drawn` is false when the depth drew no pixel at all, and then `tile` holds nothing and no colour file is written.
+    bool reduceColor(const FrameCapture &capture, const DepthCapture &depth, ColorTile &tile, bool &drawn, std::string &error);
+    // Fills m_kinds, 128 x 128 liquid kinds in the colour lattice's cells, from the loaded root ADT's MH2O; all 0 without one.
+    void buildLiquidKinds();
 
     std::shared_ptr<SceneWindow> m_scene;
     HApiContainer m_api;
@@ -57,12 +64,19 @@ private:
     double m_timeout = 0, m_started = 0, m_armed = 0, m_quietSince = 0;
     float m_x = 0, m_y = 0, m_half = 0;
     int m_stableFrames = 0;
-    // The capture, filled on the thread that draws and read by update on the same one.
+    // The captures of one frame, filled on the thread that draws and read by update on the same one. 🤖 m_serial counts the tiles
+    // asked for, so a capture left armed by an earlier tile is dropped.
+    int m_serial = 0;
     bool m_captured = false;
     DepthCapture m_capture;
+    bool m_colorCaptured = false;
+    FrameCapture m_colorCapture;
     int m_pending = 0, m_total = 0;
     int m_pendingBy[3] = {0, 0, 0};
     bool m_loadSettled = false;
+    // 🤖 The tile's root ADT, held from request to finish so the cache keeps what it loaded; null for a tile the WDT has no root ADT for.
+    HAdtFile m_adt;
+    std::vector<uint8_t> m_kinds;
 };
 
 #endif //AWEBWOWVIEWERCPP_HEIGHTBAKE_H

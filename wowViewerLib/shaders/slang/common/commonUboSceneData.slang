@@ -20,5 +20,8 @@ layout(set=0, binding=3) uniform sampler2D liquidDepth;
 layout(std430, set=0, binding=4) readonly buffer LiquidRenderModeBlock {
     uint liquidRenderMode;  // 0=below liquid, 1=above liquid, 2=all (no filtering)
 };
+layout(std430, set=0, binding=5) readonly buffer TileLightBlock {
+    vec4 tileLight[];  // 64 x 64 tiles, row-major, 9 vec4 each; see commonTileLight.slang
+};
 
 #endif

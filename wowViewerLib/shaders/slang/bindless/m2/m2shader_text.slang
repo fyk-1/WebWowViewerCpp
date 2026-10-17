@@ -9,6 +9,7 @@ precision highp int;
 #include "../../common/commonWoweeM2Light.slang"
 #include "../../common/commonWoweeM2Foliage.slang"
 #include "../../common/commonWoweeSwitch.slang"
+#include "../../common/commonTileLight.slang"
 #include "../../common/commonBackFace.slang"
 #include "../../common/commonLiquidDepthTest.slang"
 
@@ -154,6 +155,7 @@ void main() {
         specular *= vMeshColorAlpha.rgb;
 
 #ifndef DEFERRED
+        SceneWideParams lit = tileLit(scene, vPosition_EdgeFade.xyz);
         vec3 accumLight = vec3(0.0);
         if (scene.uSceneSize_DisableLightBuffer.z == 0.0 && blendMode <= 1) {
             accumLight = texture(lightBuffer, (gl_FragCoord.xy / scene.uSceneSize_DisableLightBuffer.xy)).xyz;
@@ -170,14 +172,18 @@ void main() {
         }
 
         vec3 litColor;
-        if (woweeOn(scene, WOWEE_M2)) {
+        // The bake's unlit frame keeps the material colour as it is.
+        bool unlit = woweeOn(scene, WOWEE_UNLIT);
+        if (unlit) {
+            litColor = matDiffuse;
+        } else if (woweeOn(scene, WOWEE_M2)) {
             litColor = wm_calcLight(
                 matDiffuse,
                 l_Normal,
                 vPosition_EdgeFade.xyz,
                 meshWide.vertexShader_IsAffectedByLight_TextureMatIndex1_TextureMatIndex2.y > 0,
                 blendMode == 1,
-                scene,
+                lit,
                 modelWide.intLight,
                 accumLight,
                 specular,
@@ -189,7 +195,7 @@ void main() {
                 l_Normal,
                 vPosition_EdgeFade.xyz,
                 meshWide.vertexShader_IsAffectedByLight_TextureMatIndex1_TextureMatIndex2.y > 0,
-                scene,
+                lit,
                 modelWide.intLight,
                 accumLight,
                 vec3(0.0),
@@ -199,7 +205,7 @@ void main() {
                 ambientScale
             );
         }
-        if (foliage) {
+        if (foliage && !unlit) {
             vec4 modelPoint = placementMats[placementMatrixInd].invPlacementMat * (scene.uInvLookAtMat * vec4(vPosition_EdgeFade.xyz, 1.0));
             litColor = wf_shade(
                 litColor,
@@ -208,7 +214,7 @@ void main() {
                 modelPoint.z / modelWide.modelAlpha.z,
                 modelWide.intLight.uInteriorAmbientColorAndInteriorExteriorBlend.w,
                 scene.uWoweeLook.z,
-                scene
+                lit
             );
         }
         finalColor = vec4(litColor, finalOpacity);
@@ -221,7 +227,7 @@ void main() {
 
 #ifndef DEFERRED
     int uUnFogged = meshWide.PixelShader_UnFogged_blendMode.y;
-    if (uUnFogged == 0) {
+    if (uUnFogged == 0 && !woweeOn(scene, WOWEE_UNLIT)) {
         float interiorExteriorBlend = modelWide.intLight.uInteriorAmbientColorAndInteriorExteriorBlend.w;
         vec3 sunDir =
             mix(

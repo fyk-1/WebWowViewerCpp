@@ -32,6 +32,7 @@ layout(location = 0) out vec4 outColor;
 #include "../../common/liquid/liquidWaterMat.slang"
 #include "../../common/liquid/liquidWoweeWaterMat.slang"
 #include "../../common/commonWoweeSwitch.slang"
+#include "../../common/commonTileLight.slang"
 #include "../../common/liquid/liquidMagmaMat.slang"
 #include "../../common/liquid/liquidWoweeMagmaMat.slang"
 #include "../../common/liquid/liquidMercuryMat.slang"
@@ -60,7 +61,7 @@ void main() {
             waterResult = calcWoweeWaterMat(
                 liquidInstanceData,
                 waterDatas[nonuniformEXT(dataInd)],
-                scene,
+                tileLit(scene, vPositionDepth.xyz),
                 fogData,
                 vWorldPosition.xyz,
                 vPositionDepth.xyz, //position
@@ -70,7 +71,7 @@ void main() {
             waterResult = calcWaterLiquidMat(
                 liquidInstanceData,
                 waterDatas[nonuniformEXT(dataInd)],
-                scene,
+                tileLit(scene, vPositionDepth.xyz),
                 fogData,
                 vWorldPosition.xyz,
                 vPositionDepth.xyz, //position

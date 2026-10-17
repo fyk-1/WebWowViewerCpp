@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <iostream>
 #include <limits>
 #include <iomanip>
@@ -220,6 +221,11 @@ std::unique_ptr<FarTerrain::Built> FarTerrain::build(const HWdlFile &wdl, const 
                 maxZ = std::max(maxZ, tile.zMax);
                 anyHeights = true;
             }
+            if (!heightsDir.empty()) {
+                std::error_code code;
+                const auto bytes = std::filesystem::file_size(std::filesystem::u8path(FarHeights::colorPath(heightsDir, row, col)), code);
+                tile.hasColor = !code && bytes == FarHeights::kColorFileBytes;
+            }
             tile.aabb = CAaBox(
                 C3Vector(mathfu::vec3(x0 - kTileSize, y0 - kTileSize, minZ - kSkirtDepth)),
                 C3Vector(mathfu::vec3(x0, y0, maxZ))
@@ -297,6 +303,7 @@ bool FarTerrain::poll() {
     m_tiles = std::move(built->tiles);
     m_grids = built->grids;
     m_textures.assign(m_tiles.size(), nullptr);
+    m_colorFailed.assign(m_tiles.size(), 0);
     m_tileOfCell = built->tileOfCell;
     m_minHeight = built->minHeight;
     m_maxHeight = built->maxHeight;
@@ -306,9 +313,12 @@ bool FarTerrain::poll() {
     m_maxCol = built->maxCol;
     m_ready = true;
 
-    size_t baked = 0;
-    for (const auto &tile : m_tiles) baked += tile.hasHeights ? 1 : 0;
-    std::cerr << "far terrain: " << m_tiles.size() << " tiles, " << baked << " with baked heights, " << m_geometry->vertices.size() << " vertices, "
+    size_t baked = 0, coloured = 0;
+    for (const auto &tile : m_tiles) {
+        baked += tile.hasHeights ? 1 : 0;
+        coloured += tile.hasColor ? 1 : 0;
+    }
+    std::cerr << "far terrain: " << m_tiles.size() << " tiles, " << baked << " with baked heights, " << coloured << " with baked colour, " << m_geometry->vertices.size() << " vertices, "
               << m_geometry->indices.size() / 3 << " triangles built for map " << m_mapId << std::endl;
     return true;
 }
@@ -321,6 +331,23 @@ bool FarTerrain::readHeights(size_t tile, HeightTile &out) const {
     if (FarHeights::read(file, out, error)) return true;
 
     std::cerr << "far terrain: " << error << std::endl;
+    return false;
+}
+
+bool FarTerrain::readColor(size_t tile, ColorTile &out) const {
+    if (tile >= m_tiles.size() || !m_tiles[tile].hasColor) return false;
+    {
+        std::lock_guard<std::mutex> lock(m_textureMutex);
+        if (m_colorFailed[tile]) return false;
+    }
+
+    const std::string file = FarHeights::colorPath(m_heightsDir, m_tiles[tile].row, m_tiles[tile].col);
+    std::string error;
+    if (FarHeights::readColor(file, out, error)) return true;
+
+    std::cerr << "far terrain: " << error << std::endl;
+    std::lock_guard<std::mutex> lock(m_textureMutex);
+    m_colorFailed[tile] = 1;
     return false;
 }
 
@@ -532,7 +559,7 @@ void FarTerrain::makeFrame(const Config &config, const View &view, const std::ve
 
         int budget = kTexturesPerFrame;
         auto request = [&](size_t index) {
-            if (budget <= 0 || m_textures[index] != nullptr || m_tiles[index].minimapFileDataId == 0) return;
+            if (budget <= 0 || m_textures[index] != nullptr || m_tiles[index].minimapFileDataId == 0 || (m_tiles[index].hasColor && !m_colorFailed[index])) return;
             m_textures[index] = m_api->cacheStorage->getTextureCache()->getFileId(m_tiles[index].minimapFileDataId);
             budget--;
         };
