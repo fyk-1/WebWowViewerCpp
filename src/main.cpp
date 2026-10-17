@@ -86,6 +86,9 @@ is reported once on stderr.
 */
 class VBlankPacer {
 public:
+    // The measured time between two vblanks, 0 until a resolve has timed them.
+    double periodMs() const {return m_periodMs;}
+
     // Blocks until a frame may start, and returns true. Returns false at once when there is no usable vblank source.
     bool wait(GLFWwindow *window, int divisor) {
         HMONITOR monitor = MonitorFromWindow(glfwGetWin32Window(window), MONITOR_DEFAULTTONEAREST);
@@ -692,7 +695,12 @@ std::ios_base::Init a;
 #endif
             onVblank = vblankPacer.wait(window, vsyncDivisor);
         }
+        const double pacedMs = onVblank ? vsyncDivisor * vblankPacer.periodMs()
+                                        : (apiContainer->getConfig()->frameRateCap > 0 ? minFrameMs() : 0.0);
+#else
+        const double pacedMs = apiContainer->getConfig()->frameRateCap > 0 ? minFrameMs() : 0.0;
 #endif
+        Map::setFramePeriod(std::chrono::microseconds((long long)(pacedMs * 1000.0)));
         frontendUI->newFrame();
         stopMouse = frontendUI->getStopMouse();
         stopKeyboard = frontendUI->getStopKeyboard();

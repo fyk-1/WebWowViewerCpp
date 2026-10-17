@@ -1183,6 +1183,13 @@ void Map::checkADTCulling(int i, int j,
 
         auto &adtFrustRes = adtArray.emplace_back();
         adtFrustRes.adtObject = adtObject;
+        if (!adtObject->isLoaded()) {
+            //The tile's square, with a height band any terrain stands in
+            const CAaBox footprint(
+                mathfu::vec3_packed(mathfu::vec3(AdtIndexToWorldCoordinate(j + 1), AdtIndexToWorldCoordinate(i + 1), -1000.0f)),
+                mathfu::vec3_packed(mathfu::vec3(AdtIndexToWorldCoordinate(j), AdtIndexToWorldCoordinate(i), 3000.0f)));
+            adtFrustRes.inView = MathHelper::checkFrustum(frustumData, footprint);
+        }
 
         bool result = adtObject->checkFrustumCulling(
             adtFrustRes,
@@ -1248,7 +1255,7 @@ robots@Impl: Tile preload ahead of the camera.
 The tile under the point and its eight neighbours are created, which starts their file requests, and each frame
 the free strategy is refreshed for them, so a tile outlives the adtTTLWithoutUpdate that would otherwise free it
 before the camera arrives. They go into the plan's adtPreload, not adtArray: doPostLoad uploads them after the
-visible tiles within the same per-frame cap, and nothing collects or updates them. A tile already in adtArray is
+visible tiles within the same per-frame budget, and nothing collects or updates them. A tile already in adtArray is
 the visible camera's and is left to it. Tiles are refreshed only while the point is within one tile of them,
 and from there the real frustum takes over.
 */
@@ -1547,6 +1554,19 @@ bool Map::fastLoadOpen() {
     return true;
 }
 
+namespace {
+std::atomic<long long> framePeriodUs{0};
+
+// Half the paced frame period, never under ADT_LOAD_BUDGET.
+std::chrono::microseconds adtLoadBudget() {
+    return std::max(ADT_LOAD_BUDGET, std::chrono::microseconds(framePeriodUs.load() / 2));
+}
+}
+
+void Map::setFramePeriod(std::chrono::microseconds period) {
+    framePeriodUs.store(period.count());
+}
+
 bool Map::wdtLoaded() const {
     return m_wdtfile != nullptr && m_wdtfile->getStatus() == FileStatus::FSLoaded;
 }
@@ -1643,24 +1663,47 @@ void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRende
 
     {
         ZoneScopedN("Load adt");
-        //A tile finishes over several frames, a stage a step. A tile that has begun goes before one that has not, so tiles
-        //finish one after another, and the per-frame cap counts steps; the fast-load window lifts it and runs each tile whole.
-        std::vector<AdtObject *> tiles;
-        tiles.reserve(renderPlan->adtArray.size() + renderPlan->adtPreload.size());
-        for (int pass = 0; pass < 2; pass++) {
-            for (auto &adtObject: renderPlan->adtArray) {
-                if (adtObject.adtObject->isPartlyLoaded() == (pass == 0)) tiles.push_back(adtObject.adtObject.get());
-            }
-            //Preloaded tiles take only what the visible ones left of the cap
-            for (auto &adtObject: renderPlan->adtPreload) {
-                if (adtObject->isPartlyLoaded() == (pass == 0)) tiles.push_back(adtObject.get());
-            }
-        }
+        //A tile finishes over several frames, a stage a step, until the frame's budget is spent; the fast-load window lifts it
+        //and runs each tile whole. Tiles whose square meets the view go first, then the rest of the frustum's box, then the
+        //preloaded ones, and within each the nearest the camera, so the tile under it is the first finished. A loaded tile is
+        //still visited, for a change of its colouring or holes.
+        const mathfu::vec3 cameraPos = renderPlan->renderingMatrices ? renderPlan->renderingMatrices->cameraPos.xyz() : mathfu::vec3(0, 0, 0);
+        const float cameraI = worldCoordinateToAdtIndexF(cameraPos.y);
+        const float cameraJ = worldCoordinateToAdtIndexF(cameraPos.x);
 
-        int adtProcessed = 0;
-        for (auto *adtObject: tiles) {
-            adtProcessed += (adtObject->doPostLoad(sceneRenderer, m_liquidMaterialManager, fastLoad)) ? 1 : 0;
-            if (!fastLoad && adtProcessed >= MAX_LOAD_ADT_PER_FRAME) break;
+        struct PendingTile {
+            int rank;
+            float distanceSq;
+            AdtObject *tile;
+        };
+        std::vector<PendingTile> tiles;
+        auto queueTile = [&](AdtObject *adtObject, int rank) {
+            if (adtObject->isLoaded()) {
+                adtObject->doPostLoad(sceneRenderer, m_liquidMaterialManager, fastLoad);
+                return;
+            }
+            if (!adtObject->filesReady()) return;
+            const float di = adtObject->getAdtX() + 0.5f - cameraI;
+            const float dj = adtObject->getAdtY() + 0.5f - cameraJ;
+            tiles.push_back({rank, di * di + dj * dj, adtObject});
+        };
+        for (auto &adtObject: renderPlan->adtArray) queueTile(adtObject.adtObject.get(), adtObject.inView ? 0 : 1);
+        for (auto &adtObject: renderPlan->adtPreload) queueTile(adtObject.get(), 2);
+
+        std::sort(tiles.begin(), tiles.end(), [](const PendingTile &a, const PendingTile &b) {
+            if (a.rank != b.rank) return a.rank < b.rank;
+            return a.distanceSq < b.distanceSq;
+        });
+
+        const auto budget = adtLoadBudget();
+        const auto start = std::chrono::steady_clock::now();
+        bool spent = false;
+        for (auto &pending: tiles) {
+            while (!spent && !pending.tile->isLoaded()) {
+                if (!pending.tile->doPostLoad(sceneRenderer, m_liquidMaterialManager, fastLoad)) break;
+                spent = !fastLoad && (std::chrono::steady_clock::now() - start) >= budget;
+            }
+            if (spent) break;
         }
     }
 

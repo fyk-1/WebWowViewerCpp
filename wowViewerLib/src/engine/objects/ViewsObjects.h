@@ -26,6 +26,8 @@ public:
     std::shared_ptr<AdtObject> adtObject;
     std::array<bool, 256> drawChunk = {false};
     std::array<bool, 256> drawWaterChunk = {false};
+    // For a tile still loading: whether its square meets the view, so Map::doPostLoad finishes it before those that do not.
+    bool inView = true;
 };
 
 

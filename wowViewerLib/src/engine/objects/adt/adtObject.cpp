@@ -1018,9 +1018,13 @@ FileStatus AdtObject::getLoadedStatus() {
 }
 
 
+bool AdtObject::filesReady() {
+    return getLoadedStatus() == FileStatus::FSLoaded;
+}
+
 bool AdtObject::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager, bool allStages) {
     if (!m_loaded) {
-        if (getLoadedStatus() == FileStatus::FSLoaded) {
+        if (filesReady()) {
             this->loadingFinished(sceneRenderer, liquidMaterialManager, allStages);
             return true;
         }

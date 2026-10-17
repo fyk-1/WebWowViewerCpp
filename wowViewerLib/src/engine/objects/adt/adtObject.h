@@ -50,6 +50,8 @@ public:
     }
 
     FileStatus getLoadedStatus();
+    // True once every file of the tile has loaded.
+    bool filesReady();
 
     void collectMeshes(ADTObjRenderRes &adtRes, COpaqueMeshCollector &opaqueMeshCollector, framebased::vector<HGSortableMesh> &transparentMeshes);
     void collectMeshesLod(std::vector<HGMesh> &renderedThisFrame);
@@ -68,8 +70,6 @@ public:
 
     // True once the tile's files have loaded and its meshes are made.
     bool isLoaded() const {return m_loaded;}
-    // True while the tile has run some of its load stages and not all.
-    bool isPartlyLoaded() const {return m_stage > 0 && !m_loaded;}
 
     int getAdtX() {return adt_x;}
     int getAdtY() {return adt_y;}

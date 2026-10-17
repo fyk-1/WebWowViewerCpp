@@ -1,6 +1,13 @@
 #include <chrono>
 
-const int MAX_LOAD_ADT_PER_FRAME = 1;
+/*
+robots@Impl: The time one frame spends on tile load stages (Map::doPostLoad), on top of POST_LOAD_BUDGET: half the frame period
+the main loop paces to (Map::setFramePeriod), and this floor when it paces to none. A tile costs about 17 ms of stages, each 0
+to 20 ms, while a frame paced to 30 fps does about 5 ms of other work, so the render thread spent most of each frame asleep
+while a jump's eighty new tiles waited seconds to show. The stage that crosses the budget finishes, since a stage cannot be
+cut, and a frame runs at least one.
+*/
+const std::chrono::microseconds ADT_LOAD_BUDGET = std::chrono::microseconds(4000);
 
 /*
 robots@Impl: The time one frame spends finishing loaded M2 geometry, WMO roots and WMO groups (Map::doPostLoad). The count caps
@@ -13,7 +20,7 @@ const std::chrono::microseconds POST_LOAD_BUDGET = std::chrono::microseconds(400
 
 /*
 robots@Impl: The ceiling on the fast-load window. A map that opens finishes its tiles and geometry without the per-frame
-budgets (MAX_LOAD_ADT_PER_FRAME, POST_LOAD_BUDGET) until the tiles around the arrival point are in, then the budgets return for
+budgets (ADT_LOAD_BUDGET, POST_LOAD_BUDGET) until the tiles around the arrival point are in, then the budgets return for
 the rest of the session. The window ends when it settles; the ceiling, counted in wall clock from the open, is for a map that
 never does, such as a tile whose files never arrive. The loader is one thread reading from a cold install, so a continent start
 takes seconds, not frames: 15 s is long enough for that, and short enough that a map stuck short of settling spends a quarter
