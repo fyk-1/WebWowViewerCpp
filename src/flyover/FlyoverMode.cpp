@@ -439,14 +439,6 @@ bool FlyoverMode::start(const std::string &routeFile, const FlyoverInstall &inst
     return true;
 }
 
-void FlyoverMode::requestToggleMode() {
-    post(*m_queue, {CommandType::ModeToggle, "", ""});
-}
-
-void FlyoverMode::requestDump() {
-    emit("flyover dumpkey");
-}
-
 void FlyoverMode::post(CommandQueue &queue, Command command) {
     {
         std::lock_guard<std::mutex> lock(queue.mutex);
@@ -572,9 +564,6 @@ void FlyoverMode::apply(const Command &command) {
             break;
         case CommandType::ModeFree:
             setMode(true, true);
-            break;
-        case CommandType::ModeToggle:
-            setMode(!m_isFree, true);
             break;
         case CommandType::Look: {
             float dx = 0, dy = 0;

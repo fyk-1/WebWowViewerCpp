@@ -62,10 +62,11 @@ bool stopMouse = false;
 bool stopKeyboard = false;
 
 std::shared_ptr<FrontendUI> frontendUI = nullptr;
-// Set in the --flyover mode, where F toggles between the path camera and the free camera and F12 asks the host for a debug dump.
+// Set in the --flyover mode, where the window's own mouse and keyboard do nothing: the host reads the input and steers by stdin.
 FlyoverMode *flyoverMode = nullptr;
 
 static void cursor_position_callback(GLFWwindow* window, double xpos, double ypos){
+    if (flyoverMode) return;
     if (stopMouse) {
         mleft_pressed = 0;
         mright_pressed = 0;
@@ -107,6 +108,7 @@ static void cursor_position_callback(GLFWwindow* window, double xpos, double ypo
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
 //    addCameraViewOffset
+    if (flyoverMode) return;
     if (stopMouse) return;
 
     HApiContainer apiContainer = *(HApiContainer *)glfwGetWindowUserPointer(window);
@@ -159,14 +161,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 
 static void onKey(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
-    if (flyoverMode && key == GLFW_KEY_F && action == GLFW_PRESS) {
-        flyoverMode->requestToggleMode();
-        return;
-    }
-    if (flyoverMode && key == GLFW_KEY_F12 && action == GLFW_PRESS) {
-        flyoverMode->requestDump();
-        return;
-    }
+    if (flyoverMode) return;
 
     HApiContainer apiContainer = *(HApiContainer *)glfwGetWindowUserPointer(window);
     auto currentActiveScene = frontendUI->getCurrentActiveScene();
@@ -227,6 +222,7 @@ static void onKey(GLFWwindow* window, int key, int scancode, int action, int mod
 
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
+    if (flyoverMode) return;
     auto currentActiveScene = frontendUI->getCurrentActiveScene();
     auto controllable = currentActiveScene ? currentActiveScene->getCamera() : nullptr;
 

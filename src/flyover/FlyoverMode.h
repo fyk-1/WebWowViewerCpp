@@ -16,8 +16,8 @@
 // the start. See RoadLines.h.
 //
 // `dump <file.png>` on stdin writes the next frame drawn to that PNG and answers with one `flyover dump {json}` line,
-// the viewer's side of a debug dump: see FlyoverMode.cpp. F12 in the viewer's window sends `flyover dumpkey`, which the
-// host answers with that command.
+// the viewer's side of a debug dump: see FlyoverMode.cpp. The viewer ignores its own window's mouse and keyboard; the host
+// reads the input and sends `mode`, `look`, `move`, `freespeed` and `dump`.
 //
 // The `flyover world {json}` line, one for every frame drawn once `ready` has gone, is the state a host's script reads: see
 // FlyoverMode.cpp. The viewer holds no policy; the script sets Config fields by the `config` command.
@@ -99,14 +99,10 @@ public:
     int failureExitCode() const { return m_failureExitCode; }
     // Once per frame on the main thread: applies queued commands and writes the periodic lines.
     void update();
-    // The F key.
-    void requestToggleMode();
-    // The F12 key.
-    void requestDump();
     // Seconds the draw of the frame just drawn took, for the next `world` line.
     void noteFrame(double seconds);
 private:
-    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, ModeToggle, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Bake, Quit };
+    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Bake, Quit };
     struct Command {
         CommandType type;
         std::string name;
