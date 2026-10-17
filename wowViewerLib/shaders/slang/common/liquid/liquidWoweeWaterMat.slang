@@ -13,7 +13,8 @@ import glsl;
 // robots@Impl: A port of WoWee's water shader (assets/shaders/water.frag.glsl), in place of the retail-derived
 // calcWaterLiquidMat, which renders Era water as a flat opaque sheet. Kept: procedural wave normals, screen-space
 // refraction of the liquid backbuffer, Beer-Lambert absorption, the shallow-to-deep body colour, shoreline wet band
-// and foam, GGX sun specular with sparkle, the alpha model and the horizon fade. Dropped, for lack of the inputs:
+// and foam, GGX sun specular with sparkle and the alpha model. WoWee's horizon fade to transparent is replaced by a blend
+// into the far terrain's liquid colour by the draw distance. Dropped, for lack of the inputs:
 // planar reflection, wake froth, wave crests and subsurface scattering (WoWee feeds those from its own vertex
 // displacement and player state); Config::waterSkyReflection stands a sky gradient in for the reflection. The body
 // colours and alphas are WoWee's per-type constants. Scene time arrives in milliseconds; WoWee's constants are tuned in
@@ -271,7 +272,12 @@ vec4 calcWoweeWaterMat(in LiquidInstanceData inst, in WaterData data, in SceneWi
     alpha = clamp(alpha, 0.15, 0.92);
     alpha = max(alpha, wetBand * 0.42 * smoothstep(0.0, 0.05, shoreDepth));
     alpha = max(alpha, shorelineFoam * 0.58);
-    alpha *= smoothstep(2400.0, 600.0, dist);
+    // Toward the draw distance (uWoweeLook.w) the water turns into what the far terrain draws past it: the zone's far river or
+    // ocean colour, opaque. Both are fogged alike, so the two meet at the seam.
+    vec3 maskColor = isOcean ? scene.farOceanColor_deepAlpha.rgb : scene.farRiverColor_deepAlpha.rgb;
+    float toMask = smoothstep(600.0, max(scene.uWoweeLook.w, 601.0), dist);
+    color = mix(color, maskColor, toMask);
+    alpha = mix(alpha, 1.0, toMask);
 
     vec4 fogged = makeFog2(fog, vec4(color, alpha), scene.uViewUpSceneTime.xyz, viewPos,
                            scene.extLight.uExteriorDirectColorDir.xyz, 2);

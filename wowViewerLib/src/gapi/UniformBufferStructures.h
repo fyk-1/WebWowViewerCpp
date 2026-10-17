@@ -72,7 +72,7 @@ struct sceneWideBlockVSPS {
     mathfu::vec4_packed farOceanColor;
 
     SceneExteriorLight extLight;
-    // x skyGlow, y waterSkyReflection, z foliageTintStrength (Config)
+    // x skyGlow, y waterSkyReflection, z foliageTintStrength, w farPlaneForCulling, the draw distance (Config)
     mathfu::vec4_packed uWoweeLook;
     // The zone's sky colours, which the WoWee water reflects; filled only with waterSkyReflection on
     mathfu::vec4_packed uSkyTopColor;
