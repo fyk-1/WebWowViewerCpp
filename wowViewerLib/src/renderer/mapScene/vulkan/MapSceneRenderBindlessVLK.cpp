@@ -2864,6 +2864,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                         {
                             // The land beyond the draw distance, under the sky: it fills the pixels the scene left at the clear value, in a band of depth above the scene's and short of the sky's.
                             auto debugHelper = frameBufCmd.beginDebugLabel("Far terrain", {0, 0.5f, 0});
+                            VkZone(frameBufCmd, "Far terrain");
                             l_this->m_farTerrain->draw(frameBufCmd, framePlan->farTerrain);
                         }
 
