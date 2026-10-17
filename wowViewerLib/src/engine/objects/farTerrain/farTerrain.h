@@ -62,7 +62,7 @@ struct FarTerrainFrame {
     // Keeps the geometry and the textures alive for the renderer, which reads them by tile index.
     std::shared_ptr<FarTerrain> terrain;
     // The landmarks of the map's landmarks.ids once their geometry is built, null before and for a map with none. Drawn at any distance,
-    // unfogged, after the far land and in its band of depth.
+    // fogged as the far land is, after it and in its band of depth.
     std::shared_ptr<const FarLandmarks> landmarks;
 };
 

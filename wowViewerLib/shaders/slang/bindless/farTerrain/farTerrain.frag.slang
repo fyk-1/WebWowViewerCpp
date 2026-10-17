@@ -29,7 +29,7 @@ precision highp int;
 // A tile whose texture has not landed is the fog colour outright, so the gap reads as haze. The draw that takes pixels from the
 // fading full scene keeps the fragments the scene's screen-door drops (dropsForCullFade, the pattern of Config::m2FadeStartPercent),
 // and writes no depth in the others, which is why this shader tests depth after it runs: a discard must not leave a depth write
-// behind. A landmark (FarLandmarks) wears its model's texture through the same path, lit alike and unfogged. With the tile light on, the ground's
+// behind. A landmark (FarLandmarks) wears its model's texture through the same path, lit and fogged alike. With the tile light on, the ground's
 // lighting and the far river and ocean colours are the tile's at the fragment's world position (tileLit), and the fog stays the block's.
 
 layout(std140, set=1, binding=0) uniform farTerrainBlock {
@@ -94,19 +94,14 @@ void main() {
                             vec3(0.0), vec3(0.0), vec3(0.0), vec3(0.0), 1.0);
         }
 
-        // A landmark takes no fog, so it stands out at any distance.
-        if ((vFlags & 8) != 0) {
-            color = lit;
-        } else {
-            float dist = length(vPosition);
-            vec3 atSeam = vPosition * (min(dist, uFarParams.x) / max(dist, 0.001));
-            vec3 hazed = makeFog2(fogData, vec4(lit, 1.0), scene.uViewUpSceneTime.xyz, atSeam,
-                                  scene.extLight.uExteriorDirectColorDir.xyz, 0).rgb;
+        float dist = length(vPosition);
+        vec3 atSeam = vPosition * (min(dist, uFarParams.x) / max(dist, 0.001));
+        vec3 hazed = makeFog2(fogData, vec4(lit, 1.0), scene.uViewUpSceneTime.xyz, atSeam,
+                              scene.extLight.uExteriorDirectColorDir.xyz, 0).rgb;
 
-            float span = max(uFarParams.y - uFarParams.x, 1.0);
-            float fog = clamp((dist - uFarParams.x) / span * uFarParams.z, 0.0, 1.0);
-            color = mix(hazed, fogColor, fog);
-        }
+        float span = max(uFarParams.y - uFarParams.x, 1.0);
+        float fog = clamp((dist - uFarParams.x) / span * uFarParams.z, 0.0, 1.0);
+        color = mix(hazed, fogColor, fog);
     }
 
     outColor = vec4(color, 1.0);
