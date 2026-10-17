@@ -46,9 +46,143 @@
 #include <exception>
 #ifdef WIN32
 #include <timeapi.h>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <dxgi.h>
+#include <wrl/client.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+#include <chrono>
+#include <set>
 #endif
 #ifdef LINK_TRACY
 #include "Tracy.hpp"
+#endif
+
+#ifdef WIN32
+/*
+robots@Impl: The vblank wait.
+
+With Config::vsyncDivisor = N (1 to 4), a frame starts on every Nth vertical blank of the monitor the window is on, and
+frameRateCap is ignored. wait() runs before the frame's work: it calls IDXGIOutput::WaitForVBlank, stamping each return,
+until the time since the vblank that started the previous frame is at least (N - 0.5) periods. The half period
+absorbs the jitter of a return, so the Nth vblank counts however early or late it is stamped. A frame that overran N
+refreshes finds that time already past, so the first vblank after it starts the next frame instead of the Nth after
+that, and a frame never starts between two vblanks.
+
+The period is measured, never read from the display mode, which reports 59 or 60 for a 59.94 Hz screen. A resolve
+times 4 consecutive vblanks, and afterwards every pair of consecutive returns one period apart (within 25%) pulls a
+smoothed value toward their gap by 1/16.
+
+The output is the one whose DXGI_OUTPUT_DESC.Monitor is the window's MonitorFromWindow, searched on every adapter, and
+it is resolved again when that handle changes. When no output matches, or WaitForVBlank fails or returns at no refresh
+rate, wait() returns false and the caller paces by frameRateCap; a new resolve is tried a second later. Each cause
+is reported once on stderr.
+*/
+class VBlankPacer {
+public:
+    // Blocks until a frame may start, and returns true. Returns false at once when there is no usable vblank source.
+    bool wait(GLFWwindow *window, int divisor) {
+        HMONITOR monitor = MonitorFromWindow(glfwGetWin32Window(window), MONITOR_DEFAULTTONEAREST);
+        if (monitor != m_monitor) {
+            m_monitor = monitor;
+            drop(Clock::time_point{});
+        }
+        if (!m_output) {
+            if (Clock::now() < m_retryAt) return false;
+            if (!resolve()) return false;
+        }
+
+        for (;;) {
+            HRESULT result = m_output->WaitForVBlank();
+            auto now = Clock::now();
+            if (FAILED(result)) {
+                fail("wait", "WaitForVBlank failed", result);
+                return false;
+            }
+
+            double gap = millisecondsBetween(m_lastReturn, now);
+            if (std::abs(gap - m_periodMs) < 0.25 * m_periodMs) m_periodMs += (gap - m_periodMs) / 16.0;
+            m_lastReturn = now;
+
+            if (!m_hasFrameStart || millisecondsBetween(m_frameStart, now) >= (divisor - 0.5) * m_periodMs) {
+                m_frameStart = now;
+                m_hasFrameStart = true;
+                return true;
+            }
+        }
+    }
+
+private:
+    using Clock = std::chrono::high_resolution_clock;
+
+    Microsoft::WRL::ComPtr<IDXGIOutput> m_output;
+    HMONITOR m_monitor = nullptr;
+    Clock::time_point m_retryAt{};
+    Clock::time_point m_lastReturn{};
+    Clock::time_point m_frameStart{};
+    bool m_hasFrameStart = false;
+    double m_periodMs = 0;
+    std::set<std::string> m_reported;
+
+    static double millisecondsBetween(Clock::time_point from, Clock::time_point to) {
+        return std::chrono::duration<double, std::milli>(to - from).count();
+    }
+
+    void drop(Clock::time_point retryAt) {
+        m_output.Reset();
+        m_hasFrameStart = false;
+        m_retryAt = retryAt;
+    }
+
+    bool fail(const char *cause, const char *reason, HRESULT result) {
+        drop(Clock::now() + std::chrono::seconds(1));
+        if (m_reported.insert(cause).second) {
+            fprintf(stderr, "vsync: %s (0x%08lx); using frameRateCap\n", reason, (unsigned long) result);
+        }
+        return false;
+    }
+
+    bool resolve() {
+        Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
+        HRESULT result = CreateDXGIFactory1(IID_PPV_ARGS(&factory));
+        if (FAILED(result)) return fail("factory", "no DXGI factory", result);
+
+        Microsoft::WRL::ComPtr<IDXGIOutput> found;
+        Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
+        for (UINT a = 0; !found && SUCCEEDED(factory->EnumAdapters1(a, &adapter)); a++) {
+            Microsoft::WRL::ComPtr<IDXGIOutput> output;
+            for (UINT o = 0; !found && SUCCEEDED(adapter->EnumOutputs(o, &output)); o++) {
+                DXGI_OUTPUT_DESC desc;
+                if (SUCCEEDED(output->GetDesc(&desc)) && desc.Monitor == m_monitor) found = output;
+            }
+        }
+        if (!found) return fail("output", "no DXGI output for the window's monitor", S_OK);
+
+        constexpr int k_Samples = 4;
+        Clock::time_point first{};
+        Clock::time_point last{};
+        for (int i = 0; i <= k_Samples; i++) {
+            result = found->WaitForVBlank();
+            last = Clock::now();
+            if (FAILED(result)) return fail("wait", "WaitForVBlank failed", result);
+            if (i == 0) first = last;
+        }
+        const double period = millisecondsBetween(first, last) / k_Samples;
+        if (period < 2.0 || period > 100.0) return fail("period", "vblanks do not arrive at a refresh rate", S_OK);
+
+        m_output = found;
+        m_periodMs = period;
+        m_lastReturn = last;
+        m_hasFrameStart = false;
+        return true;
+    }
+};
 #endif
 
 int mleft_pressed = 0;
@@ -544,7 +678,21 @@ std::ios_base::Init a;
         double frameRateCap = apiContainer->getConfig()->frameRateCap;
         return frameRateCap > 0 ? std::max(5.0, 1000.0 / frameRateCap) : 5.0;
     };
+#ifdef WIN32
+    VBlankPacer vblankPacer;
+#endif
     while (!glfwWindowShouldClose(window)) {
+        // On a vsyncDivisor, the frame starts on a vblank and the sleep below does not run.
+        bool onVblank = false;
+#ifdef WIN32
+        const int vsyncDivisor = std::clamp(apiContainer->getConfig()->vsyncDivisor, 0, 4);
+        if (vsyncDivisor > 0) {
+#ifdef LINK_TRACY
+            ZoneScopedN("vblank wait");
+#endif
+            onVblank = vblankPacer.wait(window, vsyncDivisor);
+        }
+#endif
         frontendUI->newFrame();
         stopMouse = frontendUI->getStopMouse();
         stopKeyboard = frontendUI->getStopKeyboard();
@@ -567,7 +715,7 @@ std::ios_base::Init a;
         if (flyoverMode) flyoverMode->noteFrame(currentDeltaAfterDraw / 1000.0);
         lastFrame = currentFrame;
         const double frameMs = minFrameMs();
-        if (currentDeltaAfterDraw < frameMs) {
+        if (!onVblank && currentDeltaAfterDraw < frameMs) {
             using namespace std::chrono_literals;
 #ifdef WIN32
             sqlite3_sleep((int)(frameMs-currentDeltaAfterDraw));

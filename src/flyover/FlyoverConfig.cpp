@@ -94,6 +94,7 @@ namespace {
     X(Float, farPlaneForCulling) \
     X(Float, preloadAhead) \
     X(Float, frameRateCap) \
+    X(Int, vsyncDivisor) \
     X(Float, renderScale) \
     X(Float, fsrSharpness)     X(Float, fsrOutputScale)     X(Float, minM2ScreenPercent)     X(Float, minM2WorldSize) \
     X(Int, woweeShaders)     X(Bool, randomAnimationPhase)   X(Bool, foliageTint)   X(Float, foliageTintStrength)   X(Float, m2FadeStartPercent) \

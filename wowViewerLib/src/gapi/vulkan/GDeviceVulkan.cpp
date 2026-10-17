@@ -116,13 +116,8 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>
     return availableFormats[0];
 }
 
-VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
-    for (const auto& availablePresentMode : availablePresentModes) {
-        if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
-            return availablePresentMode;
-        }
-    }
-
+// Always FIFO: each presented frame takes its own refresh, which the main loop's vblank pacing (src/main.cpp) relies on.
+VkPresentModeKHR chooseSwapPresentMode() {
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
@@ -717,7 +712,7 @@ void GDeviceVLK::setupDebugMessenger() {
 }
 
 void GDeviceVLK::createSwapChain(SwapChainSupportDetails &swapChainSupport, VkSurfaceFormatKHR &surfaceFormat, VkExtent2D &extent) {
-    VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
+    VkPresentModeKHR presentMode = chooseSwapPresentMode();
 
     uint32_t imageCount = MAX_FRAMES_IN_FLIGHT;
     if (swapChainSupport.capabilities.minImageCount < 2) {

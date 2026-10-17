@@ -68,9 +68,8 @@ mode, and a move still held at a switch goes with the camera, since every switch
 
 Config: the viewer starts from the library's Config and holds no policy. The route file's config carries every value the host
 wants at the start, and the host's script sets the rest as the flight goes, from the `world` line (Modules/Flyover/README.md
-§ Script). The swapchain presents in mailbox mode, which never waits for vsync, so an uncapped viewer renders as fast as the GPU
-allows; frameRateCap holds the main loop (main.cpp) to at most that many frames a second, and 0 leaves it uncapped, as in the
-normal UI mode.
+§ Script). The pace is the main loop's (main.cpp): vsyncDivisor 1 to 4 starts a frame on every Nth vblank of the window's
+monitor, and 0 leaves it to frameRateCap, at most that many frames a second, or uncapped at 0, as in the normal UI mode.
 
 FSR history: the camera jumping makes the upscaler drop its history. A route that opens a map or changes the
 points, and every switch between the path and the free camera, set fsrResetRequested; the renderer consumes it

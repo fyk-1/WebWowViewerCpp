@@ -127,6 +127,10 @@ endif()
 add_library(WoWFrontendLib STATIC ${SOURCE_FILES} ${SOURCE_FILES_VULKAN})
 add_executable(Wowely-Planet-Farseer src/main.cpp)
 target_link_libraries(Wowely-Planet-Farseer WoWFrontendLib)
+if (WIN32)
+	# The main loop's vblank wait (src/main.cpp) enumerates the DXGI outputs.
+	target_link_libraries(Wowely-Planet-Farseer dxgi)
+endif()
 if (MSVC)
 	# A PDB with public symbols beside the exe, which the crash handler reads for its stack; the optimisations /DEBUG turns off are kept on.
 	target_link_options(Wowely-Planet-Farseer PRIVATE /DEBUG /OPT:REF /OPT:ICF)

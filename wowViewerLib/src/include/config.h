@@ -219,8 +219,11 @@ public:
     // Yards ahead on a camera's route whose map tiles are loaded before they are seen. 0 or less turns it off.
     // Only a camera that knows its route answers it (the flyover path camera).
     float preloadAhead = 1200;
-    // Frames per second the main loop holds to at most. 0 or less leaves it uncapped.
+    // Frames per second the main loop holds to at most, while vsyncDivisor is 0. 0 or less leaves it uncapped.
     float frameRateCap = 0;
+    // 1 to 4 starts each frame on every Nth vertical blank of the window's monitor (Windows only) and ignores frameRateCap;
+    // 0 leaves the pace to frameRateCap. Other values clamp to 0..4.
+    int vsyncDivisor = 0;
     // Scale of the scene against the window, 0.05 to 1.5, stretched or shrunk to the window by the final pass.
     // Object picking in the UI mode assumes 1. With fsrUpscaling on and the scale at most 1, FSR upscales it instead;
     // AMD supports ratios down to 1/3, and below that the image degrades.
