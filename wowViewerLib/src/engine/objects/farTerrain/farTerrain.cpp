@@ -577,7 +577,7 @@ void FarTerrain::makeFrame(const Config &config, const View &view, const std::ve
         // The culling frustum's far plane stands where the clip depth reaches its w, which mathfu's projection does at b / (1 + a),
         // twice the far distance it was given.
         const float cullingReach = std::fabs(1.0f + a) > 1e-6f ? b / (1.0f + a) : 0.0f;
-        std::cerr << "far terrain: extent " << std::fixed << std::setprecision(0) << extent << " yd, near plane " << depthNear
+        std::cerr << "far terrain: extent " << std::fixed << std::setprecision(2) << extent << " yd, near plane " << depthNear
                   << " yd, draw distance " << view.drawDistance << " yd, culling frustum reaches " << cullingReach
                   << " yd along the view axis" << std::endl;
     }
