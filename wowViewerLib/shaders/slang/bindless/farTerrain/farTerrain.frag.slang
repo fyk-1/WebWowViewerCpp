@@ -18,7 +18,7 @@ precision highp int;
 // robots@Impl: The far terrain's fragment shader. A tile wears one of two pictures of the ground and is lit by the exterior ambient
 // and sun as an ADT chunk is, with no specular, layers or light buffer. The baked colour (bit 5) is the ground's unlit albedo, so it
 // is lit on the slope's own normal like a full chunk. Its alpha is the liquid kind of the texel (1 river or lake, 2 ocean, 3 magma,
-// 4 other). A texel of kind 1 or 2 takes the frame's far river or far ocean colour as its colour, unlit, and the fog below applies
+// 4 other). A texel of kind 1 or 2 takes the frame's far river or far ocean colour, lit as the water lights it (farLiquidLit), and the fog below applies
 // to it as to any far fragment; the other kinds keep the lit ground. The kind is fetched from the nearest texel, since the filtered
 // sample blends the kinds of two neighbours at a shore, and the filtered rgb stays the ground's. The minimap is a picture already
 // shaded by its relief, and lighting its slope again shaded it twice, the far land darker than the full chunks beside it, so it is
@@ -84,9 +84,9 @@ void main() {
         SceneWideParams tile = tileLit(scene, vPosition);
         vec3 lit;
         if (liquidKind == 1) {
-            lit = tile.farRiverColor_deepAlpha.rgb;
+            lit = farLiquidLit(tile, tile.farRiverColor_deepAlpha.rgb);
         } else if (liquidKind == 2) {
-            lit = tile.farOceanColor_deepAlpha.rgb;
+            lit = farLiquidLit(tile, tile.farOceanColor_deepAlpha.rgb);
         } else if (woweeOn(scene, WOWEE_ADT)) {
             lit = wt_calcLight(matDiffuse, normal, tile, vec3(0.0), 1.0);
         } else {

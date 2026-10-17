@@ -77,4 +77,11 @@ SceneWideParams tileLit(SceneWideParams s, vec3 viewPos) {
     return s;
 }
 
+// A far river or ocean colour lit as the WoWee water lights its body on a flat surface: 0.7 of the ambient and half the sun on
+// the view's up. The far land's water texels and the water blending into them both take it, so the two meet at the seam by night too.
+vec3 farLiquidLit(SceneWideParams s, vec3 color) {
+    float sun = max(dot(normalize(s.uViewUpSceneTime.xyz), -normalize(s.extLight.uExteriorDirectColorDir.xyz)), 0.0);
+    return color * (s.extLight.uExteriorAmbientColor.rgb * 0.7 + s.extLight.uExteriorDirectColor.rgb * sun * 0.5);
+}
+
 #endif //COMMON_TILE_LIGHT_SLANG

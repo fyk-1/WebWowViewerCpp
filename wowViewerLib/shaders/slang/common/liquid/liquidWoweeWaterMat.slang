@@ -9,6 +9,7 @@ import glsl;
 #include "../commonFogFunctions.slang"
 #include "../commonGBufferData.slang"
 #include "../commonWoweeSky.slang"
+#include "../commonTileLight.slang"
 
 // robots@Impl: A port of WoWee's water shader (assets/shaders/water.frag.glsl), in place of the retail-derived
 // calcWaterLiquidMat, which renders Era water as a flat opaque sheet. Kept: procedural wave normals, screen-space
@@ -273,8 +274,8 @@ vec4 calcWoweeWaterMat(in LiquidInstanceData inst, in WaterData data, in SceneWi
     alpha = max(alpha, wetBand * 0.42 * smoothstep(0.0, 0.05, shoreDepth));
     alpha = max(alpha, shorelineFoam * 0.58);
     // Toward the draw distance (uWoweeLook.w) the water turns into what the far terrain draws past it: the zone's far river or
-    // ocean colour, opaque. Both are fogged alike, so the two meet at the seam.
-    vec3 maskColor = isOcean ? scene.farOceanColor_deepAlpha.rgb : scene.farRiverColor_deepAlpha.rgb;
+    // ocean colour, lit and opaque. Both are lit and fogged alike, so the two meet at the seam.
+    vec3 maskColor = farLiquidLit(scene, isOcean ? scene.farOceanColor_deepAlpha.rgb : scene.farRiverColor_deepAlpha.rgb);
     float toMask = smoothstep(600.0, max(scene.uWoweeLook.w, 601.0), dist);
     color = mix(color, maskColor, toMask);
     alpha = mix(alpha, 1.0, toMask);
