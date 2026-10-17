@@ -400,12 +400,28 @@ std::ios_base::Init a;
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
+    bool windowFromEnv = false;
     // A height bake renders 256 x 256 images, so its window is that size, and hidden: nobody looks at it.
     if (!flyoverBake.empty()) {
         windowWidth = 256;
         windowHeight = 256;
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
         glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
+    } else if (const char *size = getenv("WWV_WINDOW"); size != nullptr && *size != '\0') {
+        // WWV_WINDOW=<w>x<h> sizes the window in pixels, for a measurement at the monitor's size.
+        char *end = nullptr;
+        const long w = isdigit((unsigned char) size[0]) ? strtol(size, &end, 10) : 0;
+        const bool wellFormed = w > 0 && *end == 'x' && isdigit((unsigned char) end[1]);
+        const long h = wellFormed ? strtol(end + 1, &end, 10) : 0;
+        if (wellFormed && h > 0 && *end == '\0' && w <= 16384 && h <= 16384) {
+            windowWidth = (int) w;
+            windowHeight = (int) h;
+            windowFromEnv = true;
+            // 🤖 Borderless, so a title bar does not take its height from the client area.
+            glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
+        } else {
+            fprintf(stderr, "window: WWV_WINDOW=%s ignored\n", size);
+        }
     }
     auto window = glfwCreateWindow(windowWidth, windowHeight, "Wowely-Planet-Farseer", nullptr, nullptr);
 
@@ -502,9 +518,10 @@ std::ios_base::Init a;
     frontendUI->setFlyoverMode(flyoverRequested);
     frontendUI->initImgui(window);
     {
-        // A bake keeps the 256 x 256 window it was made with.
-        int width = flyoverBake.empty() ? frontendUI->getWindowWidth() : windowWidth;
-        int height = flyoverBake.empty() ? frontendUI->getWindowHeight() : windowHeight;
+        // A bake keeps the 256 x 256 window it was made with, and so does a WWV_WINDOW size.
+        const bool keepSize = !flyoverBake.empty() || windowFromEnv;
+        int width = keepSize ? windowWidth : frontendUI->getWindowWidth();
+        int height = keepSize ? windowHeight : frontendUI->getWindowHeight();
 
         glfwSetWindowSize(window, width, height);
         glfwGetFramebufferSize(window, &canvWidth, &canvHeight);
