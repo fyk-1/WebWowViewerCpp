@@ -24,32 +24,38 @@
 #include "../../../gapi/interface/materials/IMaterial.h"
 #include "../../../renderer/frame/FrameProfile.h"
 
-void AdtObject::loadingFinished(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager) {
-    ZoneScoped;
-//    std::cout << "AdtObject::loadingFinished finished called";
-
-//    texturesPerMCNK = std::vector<AnimTextures>(m_adtFile->mcnkRead+1);
-//    animationTranslationPerMCNK = std::vector<AnimTrans>(m_adtFile->mcnkRead+1);
-
-    loadAlphaTextures();
-
-    calcBoundingBoxes();
-
-    createVBO(sceneRenderer);
-    createMeshes(sceneRenderer);
-
-
-    loadM2s();
-    loadWmos();
-    loadCreatures();
-
-    m_loaded = true;
-
-
-
-    loadWater(sceneRenderer, liquidMaterialManager);
-
-    calcCullBox();
+/*
+robots@Impl: A tile finishes over five calls, one stage each (alpha textures; boxes and vertex buffer; meshes; models, WMOs and
+creatures; water and cull box), so no frame pays a whole tile. The tile shows only after the last: m_loaded stays false until
+then, and a tile with m_loaded false draws and collects nothing. allStages runs the rest in one call, for the fast-load window.
+*/
+void AdtObject::loadingFinished(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager, bool allStages) {
+    ZoneScopedN("ADT stage");
+    do {
+        switch (m_stage) {
+            case 0:
+                loadAlphaTextures();
+                break;
+            case 1:
+                calcBoundingBoxes();
+                createVBO(sceneRenderer);
+                break;
+            case 2:
+                createMeshes(sceneRenderer);
+                break;
+            case 3:
+                loadM2s();
+                loadWmos();
+                loadCreatures();
+                break;
+            default:
+                loadWater(sceneRenderer, liquidMaterialManager);
+                calcCullBox();
+                m_loaded = true;
+                break;
+        }
+        m_stage++;
+    } while (allStages && !m_loaded);
 }
 
 /*
@@ -1012,11 +1018,10 @@ FileStatus AdtObject::getLoadedStatus() {
 }
 
 
-bool AdtObject::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager ) {
+bool AdtObject::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager, bool allStages) {
     if (!m_loaded) {
         if (getLoadedStatus() == FileStatus::FSLoaded) {
-            this->loadingFinished(sceneRenderer, liquidMaterialManager);
-            m_loaded = true;
+            this->loadingFinished(sceneRenderer, liquidMaterialManager, allStages);
             return true;
         }
     }

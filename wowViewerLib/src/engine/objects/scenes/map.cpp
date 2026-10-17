@@ -1643,15 +1643,24 @@ void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRende
 
     {
         ZoneScopedN("Load adt");
-        int adtProcessed = 0;
-        for (auto &adtObject: renderPlan->adtArray) {
-            adtProcessed += (adtObject.adtObject->doPostLoad(sceneRenderer, m_liquidMaterialManager)) ? 1 : 0;
-            if (!fastLoad && adtProcessed >= MAX_LOAD_ADT_PER_FRAME) break;
+        //A tile finishes over several frames, a stage a step. A tile that has begun goes before one that has not, so tiles
+        //finish one after another, and the per-frame cap counts steps; the fast-load window lifts it and runs each tile whole.
+        std::vector<AdtObject *> tiles;
+        tiles.reserve(renderPlan->adtArray.size() + renderPlan->adtPreload.size());
+        for (int pass = 0; pass < 2; pass++) {
+            for (auto &adtObject: renderPlan->adtArray) {
+                if (adtObject.adtObject->isPartlyLoaded() == (pass == 0)) tiles.push_back(adtObject.adtObject.get());
+            }
+            //Preloaded tiles take only what the visible ones left of the cap
+            for (auto &adtObject: renderPlan->adtPreload) {
+                if (adtObject->isPartlyLoaded() == (pass == 0)) tiles.push_back(adtObject.get());
+            }
         }
-        //Preloaded tiles take only what the visible ones left of the per-frame cap, which the fast-load window lifts
-        for (auto &adtObject: renderPlan->adtPreload) {
+
+        int adtProcessed = 0;
+        for (auto *adtObject: tiles) {
+            adtProcessed += (adtObject->doPostLoad(sceneRenderer, m_liquidMaterialManager, fastLoad)) ? 1 : 0;
             if (!fastLoad && adtProcessed >= MAX_LOAD_ADT_PER_FRAME) break;
-            adtProcessed += (adtObject->doPostLoad(sceneRenderer, m_liquidMaterialManager)) ? 1 : 0;
         }
     }
 

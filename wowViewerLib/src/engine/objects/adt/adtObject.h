@@ -56,7 +56,8 @@ public:
 
     void update(animTime_t deltaTime);
     void uploadGeneratorBuffers(const HFrameDependantData &frameDependantData);
-    bool doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager);
+    // Runs the tile's next load stage and returns true when it ran one, or all the rest with allStages. A tile needs five.
+    bool doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager, bool allStages = false);
 
     int getAreaId(int mcnk_x, int mcnk_y);
     void getHeight(const mathfu::vec4 &camera, float &height);
@@ -67,6 +68,8 @@ public:
 
     // True once the tile's files have loaded and its meshes are made.
     bool isLoaded() const {return m_loaded;}
+    // True while the tile has run some of its load stages and not all.
+    bool isPartlyLoaded() const {return m_stage > 0 && !m_loaded;}
 
     int getAdtX() {return adt_x;}
     int getAdtY() {return adt_y;}
@@ -115,7 +118,7 @@ private:
         int length;
     };
 
-    void loadingFinished(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager);
+    void loadingFinished(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager, bool allStages);
 
     void createVBO(const HMapSceneBufferCreate &sceneRenderer);
     void createIBOAndBinding(const HMapSceneBufferCreate &sceneRenderer);
@@ -135,6 +138,7 @@ private:
 
     int alphaTexturesLoaded = 0;
     bool m_loaded = false;
+    int m_stage = 0;
 
     int mostDetailedLod = 0; // 0 = most detailed LOD, 5 = least detailed lod
     int leastDetiledLod = 0;
