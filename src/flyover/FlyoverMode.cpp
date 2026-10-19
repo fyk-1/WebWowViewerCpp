@@ -69,8 +69,8 @@ host that takes the input itself, the window behind the desktop icons getting no
 mode, and a move still held at a switch goes with the camera, since every switch to free mode starts a new one.
 
 Config: the viewer starts from the library's Config and holds no policy. The route file's config carries every value the host
-wants at the start, and the host's script sets the rest as the flight goes, from the `world` line (Modules/Flyover/README.md
-§ Script). The pace is the main loop's (main.cpp): vsyncDivisor 1 to 4 starts a frame on every Nth vblank of the window's
+wants at the start, and the host's script sets the rest as the flight goes, from the `world` line (Modules/Flyover/scripts/README.md).
+The pace is the main loop's (main.cpp): vsyncDivisor 1 to 4 starts a frame on every Nth vblank of the window's
 monitor, and 0 leaves it to frameRateCap, at most that many frames a second, or uncapped at 0, as in the normal UI mode.
 
 FSR history: the camera jumping makes the upscaler drop its history. A route that opens a map or changes the
