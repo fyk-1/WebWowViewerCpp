@@ -6,6 +6,7 @@
 #define AWEBWOWVIEWERCPP_WORLDOBJECTMANAGER_H
 
 #include <map>
+#include <mutex>
 #include <unordered_map>
 #include <vector>
 #include "../m2/m2Object.h"
@@ -79,6 +80,9 @@ public:
     // ---------------- Custom user-placed M2s ----------------
     // Custom M2s are submitted as exterior M2 candidates every frame; Map's per-object
     // culling then does the exact frustum test. This keeps add/remove/move cheap.
+    // Adding, removing, moving and the culling pass take m_customLock, so the main thread can
+    // change them while a culling thread collects. getCustomM2 and getCustomM2s hand out
+    // references into the table and are safe only where nothing changes it meanwhile.
 
     // Spawns a new custom M2 and returns its manager-local id, or -1 on invalid input
     // (no api, or neither a model file name nor a valid FileDataID given).
@@ -106,6 +110,7 @@ private:
     HApiContainer m_api;
     int m_mapId;
 
+    mutable std::mutex m_customLock;
     std::map<int, CustomM2Object> m_customM2s;
     std::unordered_map<M2ObjId, int> m_customIdByM2Id;
     int m_nextCustomId = 1;

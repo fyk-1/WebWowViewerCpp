@@ -199,6 +199,8 @@ int WorldObjectManager::addCustomM2(const std::string &name, const std::string &
     if (m_api == nullptr) return -1;
     if (modelFileName.empty() && fileDataId <= 0) return -1;
 
+    std::lock_guard<std::mutex> lock(m_customLock);
+
     int id = m_nextCustomId++;
     auto &object = m_customM2s[id];
     object.id = id;
@@ -216,6 +218,7 @@ int WorldObjectManager::addCustomM2(const std::string &name, const std::string &
 }
 
 bool WorldObjectManager::removeCustomM2(int id) {
+    std::lock_guard<std::mutex> lock(m_customLock);
     auto it = m_customM2s.find(id);
     if (it == m_customM2s.end()) return false;
 
@@ -227,12 +230,14 @@ bool WorldObjectManager::removeCustomM2(int id) {
 }
 
 void WorldObjectManager::clearCustomM2s() {
+    std::lock_guard<std::mutex> lock(m_customLock);
     m_customM2s.clear();
     m_customIdByM2Id.clear();
 }
 
 bool WorldObjectManager::setCustomM2Transform(int id, const mathfu::vec3 &position,
                                               const mathfu::vec3 &rotationEulerDeg, const mathfu::vec3 &scale) {
+    std::lock_guard<std::mutex> lock(m_customLock);
     auto it = m_customM2s.find(id);
     if (it == m_customM2s.end()) return false;
 
@@ -251,6 +256,7 @@ const CustomM2Object *WorldObjectManager::getCustomM2(int id) const {
 }
 
 int WorldObjectManager::getCustomM2IdByM2ObjId(M2ObjId id) const {
+    std::lock_guard<std::mutex> lock(m_customLock);
     auto it = m_customIdByM2Id.find(id);
     return it != m_customIdByM2Id.end() ? it->second : -1;
 }
@@ -258,6 +264,7 @@ int WorldObjectManager::getCustomM2IdByM2ObjId(M2ObjId id) const {
 void WorldObjectManager::cullAndCollect(M2ObjectListContainer &m2CandidatesOut) {
     // Submit every custom M2 and let Map's exact per-object culling (and load-state
     // routing) sort them out.
+    std::lock_guard<std::mutex> lock(m_customLock);
     for (auto &[id, customObject] : m_customM2s) {
         if (customObject.m2Object) {
             m2CandidatesOut.addCandidate(customObject.m2Object->getObjectId());

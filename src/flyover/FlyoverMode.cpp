@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <thread>
 
 #ifdef _WIN32
@@ -43,6 +44,7 @@
 #include "../../wowViewerLib/src/engine/algorithms/mathHelper.h"
 #include "../../wowViewerLib/src/engine/camera/firstPersonCamera.h"
 #include "../../wowViewerLib/src/engine/camera/pathCamera.h"
+#include "../../wowViewerLib/src/engine/objects/worldObject/WorldObjectManager.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../../3rdparty/glfw/deps/stb_image_write.h"
@@ -102,6 +104,15 @@ minus it, unsmoothed, null with no terrain), `wdlAltitude` (the camera's z minus
 terrain is off or the WDL has no tile there), `settled` (the plan's loadSettled), `tilesPending` (a tile the plan asked for has not
 loaded), `frameTime` (seconds the draw of the last frame took, the cap's sleep excluded), `dayHalfMinutes` (currentTime) and
 `weather` {type, intensity}.
+
+Markers: `marker <name> <fileDataId> <x> <y> <z> [scale]` places the M2 of that FileDataID at the world point, upright and at the
+scale (1 when absent), playing its own animation, and replaces a marker of the same name; `marker <name> none` removes one and
+`marker clear` removes all. A marker is a custom M2 of the map's WorldObjectManager, so it is an exterior candidate of every frame
+culled as any doodad, and is not homed to a WMO interior group: inside a building it shows only from where the outside does. A route
+that opens another map drops every marker. A malformed line, or one sent before a map is open, answers `flyover error marker <reason>`.
+
+Popup: `popup {"text": "...", "x": ..., "y": ..., "z": ...}` shows the text as the game's tooltip beside that world point
+(FrontendUI::setFlyoverPopup), replacing the one shown, and `popup none` hides it. A line that is neither answers `flyover error popup <reason>`.
 
 Start facing: a route in free mode may carry `yawDegrees` and `pitchDegrees`, and the free camera then starts facing that
 way instead of along the route. They use the dump's convention, so a dump's camera replays as a route. The free camera
@@ -527,6 +538,10 @@ void FlyoverMode::parseLine(const std::string &rawLine, CommandQueue &queue) {
         post(queue, {CommandType::RoadLines, "", rest});
     } else if (word == "take") {
         post(queue, {CommandType::Take, "", rest});
+    } else if (word == "popup") {
+        post(queue, {CommandType::Popup, "", rest});
+    } else if (word == "marker") {
+        post(queue, {CommandType::Marker, "", rest});
     } else if (word == "posinterval") {
         post(queue, {CommandType::PosInterval, "", rest});
     } else if (word == "bake") {
@@ -633,6 +648,12 @@ void FlyoverMode::apply(const Command &command) {
                 takeDump(command.text);
             }
             break;
+        case CommandType::Popup:
+            applyPopup(command.text);
+            break;
+        case CommandType::Marker:
+            applyMarker(command.text);
+            break;
         case CommandType::RoadLines:
             applyRoadLines(command.text);
             break;
@@ -701,6 +722,89 @@ void FlyoverMode::applyRoadLines(const std::string &file) {
         lines.setRoads(roads);
     } catch (const std::exception &e) {
         emitError("roadlines", e.what());
+    }
+}
+
+void FlyoverMode::applyMarker(const std::string &text) {
+    std::istringstream stream(text);
+    std::vector<std::string> words;
+    for (std::string word; stream >> word;) words.push_back(word);
+
+    auto manager = m_scene ? m_scene->getWorldObjectManager() : nullptr;
+    if (manager == nullptr) {
+        emitError("marker", "no map is open");
+        return;
+    }
+
+    if (words.size() == 1 && words[0] == "clear") {
+        for (const auto &[name, id] : m_markers) manager->removeCustomM2(id);
+        m_markers.clear();
+        return;
+    }
+    if (words.size() == 2 && words[1] == "none") {
+        auto it = m_markers.find(words[0]);
+        if (it == m_markers.end()) {
+            emitError("marker", "no marker named " + words[0]);
+            return;
+        }
+        manager->removeCustomM2(it->second);
+        m_markers.erase(it);
+        return;
+    }
+    if (words.size() != 5 && words.size() != 6) {
+        emitError("marker", "expected clear, <name> none, or <name> <fileDataId> <x> <y> <z> [scale]");
+        return;
+    }
+
+    char *end = nullptr;
+    long fileDataId = std::strtol(words[1].c_str(), &end, 10);
+    if (*end != '\0' || fileDataId <= 0 || fileDataId > INT_MAX) {
+        emitError("marker", "expected a FileDataID above 0, got " + words[1]);
+        return;
+    }
+    float values[4] = {0, 0, 0, 1};
+    for (size_t i = 2; i < words.size(); i++) {
+        float value = std::strtof(words[i].c_str(), &end);
+        if (*end != '\0' || !std::isfinite(value)) {
+            emitError("marker", "expected a number, got " + words[i]);
+            return;
+        }
+        values[i - 2] = value;
+    }
+    if (values[3] <= 0) {
+        emitError("marker", "expected a scale above 0");
+        return;
+    }
+
+    auto it = m_markers.find(words[0]);
+    if (it != m_markers.end()) {
+        manager->removeCustomM2(it->second);
+        m_markers.erase(it);
+    }
+    int id = manager->addCustomM2(words[0], "", (int) fileDataId, mathfu::vec3(values[0], values[1], values[2]),
+                                  mathfu::vec3(0, 0, 0), mathfu::vec3(values[3], values[3], values[3]));
+    if (id < 0) {
+        emitError("marker", "the map refused the model");
+        return;
+    }
+    m_markers[words[0]] = id;
+}
+
+void FlyoverMode::applyPopup(const std::string &text) {
+    if (text == "none") {
+        m_frontendUI.setFlyoverPopup("", mathfu::vec3(0, 0, 0));
+        return;
+    }
+    try {
+        json document = json::parse(text);
+        std::string shown = document.at("text").get<std::string>();
+        if (shown.empty()) {
+            emitError("popup", "expected a text that is not empty");
+            return;
+        }
+        m_frontendUI.setFlyoverPopup(shown, mathfu::vec3(document.at("x").get<float>(), document.at("y").get<float>(), document.at("z").get<float>()));
+    } catch (const std::exception &e) {
+        emitError("popup", std::string("expected none or {\"text\", \"x\", \"y\", \"z\"}: ") + e.what());
     }
 }
 
@@ -830,6 +934,7 @@ void FlyoverMode::applyRoute(const FlyoverRoute &route, bool openMap) {
         m_mapId = route.mapId;
         m_wdtFileId = route.wdtFileId;
         m_areaReported = false;
+        m_markers.clear();
     }
 
     for (const auto &entry : route.config) {

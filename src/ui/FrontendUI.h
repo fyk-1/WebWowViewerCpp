@@ -57,7 +57,26 @@ public:
     // Opens the build in the folder, as the storage dialog does for a folder the user picked.
     bool openBuild(const std::string &cascPath, const BuildDefinition &buildDef);
     void composeFlyoverUI();
+    // The trivia popup: the text drawn as the game's tooltip centred on a world point, from the install's own art and font. An empty
+    // text hides it.
+    void setFlyoverPopup(const std::string &text, const mathfu::vec3 &at);
 private:
+    void preparePopupFont();
+    bool popupArtReady();
+    void drawPopup();
+
+    std::string m_popupText;
+    double m_popupShownAt = 0;
+    mathfu::vec3 m_popupAt = {0, 0, 0};
+    std::shared_ptr<Db2File> m_popupFontFile;
+    std::vector<unsigned char> m_popupFontData;
+    ImFont *m_popupFont = nullptr;
+    float m_popupFontPx = 0;
+    bool m_popupFontMissing = false;
+    HBlpTexture m_tooltipBackgroundBlp, m_tooltipBorderBlp;
+    HGSamplableTexture m_tooltipBackground, m_tooltipBorder;
+    std::shared_ptr<IUIMaterial> m_tooltipBackgroundMat, m_tooltipBorderMat;
+
     bool m_flyoverMode = false;
     std::string m_databaseFile;
     std::shared_ptr<StorageNotifications> m_storageNotifications = std::make_shared<StorageNotifications>();

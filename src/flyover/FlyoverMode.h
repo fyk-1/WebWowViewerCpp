@@ -27,6 +27,7 @@
 #define AWEBWOWVIEWERCPP_FLYOVERMODE_H
 
 #include <deque>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -102,7 +103,7 @@ public:
     // Seconds the draw of the frame just drawn took, for the next `world` line.
     void noteFrame(double seconds);
 private:
-    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Bake, Quit };
+    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Bake, Marker, Popup, Quit };
     struct Command {
         CommandType type;
         std::string name;
@@ -128,6 +129,8 @@ private:
     void applyConfig(const std::string &name, const std::string &value);
     void setMode(bool free, bool announce);
     void applyRoadLines(const std::string &file);
+    void applyMarker(const std::string &text);
+    void applyPopup(const std::string &text);
     void takeDump(const std::string &pngFile);
     void answerDump(const std::string &pngFile, FrameCapture &&capture);
     void emitWorld(const MapRenderPlan *plan);
@@ -149,6 +152,9 @@ private:
     int m_mapId = -1;
     int m_wdtFileId = -1;
     FlyoverRoute m_route;
+    // The markers placed by `marker`, by name, as ids of the open map's WorldObjectManager. Emptied when a route opens a map, since
+    // the new map's manager starts with none.
+    std::map<std::string, int> m_markers;
 
     std::string m_heightsDir;
     std::string m_bakeDir;

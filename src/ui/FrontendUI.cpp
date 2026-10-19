@@ -12,6 +12,8 @@
 
 #include <iostream>
 #include <algorithm>
+#include <cfloat>
+#include <cmath>
 #include <mathfu/glsl_mappings.h>
 #include "../persistance/CascRequestProcessor.h"
 #include "../database/CSqliteDB.h"
@@ -51,7 +53,148 @@ void FrontendUI::composeFlyoverUI() {
     m_currentActiveScene = m_backgroundScene;
     m_lastActiveScene = m_currentActiveScene;
 
+    drawPopup();
     ImGui::Render();
+}
+
+/*
+robots@Impl: The trivia popup.
+
+The host names the text and a world point (`popup` on stdin, FlyoverMode) and this draws it as the game's tooltip, centred where
+the point falls on screen in the last frame's camera, and nothing while the point is behind the camera. The art is the install's own: the
+backdrop UI-Tooltip-Background, the edge UI-Tooltip-Border and the font Friz Quadrata, asked for the first time a popup is set; nothing
+draws until all three have loaded. Sizes are in the game's UI units, the window height over 768, as the client scales its interface:
+the text is GameTooltipText's 12, the edge 16 with the backdrop inset 5, and the text 10 in from the frame and wrapped at kWrap. The edge file is the classic backdrop
+strip of eight square cells, left, right, top, bottom, then the corners top left, top right, bottom left and bottom right, the top and
+bottom cells stored turned a quarter. The backdrop takes TOOLTIP_DEFAULT_BACKGROUND_COLOR and the text NORMAL_FONT_COLOR, with the
+font's shadow one unit down and right.
+
+Text taller than kMaxText scrolls up at kScroll units a second, holds kHold seconds at each end and starts again from the top. The font
+is rasterised at the window's own size, so the atlas is built again when the window's height changes, before ImGui's frame, which
+locks the atlas while it runs.
+*/
+namespace {
+    constexpr int kTooltipBackground = 137056;
+    constexpr int kTooltipBorder = 137057;
+    constexpr int kFriz = 615960;
+    constexpr float kUiHeight = 768.0f;
+    constexpr float kFontSize = 12.0f;
+    constexpr float kEdge = 16.0f;
+    constexpr float kInset = 5.0f;
+    constexpr float kPad = 10.0f;
+    constexpr float kWrap = 260.0f;
+    constexpr float kMaxText = 300.0f;
+    constexpr float kScroll = 20.0f;
+    constexpr double kHold = 3.0;
+}
+
+void FrontendUI::setFlyoverPopup(const std::string &text, const mathfu::vec3 &at) {
+    if (text != m_popupText) m_popupShownAt = ImGui::GetTime();
+    m_popupText = text;
+    m_popupAt = at;
+}
+
+void FrontendUI::preparePopupFont() {
+    if (m_popupText.empty() || m_popupFontMissing) return;
+    auto storage = m_api->cacheStorage;
+    if (storage == nullptr) return;
+
+    if (m_popupFontFile == nullptr) m_popupFontFile = storage->getDb2Cache()->getFileId(kFriz);
+    if (m_popupFontFile->getStatus() == FileStatus::FSRejected) {
+        std::cerr << "flyover popup: the install has no Friz Quadrata (FileDataID " << kFriz << ")" << std::endl;
+        m_popupFontMissing = true;
+        return;
+    }
+    if (m_popupFontFile->getStatus() != FileStatus::FSLoaded) return;
+
+    ImGuiIO &io = ImGui::GetIO();
+    const float px = std::round(kFontSize * io.DisplaySize.y / kUiHeight);
+    if (px < 1 || px == m_popupFontPx) return;
+
+    if (m_popupFontData.empty()) {
+        auto content = m_popupFontFile->getContent();
+        m_popupFontData.assign(content->begin(), content->end());
+    }
+    io.Fonts->Clear();
+    io.Fonts->AddFontDefault();
+    ImFontConfig config;
+    config.FontDataOwnedByAtlas = false;
+    m_popupFont = io.Fonts->AddFontFromMemoryTTF(m_popupFontData.data(), (int) m_popupFontData.size(), px, &config);
+    m_popupFontPx = px;
+    createFontTexture();
+}
+
+bool FrontendUI::popupArtReady() {
+    auto storage = m_api->cacheStorage;
+    if (storage == nullptr || m_popupFont == nullptr) return false;
+
+    auto prepare = [&](int fileDataId, HBlpTexture &blp, HGSamplableTexture &texture, std::shared_ptr<IUIMaterial> &material) {
+        if (material != nullptr) return true;
+        if (blp == nullptr) blp = storage->getTextureCache()->getFileId(fileDataId);
+        if (texture == nullptr) texture = m_api->hDevice->createBlpTexture(blp, false, false);
+        if (!texture->getTexture()->getIsLoaded()) return false;
+        material = m_uiRenderer->createUIMaterial(texture);
+        return true;
+    };
+    const bool background = prepare(kTooltipBackground, m_tooltipBackgroundBlp, m_tooltipBackground, m_tooltipBackgroundMat);
+    const bool border = prepare(kTooltipBorder, m_tooltipBorderBlp, m_tooltipBorder, m_tooltipBorderMat);
+    return background && border;
+}
+
+void FrontendUI::drawPopup() {
+    if (m_popupText.empty() || !popupArtReady()) return;
+
+    auto plan = m_backgroundScene ? m_backgroundScene->getLastPlan() : nullptr;
+    if (plan == nullptr || plan->renderingMatrices == nullptr) return;
+    const mathfu::vec4 clip = plan->renderingMatrices->perspectiveMat * plan->renderingMatrices->lookAtMat * mathfu::vec4(m_popupAt, 1.0f);
+    if (clip.w <= 0) return;
+
+    const ImGuiIO &io = ImGui::GetIO();
+    const ImVec2 anchor((clip.x / clip.w * 0.5f + 0.5f) * io.DisplaySize.x, (0.5f - clip.y / clip.w * 0.5f) * io.DisplaySize.y);
+    const float unit = io.DisplaySize.y / kUiHeight;
+    const float pad = kPad * unit, edge = kEdge * unit, inset = kInset * unit;
+
+    const ImVec2 text = m_popupFont->CalcTextSizeA(m_popupFontPx, FLT_MAX, kWrap * unit, m_popupText.c_str());
+    const float shown = (std::min)(text.y, kMaxText * unit);
+    const ImVec2 size(text.x + 2 * pad, shown + 2 * pad);
+    const ImVec2 lo(anchor.x - size.x / 2, anchor.y - size.y / 2);
+    const ImVec2 hi(anchor.x + size.x / 2, anchor.y + size.y / 2);
+
+    ImDrawList *draw = ImGui::GetForegroundDrawList();
+    const ImTextureID background = m_tooltipBackgroundMat->uniqueId;
+    const ImTextureID border = m_tooltipBorderMat->uniqueId;
+
+    draw->AddImage(background, ImVec2(lo.x + inset, lo.y + inset), ImVec2(hi.x - inset, hi.y - inset),
+                   ImVec2(0, 0), ImVec2(1, 1), IM_COL32(23, 23, 48, 255));
+
+    auto cell = [](int i) { return i / 8.0f; };
+    draw->AddImage(border, ImVec2(lo.x, lo.y + edge), ImVec2(lo.x + edge, hi.y - edge), ImVec2(cell(0), 0), ImVec2(cell(1), 1));
+    draw->AddImage(border, ImVec2(hi.x - edge, lo.y + edge), ImVec2(hi.x, hi.y - edge), ImVec2(cell(1), 0), ImVec2(cell(2), 1));
+    draw->AddImageQuad(border,
+                       ImVec2(lo.x + edge, lo.y), ImVec2(hi.x - edge, lo.y), ImVec2(hi.x - edge, lo.y + edge), ImVec2(lo.x + edge, lo.y + edge),
+                       ImVec2(cell(2), 1), ImVec2(cell(2), 0), ImVec2(cell(3), 0), ImVec2(cell(3), 1));
+    draw->AddImageQuad(border,
+                       ImVec2(lo.x + edge, hi.y - edge), ImVec2(hi.x - edge, hi.y - edge), ImVec2(hi.x - edge, hi.y), ImVec2(lo.x + edge, hi.y),
+                       ImVec2(cell(3), 1), ImVec2(cell(3), 0), ImVec2(cell(4), 0), ImVec2(cell(4), 1));
+    draw->AddImage(border, lo, ImVec2(lo.x + edge, lo.y + edge), ImVec2(cell(4), 0), ImVec2(cell(5), 1));
+    draw->AddImage(border, ImVec2(hi.x - edge, lo.y), ImVec2(hi.x, lo.y + edge), ImVec2(cell(5), 0), ImVec2(cell(6), 1));
+    draw->AddImage(border, ImVec2(lo.x, hi.y - edge), ImVec2(lo.x + edge, hi.y), ImVec2(cell(6), 0), ImVec2(cell(7), 1));
+    draw->AddImage(border, ImVec2(hi.x - edge, hi.y - edge), hi, ImVec2(cell(7), 0), ImVec2(cell(8), 1));
+
+    float scrolled = 0;
+    const float overflow = text.y - shown;
+    if (overflow > 0) {
+        const double run = overflow / (kScroll * unit);
+        const double t = std::fmod(ImGui::GetTime() - m_popupShownAt, kHold + run + kHold);
+        scrolled = (float) std::clamp((t - kHold) * kScroll * unit, 0.0, (double) overflow);
+    }
+
+    const ImVec2 origin(lo.x + pad, lo.y + pad);
+    draw->PushClipRect(origin, ImVec2(origin.x + text.x + unit, origin.y + shown), true);
+    const ImVec2 at(origin.x, origin.y - scrolled);
+    draw->AddText(m_popupFont, m_popupFontPx, ImVec2(at.x + unit, at.y + unit), IM_COL32(0, 0, 0, 255), m_popupText.c_str(), nullptr, kWrap * unit);
+    draw->AddText(m_popupFont, m_popupFontPx, at, IM_COL32(255, 209, 0, 255), m_popupText.c_str(), nullptr, kWrap * unit);
+    draw->PopClipRect();
 }
 
 bool FrontendUI::openFirstStorage() {
@@ -88,6 +231,7 @@ void FrontendUI::initImgui(GLFWwindow *window) {
 }
 
 void FrontendUI::newFrame() {
+    preparePopupFont();
 
 //    ImGui_ImplOpenGL3_NewFrame();
 
