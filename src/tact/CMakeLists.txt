@@ -1,6 +1,6 @@
 # TactCppLib from the 3rdparty/TactCpp sources, with its own CMakeLists.txt left out: that one fetches
-# cpr and libcurl for the HTTP code in CDN.cpp and ListFile.cpp. The two files beside this one stand
-# in for them, so nothing here fetches, compiles or links an HTTP client.
+# cpr and libcurl for the HTTP code in CDN.cpp and ListFile.cpp. The two of that name beside this one
+# stand in for them, so nothing here fetches, compiles or links an HTTP client.
 set(TACT_LIB_DIR ${PROJECT_SOURCE_DIR}/3rdparty/TactCpp/TactCppLib)
 
 add_library(TactCppLib STATIC

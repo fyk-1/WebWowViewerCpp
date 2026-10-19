@@ -18,9 +18,9 @@
 #define TracyMessageStr(a) TracyMessage(a.c_str(), a.size());
 #else
 #define setThreadName(a)
-#define setThreadName(a)
 #define ZoneScoped
 #define ZoneScopedN(a)
+#define TracyPlot(a, b)
 #define TracyVkContext(x,y,z,w)
 #define TracyMessageStr(a)
 #define VkZone(a, b)

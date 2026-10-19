@@ -2,6 +2,7 @@
 // paths (CASC indices, the cache, a local TACT folder) and has no HTTP client. CDN.h is TactCpp's.
 #include "CDN.h"
 #include "Error.h"
+#include "ReadTiming.h"
 #include "utils/KeyService.h"
 #include "utils/SalsaDecrypt.h"
 #include "utils/stringUtils.h"
@@ -10,6 +11,7 @@
 #include <iostream>
 #include <algorithm>
 #include <chrono>
+#include <mutex>
 
 using namespace TACTLibUtils;
 
@@ -95,7 +97,10 @@ std::vector<uint8_t> CDN::GetFile(const std::string &type,
     auto data = DownloadFile(type, hash, "", 0, compressedSize);
     if (!decode)
         return data;
-    return BLTE::Decode(data, decompressedSize);
+    const auto start = std::chrono::steady_clock::now();
+    auto decoded = BLTE::Decode(data, decompressedSize);
+    tactReadTiming.inflate += std::chrono::steady_clock::now() - start;
+    return decoded;
 }
 
 std::vector<uint8_t> CDN::GetFileFromArchive(const std::string &eKey,
@@ -107,7 +112,10 @@ std::vector<uint8_t> CDN::GetFileFromArchive(const std::string &eKey,
     auto data = DownloadFile("", eKey, archive, offset, length);
     if (!decode)
         return data;
-    return BLTE::Decode(data, decompressedSize);
+    const auto start = std::chrono::steady_clock::now();
+    auto decoded = BLTE::Decode(data, decompressedSize);
+    tactReadTiming.inflate += std::chrono::steady_clock::now() - start;
+    return decoded;
 }
 
 std::string CDN::GetFilePath(const std::string &type, const std::string &hash, uint64_t compressedSize) {
@@ -206,7 +214,7 @@ std::vector<uint8_t> CDN::DownloadFile(
     }
 
     // 2) The cache
-    auto cachedData = fileCache_->TryLoadFromCache(key, type, archive, productDirectory_, expectedSize);
+    std::vector<uint8_t> cachedData = fileCache_->TryLoadFromCache(key, type, archive, productDirectory_, expectedSize);
     if (!cachedData.empty()) {
         return cachedData;
     }
@@ -293,6 +301,7 @@ bool CDN::TryGetLocalFile(const std::string &eKey, std::vector<uint8_t> &outData
     auto info = it->second->GetIndexInfo(bytes);
     if (info.archiveOffset == -1) return false;
 
+    const auto openStart = std::chrono::steady_clock::now();
     std::filesystem::path archivePath =
         settings_.BaseDir.value() / ("Data/data/data." + PadLeft(std::to_string(info.archiveIndex), 3, '0'));
 
@@ -302,11 +311,14 @@ bool CDN::TryGetLocalFile(const std::string &eKey, std::vector<uint8_t> &outData
     if (info.archiveOffset + info.archiveSize > fileLen) return false;
     std::ifstream ifs(archivePath, std::ios::binary);
     if (!ifs) throw std::runtime_error("Unable to open archive: " + archivePath.string());
+    const auto readStart = std::chrono::steady_clock::now();
+    tactReadTiming.open += readStart - openStart;
     ifs.seekg(info.archiveOffset);
     outData.resize(info.archiveSize);
     if (!ifs.read(reinterpret_cast<char *>(outData.data()), info.archiveSize)) {
         outData.clear();
         throw std::runtime_error("Unable to read archive: " + archivePath.string());
     }
+    tactReadTiming.read += std::chrono::steady_clock::now() - readStart;
     return true;
 }

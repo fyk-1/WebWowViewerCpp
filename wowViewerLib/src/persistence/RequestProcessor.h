@@ -7,8 +7,12 @@
 
 #include "../include/sharedFile.h"
 #include "../include/iostuff.h"
+#include "../include/fileRank.h"
 #include "../renderer/frame/prodConsumerChain/ProdConsumerIOConnector.h"
 #include <thread>
+#include <chrono>
+#include <mutex>
+#include <condition_variable>
 #include <list>
 #include <vector>
 #include <atomic>
@@ -33,7 +37,6 @@ struct IterateFilesRequest {
 class RequestProcessor : public IFileRequest {
 protected:
     RequestProcessor() : toBeProcessed(0){
-        m_requestQueue = std::make_unique<decltype(m_requestQueue)::element_type>(dumb_boolean_always_false);
     }
     virtual ~RequestProcessor() {
     };
@@ -41,9 +44,12 @@ protected:
 protected:
     virtual void processFileRequest(CacheHolderType holderType, const std::weak_ptr<PersistentFile> &s_file) = 0;
 public:
+    // Every loader thread calls this on a new processor: the first makes the queue they share, and the rest find it made.
     void initThreadQueue(bool &isTerminating) {
+        std::lock_guard<std::mutex> lock(m_initMutex);
+        if (m_threaded) return;
+        m_terminating = &isTerminating;
         m_threaded = true;
-        m_requestQueue = std::make_unique<decltype(m_requestQueue)::element_type>(isTerminating);
     }
 
     void requestFile(CacheHolderType holderType, std::weak_ptr<PersistentFile> s_file) override;
@@ -52,6 +58,8 @@ private:
     public:
         CacheHolderType holderType;
         std::weak_ptr<PersistentFile> s_file;
+        std::chrono::steady_clock::time_point queued;
+        std::shared_ptr<FileRank> rank;
     };
 
     class ResultStruct {
@@ -65,7 +73,11 @@ private:
         HFileContent buffer = nullptr;
     };
 
-    std::unique_ptr<ProdConsumerIOConnector<RequestStruct>> m_requestQueue;
+    // The pending requests, in no order: the loader takes the nearest one (popNearest).
+    std::vector<RequestStruct> m_requestQueue;
+    std::mutex m_requestQueueMutex;
+    std::condition_variable m_requestQueueSignal;
+    bool popNearest(RequestStruct &request);
     std::list<ResultStruct> m_resultQueue;
 
 #if CHECK_FOR_DUPLICATES == 1
@@ -74,17 +86,34 @@ private:
 
     bool m_threaded = false;
     bool dumb_boolean_always_false = false;
+    bool *m_terminating = &dumb_boolean_always_false;
+    std::mutex m_initMutex;
+    std::mutex m_iterateMutex;
+    // The time processResult spent parsing the file this thread is processing, read back by processRequests.
+    static thread_local std::chrono::steady_clock::duration m_parseTime;
+
+    void processTimed(const RequestStruct &request);
 
     std::unique_ptr<IterateFilesRequest> m_iterateFilesRequest;
 public:
     void processRequests(int limit);
 
     bool completedAllJobs() {
-        return (m_requestQueue->empty()) && (m_resultQueue.empty()) && (toBeProcessed == 0);
+        std::lock_guard<std::mutex> lock(m_requestQueueMutex);
+        return (m_requestQueue.empty()) && (m_resultQueue.empty()) && (toBeProcessed == 0);
     };
     void iterateAllFiles( std::unique_ptr<IterateFilesRequest> &iterateFilesRequest );
 
 protected:
+    // Where the read of the file this thread is processing spent its time, set by a processor that can tell; the rest is lookup.
+    struct ReadSplit {
+        std::chrono::steady_clock::duration overrides{};
+        std::chrono::steady_clock::duration open{};
+        std::chrono::steady_clock::duration read{};
+        std::chrono::steady_clock::duration inflate{};
+    };
+    static thread_local ReadSplit m_readSplit;
+
     std::atomic<int> toBeProcessed;
     void processResult(const std::shared_ptr<PersistentFile> &s_file, const HFileContent &content);
     virtual void iterateFilesInternal(

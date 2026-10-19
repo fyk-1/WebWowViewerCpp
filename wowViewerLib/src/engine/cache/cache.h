@@ -19,6 +19,7 @@
 #include "../stringTrim.h"
 #include "../../include/iostuff.h"
 #include "../../include/sharedFile.h"
+#include "../../include/fileRank.h"
 #include "../../robin_hood.h"
 
 struct FileCacheRecord {
@@ -61,11 +62,13 @@ public:
         if(found) {
             if (std::shared_ptr<T> shared = it->second.lock()) {
                 //element found;
+                FileRankScope::apply(*shared->rank());
                 return shared;
             }
         }
 
         std::shared_ptr<T> sharedPtr = std::make_shared<T>(fileName);
+        FileRankScope::apply(*sharedPtr->rank());
         std::weak_ptr<T> weakPtr(sharedPtr);
         cacheLck.lock();
         m_cache[fileName] = weakPtr;
@@ -98,11 +101,13 @@ public:
             if (found) {
                if (std::shared_ptr<T> shared = it->second.lock()) {
                     //element found;
+                    FileRankScope::apply(*shared->rank());
                     return shared;
                 }
             }
         }
         std::shared_ptr<T> sharedPtr = std::make_shared<T>(id);
+        FileRankScope::apply(*sharedPtr->rank());
 
         m_cache[fileName] = sharedPtr;
         cacheLck.unlock();

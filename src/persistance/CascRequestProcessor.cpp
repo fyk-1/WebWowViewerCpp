@@ -6,6 +6,7 @@
 #include <sstream>
 #include <iterator>
 #include "CascRequestProcessor.h"
+#include "../tact/ReadTiming.h"
 #include "../database/buildInfoParser/buildDefinition.h"
 #include "../../3rdparty/TactCpp/TactCppLib/Error.h"
 #include "../../3rdparty/TactCpp/TactCppLib/BuildInstance.h"
@@ -155,7 +156,9 @@ void CascRequestProcessor::processFileRequest(CacheHolderType holderType, const 
     uint32_t fileDataId = perstFile->getFileDataId();
     std::string fileName = perstFile->getFileName();
 
+    tactReadTiming = {};
     HFileContent fileContent = readFileContent(fileName, fileDataId);
+    m_readSplit = {tactReadTiming.overrides, tactReadTiming.open, tactReadTiming.read, tactReadTiming.inflate};
 
     if (!(fileContent == nullptr)) {
         toBeProcessed--;
@@ -178,7 +181,9 @@ HFileContent CascRequestProcessor::readFileContent(const std::string &fileName, 
 
     HFileContent fileContent = nullptr;
     try {
+        const auto overridesStart = std::chrono::steady_clock::now();
         fileContent = tryGetFileFromOverrides(fileDataId);
+        tactReadTiming.overrides += std::chrono::steady_clock::now() - overridesStart;
         if (fileContent != nullptr) return fileContent;
         if (readFileContentLambda)
             fileContent = readFileContentLambda(fileName, fileDataId);
