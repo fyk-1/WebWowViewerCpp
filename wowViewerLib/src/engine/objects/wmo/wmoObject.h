@@ -204,6 +204,8 @@ public:
     void checkFog(const mathfu::vec3 &cameraPos, int currentGroupIndex, WmoFogBlendResult &result);
 
     bool doPostLoad(const HMapSceneBufferCreate &sceneRenderer);
+    // Ranks the root file in the loader queue at distanceSq, in yards squared (fileRank.h).
+    void rankFiles(float distanceSq) { if (mainGeom != nullptr) mainGeom->rank()->rank(distanceSq); }
     void update();
     void uploadGeneratorBuffers();
 

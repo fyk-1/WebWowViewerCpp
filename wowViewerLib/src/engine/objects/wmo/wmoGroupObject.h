@@ -73,6 +73,10 @@ public:
     const std::vector<std::shared_ptr<CEngineLight>> &getWmoNewLights();
 
     bool doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager);
+    // Asks for the group file if nothing has yet.
+    void requestFiles() { if (!m_loaded && !m_loading) startLoading(); }
+    // Ranks the group file in the loader queue at distanceSq, in yards squared (fileRank.h).
+    void rankFiles(float distanceSq) { if (m_geom != nullptr) m_geom->rank()->rank(distanceSq); }
     void update();
     void uploadGeneratorBuffers(const HFrameDependantData &frameDependantData, animTime_t mapCurrentTime);
 

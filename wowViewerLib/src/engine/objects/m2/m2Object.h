@@ -128,6 +128,7 @@ private:
     HSkelGeom m_parentSkelGeom = nullptr;
     // The model's own textures, asked for with its skin and held until its meshes take them (doLoadGeom).
     std::vector<HBlpTexture> m_texturesAhead;
+    bool m_isSpawn = false;
     std::shared_ptr<CBoneMasterData> m_boneMasterData = nullptr;
 
     HGVertexBufferBindings bufferBindings = nullptr;
@@ -410,6 +411,13 @@ public:
     void doLoadMainFile();
     bool isFailedToLoadMainFile();
     void doLoadGeom(const HMapSceneBufferCreate &sceneRenderer);
+    // Ranks the model's pending files in the loader queue at distanceSq, in yards squared (fileRank.h).
+    void rankFiles(float distanceSq);
+    // A creature, its mount or what it holds, or a game object: finished after the map's own models.
+    void markSpawn() {m_isSpawn = true;}
+    bool isSpawn() const {return m_isSpawn;}
+    // Whether the skin, skeleton and textures have been asked for (doLoadGeom's first call once the header is in).
+    bool geomFilesRequested() const {return m_skinGeom != nullptr;}
     bool isFailedToLoadGeomFile();
 
     void dumpBoneAnimations();

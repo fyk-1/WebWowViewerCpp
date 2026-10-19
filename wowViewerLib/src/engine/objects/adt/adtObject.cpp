@@ -31,22 +31,24 @@ then, and a tile with m_loaded false draws and collects nothing. allStages runs 
 */
 void AdtObject::loadingFinished(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager, bool allStages) {
     ZoneScopedN("ADT stage");
+    //The objects go first and are asked for at once, so the loader reads them while the terrain's stages run
     do {
         switch (m_stage) {
             case 0:
-                loadAlphaTextures();
-                break;
-            case 1:
-                calcBoundingBoxes();
-                createVBO(sceneRenderer);
-                break;
-            case 2:
-                createMeshes(sceneRenderer);
-                break;
-            case 3:
                 loadM2s();
                 loadWmos();
                 loadCreatures();
+                requestObjects();
+                break;
+            case 1:
+                loadAlphaTextures();
+                break;
+            case 2:
+                calcBoundingBoxes();
+                createVBO(sceneRenderer);
+                break;
+            case 3:
+                createMeshes(sceneRenderer);
                 break;
             default:
                 loadWater(sceneRenderer, liquidMaterialManager);
@@ -208,6 +210,22 @@ hidden by their own flag. A row with IsWmo set is a WMO instead (WorldObjectMana
 those and added to the WMO candidates of each frame, which loads it, culls it by the box its header gives it and draws it as any WMO.
 The tile logs its rows with a pose, a mount or a WMO model, the creatures it counts having been made.
 */
+void AdtObject::requestObjects() {
+    ZoneScoped;
+    for (auto &m2Object : objectLods[0].m2Objects) {
+        if (m2Object != nullptr) m2Object->doLoadMainFile();
+    }
+    for (auto &wmoObject : objectLods[0].wmoObjects) {
+        if (wmoObject != nullptr) wmoObject->startLoading();
+    }
+    for (auto &creature : m_creatures) {
+        if (creature != nullptr && creature->m2 != nullptr) creature->m2->doLoadMainFile();
+    }
+    for (auto &placed : m_gameObjectWmos) {
+        if (placed.wmo != nullptr) placed.wmo->startLoading();
+    }
+}
+
 void AdtObject::loadCreatures() {
     ZoneScoped;
     if (m_api == nullptr || m_api->databaseHandler == nullptr) return;
@@ -1017,6 +1035,12 @@ FileStatus AdtObject::getLoadedStatus() {
     return FileStatus::FSLoaded;
 }
 
+
+void AdtObject::rankFiles(float distanceSq) {
+    for (auto const &file : {m_adtFile, m_adtFileTex, m_adtFileObj, m_adtFileObjLod, m_adtFileLod}) {
+        if (file != nullptr) file->rank()->rank(distanceSq);
+    }
+}
 
 bool AdtObject::filesReady() {
     return getLoadedStatus() == FileStatus::FSLoaded;

@@ -24,6 +24,7 @@ std::shared_ptr<PlacedCreature> WorldObjectManager::createCreature(HApiContainer
     fill(8, spawn.SkinExtraTexture);
 
     auto m2Object = m2Factory->createObject(api);
+    m2Object->markSpawn();
     m2Object->setLoadParams(0, spawn.MeshIds, replaceTextures);
     m2Object->hideUnfilledBatches();
     m2Object->setAlpha(spawn.Alpha / 255.0f);
@@ -45,6 +46,7 @@ std::shared_ptr<PlacedCreature> WorldObjectManager::createCreature(HApiContainer
         }
 
         auto item = m2Factory->createObject(api);
+        item->markSpawn();
         item->setLoadParams(0, {}, itemTextures);
         item->hideUnfilledBatches();
         item->setModelFileId(attachment.ModelFileDataID);
@@ -59,6 +61,7 @@ std::shared_ptr<PlacedCreature> WorldObjectManager::createCreature(HApiContainer
         }
 
         auto mount = m2Factory->createObject(api);
+        mount->markSpawn();
         mount->setLoadParams(0, {}, mountTextures);
         mount->hideUnfilledBatches();
         if (spawn.MountAnim >= 0) mount->setInitialAnimation(spawn.MountAnim);
@@ -82,6 +85,7 @@ std::shared_ptr<PlacedCreature> WorldObjectManager::createGameObjectSpawn(HApiCo
     if (spawn.ModelFileDataID <= 0) return nullptr;
 
     auto m2Object = m2Factory->createObject(api);
+    m2Object->markSpawn();
     m2Object->setLoadParams(0, {}, {});
     m2Object->hideUnfilledBatches();
     m2Object->setModelFileId(spawn.ModelFileDataID);

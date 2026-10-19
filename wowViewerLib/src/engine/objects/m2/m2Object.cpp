@@ -755,6 +755,21 @@ void M2Object::dumpBoneAnimations() {
     }
 }
 
+void M2Object::rankFiles(float distanceSq) {
+    if (m_m2Geom != nullptr) m_m2Geom->rank()->rank(distanceSq);
+    if (m_skinGeom != nullptr) m_skinGeom->rank()->rank(distanceSq);
+    if (m_skelGeom != nullptr) m_skelGeom->rank()->rank(distanceSq);
+    if (m_parentSkelGeom != nullptr) m_parentSkelGeom->rank()->rank(distanceSq);
+    for (auto const &texture : m_texturesAhead) texture->rank()->rank(distanceSq);
+}
+
+/*
+robots@Impl: Files asked for ahead. The first call, once the .m2 is in and the model has passed culling, asks for the skin, the
+skel and every texture the model names itself (type 0) together, where it used to ask for the skin, wait for it, and only then
+for the skel and, building the meshes, the textures: each wait was a full turn of the loader queue. The textures are held in
+m_texturesAhead, since the cache keeps only weak references, until the meshes take the same instances from it. A replaceable
+texture is the object's own and was asked for when the object was made.
+*/
 void M2Object::doLoadGeom(const HMapSceneBufferCreate &sceneRenderer){
     //0. If loading procedures were already done - exit
     if (this->status->m_loaded) return;

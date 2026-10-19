@@ -213,8 +213,10 @@ public:
     // A map is about to open: the Map made next finishes its tiles and geometry without the per-frame budgets until the tiles
     // around the arrival point are in, or FAST_LOAD_CEILING has passed. Called from SceneWindow::unload, ahead of every open.
     static void requestFastLoad();
-    // The time a frame is paced to, from the main loop each frame; 0 when it is not paced. Sizes the tile load budget.
+    // The time a frame is paced to, from the main loop each frame; 0 when it is not paced. Sizes the load budgets.
     static void setFramePeriod(std::chrono::microseconds period);
+    // What a frame spends on tile stages, and again on finishing geometry (map_load_max_contants.h).
+    static std::chrono::microseconds loadBudget();
 
     void update(const HMapRenderPlan &renderPlan);
     void updateBuffers(const HMapSceneBufferCreate &sceneRenderer, const HMapRenderPlan &renderPlan);

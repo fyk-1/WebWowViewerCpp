@@ -60,6 +60,8 @@ public:
     void uploadGeneratorBuffers(const HFrameDependantData &frameDependantData);
     // Runs the tile's next load stage and returns true when it ran one, or all the rest with allStages. A tile needs five.
     bool doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager, bool allStages = false);
+    // Ranks the tile's own files in the loader queue at distanceSq, in yards squared (fileRank.h).
+    void rankFiles(float distanceSq);
 
     int getAreaId(int mcnk_x, int mcnk_y);
     void getHeight(const mathfu::vec4 &camera, float &height);
@@ -221,6 +223,8 @@ private:
     void loadM2s();
     void loadCreatures();
     void loadWmos();
+    // Asks for the files of every model, building and spawn the tile placed, under the caller's rank scope.
+    void requestObjects();
     void loadWater(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager);
 
     bool checkNonLodChunkCulling(ADTObjRenderRes &adtFrustRes,

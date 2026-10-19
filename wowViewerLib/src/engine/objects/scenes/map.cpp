@@ -1357,22 +1357,32 @@ void Map::createAdtFreeLamdas() {
 robots@Impl: Finishing loaded geometry against one time budget. M2 geometry, WMO roots and WMO groups share one queue, since
 what they cost is the same kind of work, uploads and material creation, and a cap per kind let any one of them eat the frame.
 
-The queue is rebuilt each frame from the plan's toLoad lists, sorted by distance from the camera to the item's box, nearest
-first. The WMO the camera stands in, its root and its groups, sorts ahead of everything: it is the view the camera is in, and
-a room that is not there is a hole. Ties go root, then group, then model, since a group waits for its root. Items past the
-budget are not dropped: they are still not loaded next frame, and the next plan lists them again.
+The queue is rebuilt each frame from the plan's toLoad lists, sorted by size on screen, largest first: the square of the
+item's box half-diagonal over the square of its distance from the camera, a yard at least. The WMO the camera stands in, its
+root and its groups, sorts ahead of everything: it is the view the camera is in, and a room that is not there is a hole.
+Creatures, their mounts and what they hold, and game objects go after the map's own models and buildings, whatever their
+size. Ties go root, then group, then model, since a group waits for its root. Items past the budget are not dropped: they are
+still not loaded next frame, and the next plan lists them again.
 
-An item that is not ready yet (its file has not arrived) costs a lookup and starts its loading, so it neither spends the
-budget nor counts as finished; the clock is read after each item, and the loop leaves only once an item has finished and the
-budget is spent, which keeps a frame of unready items from stopping the queue before it reaches one that is ready. Inside the
-fast-load window the budget is lifted and the loop runs through the whole queue.
+Each item ranks its pending files at its distance (fileRank.h), and what an item asks for while it is finished, a skin, its
+textures, a WMO's groups and theirs, takes the same rank.
+
+Before the budget runs, a pass over the whole queue asks for every item's files that nothing has asked for yet, a model's
+skin, skeleton and textures and a group's file: a request is a cache lookup and a queue push, so the pass costs the frame
+nothing, and the loader is never left idle by items the budget has not reached. Then the items are finished under the
+budget. An item whose files are not in yet costs a status check, so it neither spends the budget nor counts as finished; the
+clock is read after each item, and the loop leaves only once an item has finished and the budget is spent, which keeps a
+frame of unready items from stopping the queue before it reaches one that is ready. Inside the fast-load window the budget
+is lifted and the loop runs through the whole queue.
 */
 namespace {
 struct PostLoadItem {
     enum class Kind : uint8_t { WmoRoot, WmoGroup, M2 };
 
     bool cameraWmo = false;
+    bool spawn = false;
     float distanceSq = 0;
+    float screenSize = 0;
     Kind kind = Kind::M2;
     M2ObjId m2Id = M2ObjId(0);
     WMOObjId wmoId = emptyWMO;
@@ -1382,6 +1392,11 @@ struct PostLoadItem {
 float distanceSqToBox(const CAaBox &box, const mathfu::vec3 &point) {
     mathfu::vec3 closest = mathfu::vec3::Max(mathfu::vec3(box.min), mathfu::vec3::Min(mathfu::vec3(box.max), point));
     return (closest - point).LengthSquared();
+}
+
+float screenSizeOf(const CAaBox &box, float distanceSq) {
+    const float halfDiagonalSq = (mathfu::vec3(box.max) - mathfu::vec3(box.min)).LengthSquared() * 0.25f;
+    return halfDiagonalSq / std::max(distanceSq, 1.0f);
 }
 
 /*
@@ -1413,6 +1428,7 @@ struct BudgetShortfall {
     }
 };
 BudgetShortfall g_budgetShortfall;
+
 }
 
 size_t Map::finishLoadedGeometry(const HMapSceneBufferCreate &sceneRenderer, const HMapRenderPlan &renderPlan, bool fastLoad) {
@@ -1428,7 +1444,13 @@ size_t Map::finishLoadedGeometry(const HMapSceneBufferCreate &sceneRenderer, con
             PostLoadItem item;
             item.kind = PostLoadItem::Kind::M2;
             item.m2Id = m2ObjectId;
-            item.distanceSq = distanceSqToBox(retrieveAABB(m2ObjectId), cameraPos);
+            const CAaBox &box = retrieveAABB(m2ObjectId);
+            item.distanceSq = distanceSqToBox(box, cameraPos);
+            item.screenSize = screenSizeOf(box, item.distanceSq);
+            if (auto m2Object = m2Factory->getObjectById<0>(m2ObjectId)) {
+                item.spawn = m2Object->isSpawn();
+                m2Object->rankFiles(item.distanceSq);
+            }
             queue.push_back(item);
         }
     }
@@ -1438,7 +1460,10 @@ size_t Map::finishLoadedGeometry(const HMapSceneBufferCreate &sceneRenderer, con
             item.kind = PostLoadItem::Kind::WmoRoot;
             item.wmoId = wmoId;
             item.cameraWmo = cameraWmo != nullptr && wmoId == renderPlan->m_currentWMO;
-            item.distanceSq = item.cameraWmo ? -1.0f : distanceSqToBox(retrieveAABB(wmoId), cameraPos);
+            const CAaBox &box = retrieveAABB(wmoId);
+            item.distanceSq = item.cameraWmo ? 0.0f : distanceSqToBox(box, cameraPos);
+            item.screenSize = screenSizeOf(box, item.distanceSq);
+            if (auto wmoObject = wmoFactory->getObjectById<0>(wmoId)) wmoObject->rankFiles(item.distanceSq);
             queue.push_back(item);
         }
         for (auto &wmoGroupObject: renderPlan->wmoGroupArray.getToLoad()) {
@@ -1447,23 +1472,46 @@ size_t Map::finishLoadedGeometry(const HMapSceneBufferCreate &sceneRenderer, con
             item.kind = PostLoadItem::Kind::WmoGroup;
             item.group = wmoGroupObject.get();
             item.cameraWmo = cameraWmo != nullptr && wmoGroupObject->getWmoApi() == static_cast<IWmoApi *>(cameraWmo);
-            item.distanceSq = (wmoGroupObject->getWmoApi() != nullptr) ?
-                distanceSqToBox(wmoGroupObject->getWorldAABB(), cameraPos) : 0.0f;
+            if (wmoGroupObject->getWmoApi() != nullptr) {
+                const CAaBox &box = wmoGroupObject->getWorldAABB();
+                item.distanceSq = item.cameraWmo ? 0.0f : distanceSqToBox(box, cameraPos);
+                item.screenSize = screenSizeOf(box, item.distanceSq);
+            }
+            wmoGroupObject->rankFiles(item.distanceSq);
             queue.push_back(item);
         }
     }
 
     std::sort(queue.begin(), queue.end(), [](const PostLoadItem &a, const PostLoadItem &b) {
         if (a.cameraWmo != b.cameraWmo) return a.cameraWmo;
-        if (a.distanceSq != b.distanceSq) return a.distanceSq < b.distanceSq;
+        if (a.spawn != b.spawn) return b.spawn;
+        if (a.screenSize != b.screenSize) return a.screenSize > b.screenSize;
         return a.kind < b.kind;
     });
 
+    for (auto &item: queue) {
+        FileRankScope rankScope(item.distanceSq);
+        switch (item.kind) {
+            case PostLoadItem::Kind::M2: {
+                auto m2Object = m2Factory->getObjectById<0>(item.m2Id);
+                if (m2Object != nullptr && !m2Object->geomFilesRequested()) m2Object->doLoadGeom(sceneRenderer);
+                break;
+            }
+            case PostLoadItem::Kind::WmoGroup:
+                item.group->requestFiles();
+                break;
+            case PostLoadItem::Kind::WmoRoot:
+                break;
+        }
+    }
+
+    const auto budget = loadBudget();
     const auto start = std::chrono::steady_clock::now();
     int finished = 0;
     size_t left = 0;
     for (size_t index = 0; index < queue.size(); index++) {
         auto &item = queue[index];
+        FileRankScope rankScope(item.distanceSq);
         bool done = false;
         switch (item.kind) {
             case PostLoadItem::Kind::M2: {
@@ -1485,7 +1533,7 @@ size_t Map::finishLoadedGeometry(const HMapSceneBufferCreate &sceneRenderer, con
         }
 
         if (done) finished++;
-        if (!fastLoad && finished >= 1 && (std::chrono::steady_clock::now() - start) >= POST_LOAD_BUDGET) {
+        if (!fastLoad && finished >= 1 && (std::chrono::steady_clock::now() - start) >= budget) {
             left = queue.size() - index - 1;
             break;
         }
@@ -1557,10 +1605,11 @@ bool Map::fastLoadOpen() {
 namespace {
 std::atomic<long long> framePeriodUs{0};
 
-// Half the paced frame period, never under ADT_LOAD_BUDGET.
-std::chrono::microseconds adtLoadBudget() {
-    return std::max(ADT_LOAD_BUDGET, std::chrono::microseconds(framePeriodUs.load() / 2));
 }
+
+// Half the paced frame period, never under LOAD_BUDGET.
+std::chrono::microseconds Map::loadBudget() {
+    return std::max(LOAD_BUDGET, std::chrono::microseconds(framePeriodUs.load() / 2));
 }
 
 void Map::setFramePeriod(std::chrono::microseconds period) {
@@ -1586,6 +1635,7 @@ bool Map::loadSettled(bool tilesAsked, bool tilesLoaded, size_t queued) {
 
 void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRenderPlan &renderPlan) {
     ZoneScoped;
+    FileRank::nextEpoch();
 
     //Init LiquidManager
     if (m_liquidMaterialManager == nullptr) {
@@ -1611,10 +1661,15 @@ void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRende
     {
         ZoneScopedN("Load m2 main");
         if (m_api->getConfig()->renderM2) {
+            //A model with no header yet has no box, so its .m2 ranks by where it stands
+            const mathfu::vec3 cameraPos = renderPlan->renderingMatrices ? renderPlan->renderingMatrices->cameraPos.xyz() : mathfu::vec3(0, 0, 0);
             for (auto &m2ObjectId: renderPlan->m2Array.getToLoadMain()) {
                 auto m2Object = m2Factory->getObjectById<0>(m2ObjectId);
                 if (m2Object == nullptr) continue;
+                const float distanceSq = (m2Object->getWorldPosition() - cameraPos).LengthSquared();
+                FileRankScope rankScope(distanceSq);
                 m2Object->doLoadMainFile();
+                m2Object->rankFiles(distanceSq);
             }
         }
     }
@@ -1682,10 +1737,15 @@ void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRende
                 adtObject->doPostLoad(sceneRenderer, m_liquidMaterialManager, fastLoad);
                 return;
             }
-            if (!adtObject->filesReady()) return;
             const float di = adtObject->getAdtX() + 0.5f - cameraI;
             const float dj = adtObject->getAdtY() + 0.5f - cameraJ;
-            tiles.push_back({rank, di * di + dj * dj, adtObject});
+            const float distanceSq = di * di + dj * dj;
+            //A tile's files rank by its centre's distance, and what its stages ask for, ground textures and spawns, the same
+            if (!adtObject->filesReady()) {
+                adtObject->rankFiles(distanceSq * MathHelper::TILESIZE * MathHelper::TILESIZE);
+                return;
+            }
+            tiles.push_back({rank, distanceSq, adtObject});
         };
         for (auto &adtObject: renderPlan->adtArray) queueTile(adtObject.adtObject.get(), adtObject.inView ? 0 : 1);
         for (auto &adtObject: renderPlan->adtPreload) queueTile(adtObject.get(), 2);
@@ -1695,10 +1755,11 @@ void Map::doPostLoad(const HMapSceneBufferCreate &sceneRenderer, const HMapRende
             return a.distanceSq < b.distanceSq;
         });
 
-        const auto budget = adtLoadBudget();
+        const auto budget = loadBudget();
         const auto start = std::chrono::steady_clock::now();
         bool spent = false;
         for (auto &pending: tiles) {
+            FileRankScope rankScope(pending.distanceSq * MathHelper::TILESIZE * MathHelper::TILESIZE);
             while (!spent && !pending.tile->isLoaded()) {
                 if (!pending.tile->doPostLoad(sceneRenderer, m_liquidMaterialManager, fastLoad)) break;
                 spent = !fastLoad && (std::chrono::steady_clock::now() - start) >= budget;
