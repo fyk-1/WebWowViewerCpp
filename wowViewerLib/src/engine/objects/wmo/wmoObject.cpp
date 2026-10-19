@@ -909,7 +909,7 @@ A tile or the map offers each creature to the WMOs whose box holds it (WorldObje
 hidden until all of them have answered. A WMO answers once it is loaded and every group whose volume holds the
 creature's position is loaded too, with the lookup the camera uses (getGroupWmoThatCameraIsInside) on the position lifted one
 yard, since a position on the floor is not above it. A creature in an interior group, the lookup's group not flagged EXTERIOR,
-goes to that group (WmoGroupObject::adoptCreature) and is lit as a doodad of that group; any other answer is a decline. The
+goes to that group (WmoGroupObject::adoptCreature) and is lit by the floor under it (applyInteriorLightingToCreature); any other answer is a decline. The
 groups still to load are queued by queueCreatureGroupLoads, which the map calls for the WMOs it collects, and each group load
 sets the WMO to answer again, which the map asks of each WMO it collects as it loads (homeCreaturesIfChanged), drawn or not.
 */
@@ -1030,12 +1030,28 @@ int WmoObject::findNearestDoodadDef(int groupIndex, const mathfu::vec3 &position
     return nearest;
 }
 
-//A creature is lit as the doodad of its group standing nearest to it, which is where the WMO's authors put the light of that
-//spot; a WMO with no doodad lights it by the WMO's ambient color, kept to the limits applyLightingParamsToDoodad gives it
+//A creature is lit as the client lights a unit indoors: twice the vertex color of the floor under it over the WMO's ambient
+//color, split by AdjustLighting. A group with no vertex colors, or no floor under the creature, lights it as the doodad of
+//the group standing nearest to it, and failing that by the WMO's ambient color, kept to the limits
+//applyLightingParamsToDoodad gives it.
 void WmoObject::applyInteriorLightingToCreature(M2Object &creature, int groupIndex, const mathfu::vec3 &position) {
     creature.setInteriorExteriorBlend(0.0f);
 
     const mathfu::vec3 color = m_ambientColors[0];
+
+    //Lifted one yard as in homeCreatures, so the floor the creature stands on is under the point
+    const mathfu::vec4 localPoint = m_placementInvertMatrix * mathfu::vec4(position.x, position.y, position.z + 1.0f, 1.0f);
+    mathfu::vec3 floorColor;
+    if (groupObjects[groupIndex]->getFloorColor(localPoint.xyz(), floorColor)) {
+        const mathfu::vec3 combined = mathfu::vec3::Min(mathfu::vec3(1.0f, 1.0f, 1.0f), 2.0f * floorColor + color);
+        mathfu::vec3 directColor;
+        mathfu::vec3 ambientColor;
+        AdjustLighting(combined, directColor, 0xA8u, ambientColor, 0x60u);
+        creature.setInteriorDirectColor(directColor);
+        creature.setAmbientColorOverride(ambientColor, ambientColor, ambientColor);
+        return;
+    }
+
     creature.setInteriorDirectColor(fixDirectColor(color, 0x70u));
     creature.setAmbientColorOverride(
         fixAmbient1(color, 0x60u),

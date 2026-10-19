@@ -585,6 +585,30 @@ void WmoGroupObject::getBottomVertexesFromBspResult(
     }
 }
 
+bool WmoGroupObject::getFloorColor(const mathfu::vec3 &localPoint, mathfu::vec3 &color) {
+    if (!m_loaded || m_geom->colorArray == nullptr || m_geom->bsp_nodes == nullptr) return false;
+
+    const MOGP *groupInfo = m_geom->mogp;
+    CAaBox pointBB;
+    pointBB.min = mathfu::vec3(localPoint.x - 1.0f, localPoint.y - 1.0f, groupInfo->boundingBox.min.z);
+    pointBB.max = mathfu::vec3(localPoint.x + 1.0f, localPoint.y + 1.0f, groupInfo->boundingBox.max.z);
+
+    std::vector<int> bspLeafList;
+    queryBspTree(pointBB, 0, m_geom->bsp_nodes, bspLeafList);
+
+    int noPortals = -1;
+    PointerChecker<SMOPortal> portalInfos = noPortals;
+    PointerChecker<SMOPortalRef> portalRels = noPortals;
+    mathfu::vec4 point = mathfu::vec4(localPoint, 1.0f);
+    float topZ, bottomZ;
+    mathfu::vec4 colorUnderneath(0, 0, 0, 0);
+    getBottomVertexesFromBspResult(portalInfos, portalRels, bspLeafList, point, topZ, bottomZ, colorUnderneath, false);
+    if (bottomZ > 99999) return false;
+
+    color = colorUnderneath.xyz();
+    return true;
+}
+
 bool WmoGroupObject::checkIfInsideGroup(mathfu::vec4 &cameraVec4,
                                         mathfu::vec4 &cameraLocal,
                                         PointerChecker<C3Vector> &portalVerticles,

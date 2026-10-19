@@ -58,6 +58,7 @@ public:
     void addCreatureCandidates(M2ObjectListContainer &m2Candidates, const Config &config);
     //The vertex color of the floor under a point in the WMO's space, from the group's MOCV; false when the group has no
     //vertex colors or no floor lies under the point
+    bool getFloorColor(const mathfu::vec3 &localPoint, mathfu::vec3 &color);
 
     void setWmoApi(IWmoApi *api);
     IWmoApi *getWmoApi() { return m_wmoApi; };
@@ -170,6 +171,11 @@ private:
         const std::vector<int> &bspLeafList, mathfu::vec4 &cameraLocal, float &topZ,
         float &bottomZ, mathfu::vec4 &colorUnderneath, bool checkPortals = true);
 };
+
+//The client's split of a light color into a direct color brightened up to brightnessThreshold and an ambient one capped at
+//saturationLimit, the two limits on a 0..255 scale
+void AdjustLighting(const mathfu::vec3 color_in, mathfu::vec3 &color_out_0, uint8_t brightnessThreshold, mathfu::vec3 &color_out_1, uint8_t saturationLimit);
+
 enum liquid_basic_types
 {
     liquid_basic_types_water = 0,
