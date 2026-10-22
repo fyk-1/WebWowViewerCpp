@@ -70,7 +70,8 @@ void MapSceneRenderer::updateSceneWideChunk(const std::shared_ptr<IBufferChunkVe
                                             const std::vector<RenderingMatAndSceneSize> &renderingMatricesAndSizes,
                                             const HFrameDependantData &fdd,
                                             bool isVulkan,
-                                            animTime_t sceneTime
+                                            animTime_t sceneTime,
+                                            const MapRenderPlan &plan
                                             ) {
     ZoneScoped;
 
@@ -184,12 +185,20 @@ void MapSceneRenderer::updateSceneWideChunk(const std::shared_ptr<IBufferChunkVe
             fogData.classicFogParams = mathfu::vec4(0, 0, 0, 0);
             if (m_config->classicFog && !m_config->disableFog && fdd->FogDataFound) {
                 // Legacy fog data: fog rising from the ground. Its density at ground level covers 90 % at the zone's
-                // FogEnd, times classicFogStrength. The shader thins it with the camera's height over classicFogGroundZ,
-                // carried in densityParams.w, which classic mode leaves unread.
+                // FogEnd. The shader thins it with the camera's height over the ground, carried in densityParams.w, which classic mode leaves
+                // unread. The ground is classicFogGroundZ where a script set it, else the plan's terrain height, else the WDL's, else the camera's
+                // own z (full density).
                 float zoneEnd = std::max(fogResult.FogEnd, 1.0f);
-                float groundDensity = std::log(10.0f) / zoneEnd * std::max(m_config->classicFogStrength, 0.0f);
-                fogData.classicFogParams = mathfu::vec4(2.0f, groundDensity, 0.0f, std::max(m_config->classicFogFalloff, 1.0f));
-                fogData.densityParams.w = std::max(renderingMatrices->cameraPos.z - m_config->classicFogGroundZ, 0.0f);
+                float groundDensity = std::log(10.0f) / zoneEnd;
+                // robots@Impl: The shader thins the fog by e every w yards, and the config names the percent kept at a height over the ground
+                // (classicFogKept at classicFogKeptAt), so w is that height over -ln(kept / 100).
+                const float eFoldingHeight = std::max(m_config->classicFogKeptAt, 1.0f) / -std::log(std::clamp(m_config->classicFogKept, 1.0f, 99.0f) / 100.0f);
+                fogData.classicFogParams = mathfu::vec4(2.0f, groundDensity, 0.0f, eFoldingHeight);
+                const float cameraZ = renderingMatrices->cameraPos.z;
+                const float scriptGround = m_config->classicFogGroundZ;
+                const float ground = scriptGround > -99999.0f ? scriptGround : plan.hasGroundHeight ? plan.groundHeight
+                                   : plan.hasWdlGround ? plan.wdlGround : cameraZ;
+                fogData.densityParams.w = std::max(cameraZ - ground, 0.0f);
             }
             fogData.heightPlane = heightPlane;
             fogData.color_and_heightRate = mathfu::vec4(fogResult.FogColor, fogResult.FogHeightScaler
@@ -214,10 +223,14 @@ void MapSceneRenderer::updateSceneWideChunk(const std::shared_ptr<IBufferChunkVe
                 fogResult.EndFogColorDistance :
                 1000.0f
             );
+            // The far fog (commonFogFunctions.slang, makeFog2): the sky cone's fog colour, which the land's edge meets, and its rate per yard,
+            // 0 with the far fog off.
+            const bool farFogOn = m_config->farTerrain && !m_config->disableFog && fdd->FogDataFound && plan.farTerrain.extent > 0.0f;
+            const float farRate = farFogOn ? std::max(m_config->farTerrainFog, 0.0f) / plan.farTerrain.extent : 0.0f;
             fogData.sunPercentage_sunFogStrength = mathfu::vec4(
                 fogResult.SunAngleBlend * fogResult.SunFogStrength,
                 fogResult.SunFogStrength,
-                1.0, 1.0);
+                1.0f, 1.0f);
             fogData.sunDirection_and_fogZScalar = mathfu::vec4(
                 fdd->sunDirection,
                 fogResult.FogZScalar
@@ -237,6 +250,7 @@ void MapSceneRenderer::updateSceneWideChunk(const std::shared_ptr<IBufferChunkVe
                 fogResult.HeightEndFogColor,
                 fogResult.FogStartOffset
             );
+            fogData.farFogColor_rate = mathfu::vec4(fdd->skyColors.SkyFogColor, farRate);
         }
 
         // Underwater fog (Light.db2 LightParams slot 1) for liquid above shaders.

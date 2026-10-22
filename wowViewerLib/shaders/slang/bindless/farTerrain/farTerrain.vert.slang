@@ -27,9 +27,6 @@ precision highp int;
 
 layout(std140, set=1, binding=0) uniform farTerrainBlock {
     mat4 uFarViewProjection;
-    // x: the distance the fog starts at, y: the far plane, z: the fog's strength.
-    vec4 uFarParams;
-    vec4 uFarFogColor;
     // x: the share of the full scene that shows, y: where the taking draw's depth band starts and z: how wide it is, in NDC.
     vec4 uFarFade;
     // xyz: the camera in the world, which the vertices are taken relative to.

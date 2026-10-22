@@ -112,7 +112,7 @@ public:
     bool renderAdt = true;
     // Draws the land beyond the draw distance out to the continent's edge, from the map's WDL heights wearing its minimap tiles.
     bool farTerrain = false;
-    // How much fog the far land takes toward the horizon: 0 none, 1 full fog at the continent's edge, 2 full fog at half the way.
+    // The fog toward the horizon, from the camera to the continent's edge: 0 none, 1 full at the edge, 2 full at half the way.
     float farTerrainFog = 1;
     // The share of the full scene that shows against the far land, from 1 (all of it) to 0 (none): below 1 the tiles, models and
     // liquids dissolve into the far land in the screen-door pattern of m2FadeStartPercent. Read once per culling pass with farTerrainOnly.
@@ -287,15 +287,19 @@ public:
     // Set by the host when the camera jumps, so the next FSR dispatch drops its history. The renderer clears it.
     bool fsrResetRequested = false;
     float fogDensityIncreaser = 0;
-    // Set when the database opens, from IClientDatabase::usesClassicFog: the map renderer then draws fog that rises from
-    // the ground, densest at the terrain under the camera and thinning by a factor of e every classicFogFalloff yards
-    // above it. At classicFogStrength 1 the ground density is the game's: 90 % cover at the zone's FogEnd.
+    // Set when the database opens, from IClientDatabase::usesClassicFog: the map renderer then draws fog that rises from the ground,
+    // classicFogGroundZ, densest there. The ground density is the game's: 90 % cover at the zone's FogEnd. It thins exponentially with
+    // the camera's height (classicFogKept at classicFogKeptAt), and every fragment takes the density at that height.
     bool classicFog = false;
-    float classicFogStrength = 1;
-    float classicFogFalloff = 60;
-    // The world height the classic fog rises from, in z: it is densest there and thins with the camera's height above it. The camera's
-    // own z is read every frame, so a moving camera needs no new value.
-    float classicFogGroundZ = 0;
+    // The share of the ground fog's density kept at classicFogKeptAt yards over the ground, in percent, 1 to 99; 20 keeps 4 % at twice that
+    // height.
+    float classicFogKept = 20;
+    // The height over the ground, in yards, at which classicFogKept percent of the ground density is left.
+    float classicFogKeptAt = 100;
+    // The world height the classic fog rises from, in z, which a script sets from the smoothed terrain under the camera; -99999, the
+    // engine's own "no height", is unset, and the viewer then takes the terrain under the camera as it is. The fog is densest there and
+    // thins with the camera's height above it. It is no NaN, which the host's JSON would read as no field and refuse a script's set of it.
+    float classicFogGroundZ = -99999.0f;
 
     // The final composite adds no glow, so the frame is the scene's colours alone (the height bake sets it).
     bool disableGlow = false;

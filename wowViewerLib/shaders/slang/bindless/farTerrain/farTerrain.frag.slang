@@ -18,24 +18,20 @@ precision highp int;
 // robots@Impl: The far terrain's fragment shader. A tile wears one of two pictures of the ground and is lit by the exterior ambient
 // and sun as an ADT chunk is, with no specular, layers or light buffer. The baked colour (bit 5) is the ground's unlit albedo, so it
 // is lit on the slope's own normal like a full chunk. Its alpha is the liquid kind of the texel (1 river or lake, 2 ocean, 3 magma,
-// 4 other). A texel of kind 1 or 2 takes the frame's far river or far ocean colour, lit as the water lights it (farLiquidLit), and the fog below applies
-// to it as to any far fragment; the other kinds keep the lit ground. The kind is fetched from the nearest texel, since the filtered
-// sample blends the kinds of two neighbours at a shore, and the filtered rgb stays the ground's. The minimap is a picture already
-// shaded by its relief, and lighting its slope again shaded it twice, the far land darker than the full chunks beside it, so it is
-// lit flat, on the view's up. Both are fogged in two steps. First the scene's fog, as the full chunks take it, but at a distance
-// held to the draw distance: the scene's fog would paint all of this land in fog colour past it, and held there it gives every far
-// fragment what a full chunk at the seam along the same ray gets, so the land runs on across the seam in the same haze. Then the far
-// pass's own fog on top: toward the frame's end fog colour by distance from the draw distance to the far plane, times the strength.
-// A tile whose texture has not landed is the fog colour outright, so the gap reads as haze. The draw that takes pixels from the
-// fading full scene keeps the fragments the scene's screen-door drops (dropsForCullFade, the pattern of Config::m2FadeStartPercent),
+// 4 other). A texel of kind 1 or 2 takes the frame's far river or far ocean colour, lit as the water lights it (farLiquidLit); the
+// other kinds keep the lit ground. The kind is fetched from the nearest texel, since the filtered sample blends the kinds of two
+// neighbours at a shore, and the filtered rgb stays the ground's. The minimap is a picture already shaded by its relief, and lighting
+// its slope again shaded it twice, the far land darker than the full chunks beside it, so it is lit flat, on the view's up. Every
+// fragment takes one fog path, makeFog2, the function every scene fragment takes: the zone's ground fog at the fragment's true
+// distance (the classic fog's falloff thins it with the camera's height), and the far fog on top toward the sky's fog colour. A tile whose texture
+// has not landed is a fragment of that colour through the same path, so the gap reads as haze. The draw that takes pixels from
+// the fading full scene keeps the fragments the scene's screen-door drops (dropsForCullFade, the pattern of Config::m2FadeStartPercent),
 // and writes no depth in the others, which is why this shader tests depth after it runs: a discard must not leave a depth write
-// behind. A landmark (FarLandmarks) wears its model's texture through the same path, lit and fogged alike. With the tile light on, the ground's
-// lighting and the far river and ocean colours are the tile's at the fragment's world position (tileLit), and the fog stays the block's.
+// behind. A landmark (FarLandmarks) wears its model's texture through the same path, lit and fogged alike. With the tile light on, the
+// ground's lighting and the far river and ocean colours are the tile's at the fragment's world position (tileLit).
 
 layout(std140, set=1, binding=0) uniform farTerrainBlock {
     mat4 uFarViewProjection;
-    vec4 uFarParams;
-    vec4 uFarFogColor;
     vec4 uFarFade;
     vec4 uFarCamera;
 };
@@ -63,8 +59,8 @@ const InteriorLightParam intLight = {
 void main() {
     if ((vFlags & 2) != 0 && !dropsForCullFade(uFarFade.x, gl_FragCoord.xy)) discard;
 
-    vec3 fogColor = uFarFogColor.xyz;
-    vec3 color = fogColor;
+    // A tile whose texture has not landed stays the far fog colour, and takes the fog like any other fragment.
+    vec3 lit = validateFogColor(fogData.farFogColor_rate.xyz, 0);
 
     if ((vFlags & 1) != 0) {
         // 🤖 The baked colour's sample i lies i / 127 of the way along the tile, as the heights' do, at texel centre (i + 0.5) / 128.
@@ -82,7 +78,6 @@ void main() {
         vec3 normal = (vFlags & (8 | 32)) != 0 ? normalize(vNormal) : normalize(scene.uViewUpSceneTime.xyz);
 
         SceneWideParams tile = tileLit(scene, vPosition);
-        vec3 lit;
         if (liquidKind == 1) {
             lit = farLiquidLit(tile, tile.farRiverColor_deepAlpha.rgb);
         } else if (liquidKind == 2) {
@@ -93,16 +88,10 @@ void main() {
             lit = calcLight(matDiffuse, normal, vPosition, true, tile, intLight,
                             vec3(0.0), vec3(0.0), vec3(0.0), vec3(0.0), 1.0);
         }
-
-        float dist = length(vPosition);
-        vec3 atSeam = vPosition * (min(dist, uFarParams.x) / max(dist, 0.001));
-        vec3 hazed = makeFog2(fogData, vec4(lit, 1.0), scene.uViewUpSceneTime.xyz, atSeam,
-                              scene.extLight.uExteriorDirectColorDir.xyz, 0).rgb;
-
-        float span = max(uFarParams.y - uFarParams.x, 1.0);
-        float fog = clamp((dist - uFarParams.x) / span * uFarParams.z, 0.0, 1.0);
-        color = mix(hazed, fogColor, fog);
     }
+
+    vec3 color = makeFog2(fogData, vec4(lit, 1.0), scene.uViewUpSceneTime.xyz, vPosition,
+                          scene.extLight.uExteriorDirectColorDir.xyz, 0).rgb;
 
     outColor = vec4(color, 1.0);
     writeObjectId(0u);

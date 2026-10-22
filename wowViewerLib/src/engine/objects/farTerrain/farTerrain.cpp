@@ -411,8 +411,6 @@ void FarTerrain::makeFrame(const Config &config, const View &view, const std::ve
         if (!ids.empty()) m_landmarks = std::make_shared<FarLandmarks>(m_api, m_wdt, m_mapId, ids);
     }
     frame.landmarks = m_landmarks != nullptr && m_landmarks->poll() ? m_landmarks : nullptr;
-    frame.fogStart = view.drawDistance;
-    frame.fogStrength = std::max(config.farTerrainFog, 0.0f);
     frame.only = view.only;
     frame.share = view.share;
 

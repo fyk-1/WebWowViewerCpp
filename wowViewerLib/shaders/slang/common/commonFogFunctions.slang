@@ -19,6 +19,7 @@ struct PSFog
     vec4 heightDensityFogCoeff;
     vec4 mainFogEndDist_mainFogStartDist_legacyFogScalar_blendAlpha;
     vec4 heightFogEndColor_fogStartOffset;
+    vec4 farFogColor_rate;
 };
 
 const vec3 fogColors[14] = vec3[14](
@@ -139,20 +140,15 @@ float calculateClassicFog(in PSFog fogData, float viewDistance) {
     return 0.0f;
 }
 
-// Mode 2, legacy fog data: fog rising from the ground. Its density is y per yard at the terrain under the camera and
-// falls off by e every falloff yards above it; the visibility is exp of minus the density integrated along the view
-// ray, so a ray from high up to the ground meets little fog while a long ray near the ground meets much.
-// classicFogParams: y the ground density, w the falloff. densityParams.w is the camera's height above the terrain,
-// heightDelta the point's height above the camera.
-float calculateHeightClassicFog(in PSFog fogData, float viewDistance, float heightDelta) {
+// Mode 2, legacy fog data: a blanket of density y per yard at the ground, thinning by e every falloff yards of height. A fragment
+// takes the density at the camera's height along its whole distance, the same for the near scene and the far land, so the fog is the
+// zone's on the ground, gone at altitude, and never bends at the draw distance. The fragment's own height is not read.
+// classicFogParams: y the ground density, w the falloff. densityParams.w is the camera's height above the ground.
+float calculateHeightClassicFog(in PSFog fogData, float viewDistance) {
     vec4 params = fogData.classicFogParams;
     float falloff = max(params.w, 1.0f);
-    float a = max(fogData.densityParams.w, 0.0f);
-    float b = max(fogData.densityParams.w + heightDelta, 0.0f);
-    float densityA = exp(-a / falloff);
-    float densityB = exp(-b / falloff);
-    float meanDensity = abs(b - a) > 0.01f ? falloff * (densityA - densityB) / (b - a) : densityA;
-    return exp(-params.y * viewDistance * meanDensity);
+    float density = params.y * exp(-max(fogData.densityParams.w, 0.0f) / falloff);
+    return exp(-density * viewDistance);
 }
 
 // Calculates height-adjusted vertex position for fog calculations
@@ -299,7 +295,14 @@ vec3 calculateFogColor(in PSFog fogData, in vec3 viewDirection, float heightFogF
     return blendedFogColor;
 }
 
-// Main fog calculation function
+// Main fog calculation function.
+//
+// robots@Impl: One fog model for every fragment. The ground fog is the zone's, taken at the fragment's true distance. The far fog is
+// a plain ramp from the camera to the map's extent toward the sky's fog colour, the lowest band of the sky cone, which the land's edge
+// meets; it is composed over the ground fog, and its colour and rate per yard are
+// fogData.farFogColor_rate, whose rate the CPU sends as 0 when the far fog is off, leaving the ground fog as it was. The
+// ramp is slow over a flat colour, so each 8-bit step of the output shows as a band: a screen-space noise of half a step either way
+// (interleaved gradient noise of the fragment's pixel) is added before the blend alpha, and breaks the bands into grain.
 vec4 makeFog2(const in PSFog fogData, in vec4 final, in vec3 uViewUp, in vec3 vertexInViewSpace,
               in vec3 sunDirInViewSpace, in int blendMode) {
     float fogRateScalar = 1.0f;
@@ -310,7 +313,7 @@ vec4 makeFog2(const in PSFog fogData, in vec4 final, in vec3 uViewUp, in vec3 ve
 
     // First try classic fog calculation
     float fogFactor = fogData.classicFogParams.x == 2.0f
-        ? calculateHeightClassicFog(fogData, viewDistance, dot(uViewUp, vertexInViewSpace))
+        ? calculateHeightClassicFog(fogData, viewDistance)
         : calculateClassicFog(fogData, viewDistance);
     bool usingClassicFog = bool(fogData.classicFogParams.x);
 
@@ -343,7 +346,12 @@ vec4 makeFog2(const in PSFog fogData, in vec4 final, in vec3 uViewUp, in vec3 ve
     vec3 fogColor = calculateFogColor(fogData, viewDirection, heightFogFactor, viewDistance, blendMode);
 
     vec3 finalColor = mix(fogColor, final.xyz, vec3(fogFactor));
+    float farCover = saturatef(viewDistance * fogData.farFogColor_rate.w);
+    finalColor = mix(finalColor, validateFogColor(fogData.farFogColor_rate.xyz, blendMode), vec3(farCover));
     float finalAlpha = t138 ? final.w * fogFactor : final.w;
+
+    float gradientNoise = fract(52.9829189f * fract(dot(gl_FragCoord.xy, vec2(0.06711056f, 0.00583715f))));
+    finalColor += vec3((gradientNoise - 0.5f) / 255.0f);
 
     // Blend with fog intensity
     float fogBlendAlpha = fogData.mainFogEndDist_mainFogStartDist_legacyFogScalar_blendAlpha.w;

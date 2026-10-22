@@ -55,7 +55,7 @@ FarTerrainVLK::FarTerrainVLK(const HGDeviceVLK &device,
     m_block = std::make_shared<CBufferChunkVLK<FrameBlock>>(m_uboBuffer);
 }
 
-void FarTerrainVLK::write(const FarTerrainFrame &frame, const HFrameDependantData &frameData, float jitterX, float jitterY, int width, int height) {
+void FarTerrainVLK::write(const FarTerrainFrame &frame, float jitterX, float jitterY, int width, int height) {
     if (!frame.on || frame.tiles == 0) return;
 
     mathfu::mat4 viewProjection = frame.viewProjection;
@@ -67,16 +67,8 @@ void FarTerrainVLK::write(const FarTerrainFrame &frame, const HFrameDependantDat
             0.0f)) * viewProjection;
     }
 
-    // The fog colour of the frame, the sky cone's own pick: the end colour of the first fog, or the sky's fog colour where that is black.
-    mathfu::vec3 fogColor = frameData->skyColors.SkyFogColor;
-    if (!frameData->fogResults.empty() && frameData->fogResults[0].EndFogColor.Length() >= 0.0001f) {
-        fogColor = frameData->fogResults[0].EndFogColor;
-    }
-
     auto &block = m_block->getObject();
     block.viewProjection = viewProjection;
-    block.params = mathfu::vec4_packed(mathfu::vec4(frame.fogStart, frame.extent, frame.fogStrength, 0.0f));
-    block.fogColor = mathfu::vec4_packed(mathfu::vec4(fogColor, 0.0f));
     block.fade = mathfu::vec4_packed(mathfu::vec4(frame.share, kTakeDepthLow, kTakeDepthSize, 0.0f));
     block.camera = mathfu::vec4_packed(mathfu::vec4(frame.cameraPos, 0.0f));
     m_block->save();

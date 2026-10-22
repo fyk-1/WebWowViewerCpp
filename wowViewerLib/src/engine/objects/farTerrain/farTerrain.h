@@ -56,9 +56,6 @@ struct FarTerrainFrame {
     // positions: the shader subtracts cameraPos from each vertex first.
     mathfu::mat4 viewProjection = mathfu::mat4::Identity();
     mathfu::vec3 cameraPos = mathfu::vec3(0.0f, 0.0f, 0.0f);
-    // The distance the far fog starts at, and its strength.
-    float fogStart = 0;
-    float fogStrength = 0;
     // Keeps the geometry and the textures alive for the renderer, which reads them by tile index.
     std::shared_ptr<FarTerrain> terrain;
     // The landmarks of the map's landmarks.ids once their geometry is built, null before and for a map with none. Drawn at any distance,

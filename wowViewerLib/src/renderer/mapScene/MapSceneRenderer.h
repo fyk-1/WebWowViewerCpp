@@ -123,11 +123,13 @@ public:
     void collectSkyMeshes(const std::shared_ptr<MapRenderPlan> &renderPlan,
                           framebased::vector<HGMesh> &skyMeshes);
 
+    // The plan gives the far pass's extent, which scales the far fog.
     void updateSceneWideChunk(const std::shared_ptr<IBufferChunkVersioned<sceneWideBlockVSPS>> &sceneWideChunk,
                               const std::vector<RenderingMatAndSceneSize> &renderingMatricesAndSizes,
                               const HFrameDependantData &fdd,
                               bool isVulkan,
-                              animTime_t sceneTime);
+                              animTime_t sceneTime,
+                              const MapRenderPlan &plan);
 
     virtual std::shared_ptr<IRenderView> createRenderView(bool createOutput) = 0;
 protected:

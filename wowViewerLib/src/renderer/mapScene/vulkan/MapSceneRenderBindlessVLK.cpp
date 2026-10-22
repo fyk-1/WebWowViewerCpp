@@ -2544,11 +2544,12 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                              renderingMatricessAndSizes,
                              framePlan->frameDependentData,
                              true,
-                             mapScene->getCurrentSceneTime());
+                             mapScene->getCurrentSceneTime(),
+                             *framePlan);
 
         if (!renderingMatricessAndSizes.empty()) {
             const auto &first = renderingMatricessAndSizes[0];
-            m_farTerrain->write(framePlan->farTerrain, framePlan->frameDependentData, first.jitterX, first.jitterY, first.width, first.height);
+            m_farTerrain->write(framePlan->farTerrain, first.jitterX, first.jitterY, first.width, first.height);
         }
     }
 

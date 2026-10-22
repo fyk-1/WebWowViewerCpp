@@ -19,13 +19,10 @@
  */
 class FarTerrainVLK {
 public:
-    // The block of the far pass, set 1: the view-projection, the fog's start, the far plane and the strength, the fog colour, the
-    // fade of the swap (the share of the full scene that shows, and the depth band of the draw that takes the rest), and the camera
-    // the vertices are taken relative to.
+    // The block of the far pass, set 1: the view-projection, the fade of the swap (the share of the full scene that shows, and the
+    // depth band of the draw that takes the rest), and the camera the vertices are taken relative to.
     struct FrameBlock {
         mathfu::mat4 viewProjection;
-        mathfu::vec4_packed params;
-        mathfu::vec4_packed fogColor;
         mathfu::vec4_packed fade;
         mathfu::vec4_packed camera;
     };
@@ -40,7 +37,7 @@ public:
                   std::vector<std::reference_wrapper<HGBufferVLK>> &uploadBuffers);
 
     // Update stage: writes the frame's block. The jitter is the upscaler's, in pixels of width x height.
-    void write(const FarTerrainFrame &frame, const HFrameDependantData &frameData, float jitterX, float jitterY, int width, int height);
+    void write(const FarTerrainFrame &frame, float jitterX, float jitterY, int width, int height);
 
     // Render thread, before the frame's uploads: takes in the geometry in slices, and makes a material for each tile whose texture
     // has landed.

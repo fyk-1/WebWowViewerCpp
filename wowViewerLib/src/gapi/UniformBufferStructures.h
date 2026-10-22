@@ -40,6 +40,7 @@ struct PSFog
     mathfu::vec4_packed  heightDensityFogCoeff;
     mathfu::vec4_packed  mainFogEndDist_mainFogStartDist_legacyFogScalar_blendAlpha;
     mathfu::vec4_packed  heightFogEndColor_fogStartOffset;
+    mathfu::vec4_packed  farFogColor_rate;
 };
 
 
