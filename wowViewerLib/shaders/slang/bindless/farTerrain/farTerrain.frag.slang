@@ -23,7 +23,8 @@ precision highp int;
 // neighbours at a shore, and the filtered rgb stays the ground's. The minimap is a picture already shaded by its relief, and lighting
 // its slope again shaded it twice, the far land darker than the full chunks beside it, so it is lit flat, on the view's up. Every
 // fragment takes one fog path, makeFog2, the function every scene fragment takes: the zone's ground fog at the fragment's true
-// distance (the classic fog's falloff thins it with the camera's height), and the far fog on top toward the sky's fog colour. A tile whose texture
+// distance (the classic fog's falloff thins it with the camera's height over the lower of its ground and the fragment), and the far fog on
+// top toward the sky's fog colour. A tile whose texture
 // has not landed is a fragment of that colour through the same path, so the gap reads as haze. The draw that takes pixels from
 // the fading full scene keeps the fragments the scene's screen-door drops (dropsForCullFade, the pattern of Config::m2FadeStartPercent),
 // and writes no depth in the others, which is why this shader tests depth after it runs: a discard must not leave a depth write

@@ -185,9 +185,9 @@ void MapSceneRenderer::updateSceneWideChunk(const std::shared_ptr<IBufferChunkVe
             fogData.classicFogParams = mathfu::vec4(0, 0, 0, 0);
             if (m_config->classicFog && !m_config->disableFog && fdd->FogDataFound) {
                 // Legacy fog data: fog rising from the ground. Its density at ground level covers 90 % at the zone's
-                // FogEnd. The shader thins it with the camera's height over the ground, carried in densityParams.w, which classic mode leaves
-                // unread. The ground is classicFogGroundZ where a script set it, else the plan's terrain height, else the WDL's, else the camera's
-                // own z (full density).
+                // FogEnd. The shader thins it with the camera's height over the ground under it, carried in densityParams.w, which classic
+                // mode leaves unread, or over the fragment where that lies lower. The ground is classicFogGroundZ where a script set it, else
+                // the plan's terrain height, else the WDL's, else the camera's own z (full density).
                 float zoneEnd = std::max(fogResult.FogEnd, 1.0f);
                 float groundDensity = std::log(10.0f) / zoneEnd;
                 // robots@Impl: The shader thins the fog by e every w yards, and the config names the percent kept at a height over the ground

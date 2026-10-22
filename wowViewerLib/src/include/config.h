@@ -289,13 +289,14 @@ public:
     float fogDensityIncreaser = 0;
     // Set when the database opens, from IClientDatabase::usesClassicFog: the map renderer then draws fog that rises from the ground,
     // classicFogGroundZ, densest there. The ground density is the game's: 90 % cover at the zone's FogEnd. It thins exponentially with
-    // the camera's height (classicFogKept at classicFogKeptAt), and every fragment takes the density at that height.
+    // the camera's height (classicFogKept at classicFogKeptAt) over that ground or over the fragment, whichever lies lower, and the
+    // fragment takes the density at that height along its whole distance.
     bool classicFog = false;
     // The share of the ground fog's density kept at classicFogKeptAt yards over the ground, in percent, 1 to 99; 20 keeps 4 % at twice that
     // height.
     float classicFogKept = 20;
     // The height over the ground, in yards, at which classicFogKept percent of the ground density is left.
-    float classicFogKeptAt = 100;
+    float classicFogKeptAt = 300;
     // The world height the classic fog rises from, in z, which a script sets from the smoothed terrain under the camera; -99999, the
     // engine's own "no height", is unset, and the viewer then takes the terrain under the camera as it is. The fog is densest there and
     // thins with the camera's height above it. It is no NaN, which the host's JSON would read as no field and refuse a script's set of it.

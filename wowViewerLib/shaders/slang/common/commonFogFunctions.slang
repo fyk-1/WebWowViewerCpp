@@ -141,13 +141,17 @@ float calculateClassicFog(in PSFog fogData, float viewDistance) {
 }
 
 // Mode 2, legacy fog data: a blanket of density y per yard at the ground, thinning by e every falloff yards of height. A fragment
-// takes the density at the camera's height along its whole distance, the same for the near scene and the far land, so the fog is the
-// zone's on the ground, gone at altitude, and never bends at the draw distance. The fragment's own height is not read.
-// classicFogParams: y the ground density, w the falloff. densityParams.w is the camera's height above the ground.
-float calculateHeightClassicFog(in PSFog fogData, float viewDistance) {
+// takes one density along its whole distance, the same for the near scene and the far land, so the fog is the zone's on the ground,
+// gone at altitude, and never bends at the draw distance. The height that density is read at is the camera's over the lower of two
+// grounds, the one under the camera and the fragment itself: a plateau's own trees stand in the zone's fog, while the low land seen
+// from its edge, and a landmark on it, lie under a line of sight that runs high over them. A fragment above the camera reads the
+// camera's own height, so a peak seen from a valley stays in the valley's fog.
+// classicFogParams: y the ground density, w the falloff. densityParams.w is the camera's height above the ground under it.
+float calculateHeightClassicFog(in PSFog fogData, float viewDistance, in vec3 viewUp, in vec3 vertexInViewSpace) {
     vec4 params = fogData.classicFogParams;
     float falloff = max(params.w, 1.0f);
-    float density = params.y * exp(-max(fogData.densityParams.w, 0.0f) / falloff);
+    float height = max(max(fogData.densityParams.w, 0.0f), -dot(viewUp, vertexInViewSpace));
+    float density = params.y * exp(-height / falloff);
     return exp(-density * viewDistance);
 }
 
@@ -313,7 +317,7 @@ vec4 makeFog2(const in PSFog fogData, in vec4 final, in vec3 uViewUp, in vec3 ve
 
     // First try classic fog calculation
     float fogFactor = fogData.classicFogParams.x == 2.0f
-        ? calculateHeightClassicFog(fogData, viewDistance)
+        ? calculateHeightClassicFog(fogData, viewDistance, uViewUp, vertexInViewSpace)
         : calculateClassicFog(fogData, viewDistance);
     bool usingClassicFog = bool(fogData.classicFogParams.x);
 
