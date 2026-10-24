@@ -103,7 +103,7 @@ public:
     // Seconds the draw of the frame just drawn took, for the next `world` line.
     void noteFrame(double seconds);
 private:
-    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Bake, Marker, Popup, Quit };
+    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Bake, Marker, Popup, ZoneText, Quit };
     struct Command {
         CommandType type;
         std::string name;
@@ -131,6 +131,7 @@ private:
     void applyRoadLines(const std::string &file);
     void applyMarker(const std::string &text);
     void applyPopup(const std::string &text);
+    void applyZoneText(const std::string &text);
     void takeDump(const std::string &pngFile);
     void answerDump(const std::string &pngFile, FrameCapture &&capture);
     void emitWorld(const MapRenderPlan *plan);

@@ -114,6 +114,10 @@ that opens another map drops every marker. A malformed line, or one sent before 
 Popup: `popup {"text": "...", "x": ..., "y": ..., "z": ...}` shows the text as the game's tooltip beside that world point
 (FrontendUI::setFlyoverPopup), replacing the one shown, and `popup none` hides it. A line that is neither answers `flyover error popup <reason>`.
 
+Zone text: `zonetext {"zone": "...", "subzone": "..."}` shows each line it names as the game's zone banner (FrontendUI::setFlyoverZoneText),
+the line fading in, holding and fading out from then; a line it leaves out is left as it is, and an empty one is hidden. `zonetext none`
+hides both. Which line shows when is the host's. A line that is neither answers `flyover error zonetext <reason>`.
+
 Start facing: a route in free mode may carry `yawDegrees` and `pitchDegrees`, and the free camera then starts facing that
 way instead of along the route. They use the dump's convention, so a dump's camera replays as a route. The free camera
 takes the angles directly (FirstPersonCamera::setViewAngles) rather than a look-at point, since a point one yard away
@@ -540,6 +544,8 @@ void FlyoverMode::parseLine(const std::string &rawLine, CommandQueue &queue) {
         post(queue, {CommandType::Take, "", rest});
     } else if (word == "popup") {
         post(queue, {CommandType::Popup, "", rest});
+    } else if (word == "zonetext") {
+        post(queue, {CommandType::ZoneText, "", rest});
     } else if (word == "marker") {
         post(queue, {CommandType::Marker, "", rest});
     } else if (word == "posinterval") {
@@ -650,6 +656,9 @@ void FlyoverMode::apply(const Command &command) {
             break;
         case CommandType::Popup:
             applyPopup(command.text);
+            break;
+        case CommandType::ZoneText:
+            applyZoneText(command.text);
             break;
         case CommandType::Marker:
             applyMarker(command.text);
@@ -805,6 +814,27 @@ void FlyoverMode::applyPopup(const std::string &text) {
         m_frontendUI.setFlyoverPopup(shown, mathfu::vec3(document.at("x").get<float>(), document.at("y").get<float>(), document.at("z").get<float>()));
     } catch (const std::exception &e) {
         emitError("popup", std::string("expected none or {\"text\", \"x\", \"y\", \"z\"}: ") + e.what());
+    }
+}
+
+void FlyoverMode::applyZoneText(const std::string &text) {
+    if (text == "none") {
+        const std::string hidden;
+        m_frontendUI.setFlyoverZoneText(&hidden, &hidden);
+        return;
+    }
+    try {
+        json document = json::parse(text);
+        if (!document.is_object() || (!document.contains("zone") && !document.contains("subzone"))) {
+            emitError("zonetext", "expected none or {\"zone\", \"subzone\"} with at least one of them");
+            return;
+        }
+        std::string zone, subzone;
+        if (document.contains("zone")) zone = document.at("zone").get<std::string>();
+        if (document.contains("subzone")) subzone = document.at("subzone").get<std::string>();
+        m_frontendUI.setFlyoverZoneText(document.contains("zone") ? &zone : nullptr, document.contains("subzone") ? &subzone : nullptr);
+    } catch (const std::exception &e) {
+        emitError("zonetext", std::string("expected none or {\"zone\", \"subzone\"}: ") + e.what());
     }
 }
 

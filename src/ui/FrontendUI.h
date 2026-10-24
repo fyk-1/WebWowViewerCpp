@@ -60,19 +60,27 @@ public:
     // The trivia popup: the text drawn as the game's tooltip centred on a world point, from the install's own art and font. An empty
     // text hides it.
     void setFlyoverPopup(const std::string &text, const mathfu::vec3 &at);
+    // The zone text: the zone's name, and the subzone's under it, drawn as the game's banner at the top of the screen. A line that is
+    // set fades in, holds and fades out; a null one is left as it is, and an empty one is hidden at once.
+    void setFlyoverZoneText(const std::string *zone, const std::string *subzone);
 private:
-    void preparePopupFont();
+    void prepareFonts();
     bool popupArtReady();
     void drawPopup();
+    void drawZoneText();
 
     std::string m_popupText;
     double m_popupShownAt = 0;
     mathfu::vec3 m_popupAt = {0, 0, 0};
-    std::shared_ptr<Db2File> m_popupFontFile;
-    std::vector<unsigned char> m_popupFontData;
+    std::shared_ptr<Db2File> m_frizFile;
+    std::vector<unsigned char> m_frizData;
+    bool m_frizMissing = false;
     ImFont *m_popupFont = nullptr;
     float m_popupFontPx = 0;
-    bool m_popupFontMissing = false;
+    std::string m_zoneText, m_subzoneText;
+    double m_zoneShownAt = 0, m_subzoneShownAt = 0;   // -1 until the line's first drawable frame
+    ImFont *m_zoneFont = nullptr, *m_subzoneFont = nullptr;
+    float m_zoneFontPx = 0, m_subzoneFontPx = 0;
     HBlpTexture m_tooltipBackgroundBlp, m_tooltipBorderBlp;
     HGSamplableTexture m_tooltipBackground, m_tooltipBorder;
     std::shared_ptr<IUIMaterial> m_tooltipBackgroundMat, m_tooltipBorderMat;

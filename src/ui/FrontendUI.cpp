@@ -53,6 +53,7 @@ void FrontendUI::composeFlyoverUI() {
     m_currentActiveScene = m_backgroundScene;
     m_lastActiveScene = m_currentActiveScene;
 
+    drawZoneText();
     drawPopup();
     ImGui::Render();
 }
@@ -69,9 +70,20 @@ strip of eight square cells, left, right, top, bottom, then the corners top left
 bottom cells stored turned a quarter. The backdrop takes TOOLTIP_DEFAULT_BACKGROUND_COLOR and the text NORMAL_FONT_COLOR, with the
 font's shadow one unit down and right.
 
-Text taller than kMaxText scrolls up at kScroll units a second, holds kHold seconds at each end and starts again from the top. The font
-is rasterised at the window's own size, so the atlas is built again when the window's height changes, before ImGui's frame, which
-locks the atlas while it runs.
+Text taller than kMaxText scrolls up at kScroll units a second, holds kHold seconds at each end and starts again from the top. The fonts
+are rasterised at the window's own size, so the atlas is built again when the window's height changes, before ImGui's frame, which
+locks the atlas while it runs. Friz Quadrata is asked for the first time a popup or a zone text is set.
+
+robots@Impl: The zone text.
+
+The host decides which line shows and when (`zonetext` on stdin, FlyoverMode); this draws it as the classic client's ZoneText.xml and
+ZoneText.lua do, read from the install. The zone line is ZoneTextFont, Friz Quadrata 32 with a thick outline, centred 192 units down
+the screen (its 128-unit frame anchored 128 down); the subzone line is SubZoneTextFont, 26, its top at the zone line's bottom, which
+keeps its place while the zone line is faded out. Both are 512 units wide, wrapped and centred, and take the colour the client gives a
+zone with no PvP state. Each line fades in for kFadeIn seconds from the first frame it can be drawn, so the font's first load does not
+eat it, holds kHoldZone and fades out for kFadeOut, the
+client's ZoneFadeInDuration, ZoneHoldDuration and ZoneFadeOutDuration. The thick outline is the text drawn kOutlineSteps times in black
+around a circle of kOutline units, then once in colour; the client's FreeType stroke has no ImGui counterpart.
 */
 namespace {
     constexpr int kTooltipBackground = 137056;
@@ -86,6 +98,58 @@ namespace {
     constexpr float kMaxText = 300.0f;
     constexpr float kScroll = 20.0f;
     constexpr double kHold = 3.0;
+
+    constexpr float kZoneSize = 32.0f;
+    constexpr float kSubzoneSize = 26.0f;
+    constexpr float kZoneCentre = 192.0f;
+    constexpr float kZoneWidth = 512.0f;
+    constexpr float kOutline = 2.0f;
+    constexpr int kOutlineSteps = 16;
+    constexpr double kFadeIn = 0.5;
+    constexpr double kHoldZone = 1.0;
+    constexpr double kFadeOut = 2.0;
+    const ImVec4 kZoneColour(1.0f, 0.9294f, 0.7607f, 1.0f);
+
+    // The opacity of a zone text line `t` seconds after it was set.
+    float zoneFade(double t) {
+        if (t < 0) return 0;
+        if (t < kFadeIn) return (float) (t / kFadeIn);
+        t -= kFadeIn;
+        if (t < kHoldZone) return 1;
+        t -= kHoldZone;
+        return t < kFadeOut ? (float) (1 - t / kFadeOut) : 0;
+    }
+
+    // The text wrapped at `width` and each line centred on `x`, the first line's top at `top`; draws nothing without a draw list.
+    // Returns the block's height.
+    float centredLines(ImDrawList *draw, ImFont *font, float px, const std::string &text, float x, float top, float width,
+                       float outline, float alpha) {
+        const char *at = text.c_str();
+        const char *end = at + text.size();
+        float y = top;
+        while (at < end) {
+            const char *cut = font->CalcWordWrapPositionA(px / font->FontSize, at, end, width);
+            if (cut == at) cut = at + 1;
+            const char *lineEnd = cut;
+            while (lineEnd > at && (lineEnd[-1] == ' ' || lineEnd[-1] == '\n')) lineEnd--;
+            if (draw != nullptr && lineEnd > at) {
+                const float w = font->CalcTextSizeA(px, FLT_MAX, 0, at, lineEnd).x;
+                const ImVec2 pos(std::round(x - w / 2), std::round(y));
+                const ImU32 black = ImGui::ColorConvertFloat4ToU32(ImVec4(0, 0, 0, alpha));
+                for (int i = 0; i < kOutlineSteps; i++) {
+                    const float a = 2 * 3.14159265f * i / kOutlineSteps;
+                    draw->AddText(font, px, ImVec2(pos.x + outline * std::cos(a), pos.y + outline * std::sin(a)), black, at, lineEnd);
+                }
+                ImVec4 colour = kZoneColour;
+                colour.w = alpha;
+                draw->AddText(font, px, pos, ImGui::ColorConvertFloat4ToU32(colour), at, lineEnd);
+            }
+            y += px;
+            at = cut;
+            while (at < end && (*at == ' ' || *at == '\n')) at++;
+        }
+        return y - top;
+    }
 }
 
 void FrontendUI::setFlyoverPopup(const std::string &text, const mathfu::vec3 &at) {
@@ -94,34 +158,73 @@ void FrontendUI::setFlyoverPopup(const std::string &text, const mathfu::vec3 &at
     m_popupAt = at;
 }
 
-void FrontendUI::preparePopupFont() {
-    if (m_popupText.empty() || m_popupFontMissing) return;
+void FrontendUI::setFlyoverZoneText(const std::string *zone, const std::string *subzone) {
+    if (zone != nullptr) {
+        m_zoneText = *zone;
+        m_zoneShownAt = -1;
+    }
+    if (subzone != nullptr) {
+        m_subzoneText = *subzone;
+        m_subzoneShownAt = -1;
+    }
+}
+
+void FrontendUI::prepareFonts() {
+    if ((m_popupText.empty() && m_zoneText.empty() && m_subzoneText.empty()) || m_frizMissing) return;
     auto storage = m_api->cacheStorage;
     if (storage == nullptr) return;
 
-    if (m_popupFontFile == nullptr) m_popupFontFile = storage->getDb2Cache()->getFileId(kFriz);
-    if (m_popupFontFile->getStatus() == FileStatus::FSRejected) {
-        std::cerr << "flyover popup: the install has no Friz Quadrata (FileDataID " << kFriz << ")" << std::endl;
-        m_popupFontMissing = true;
+    if (m_frizFile == nullptr) m_frizFile = storage->getDb2Cache()->getFileId(kFriz);
+    if (m_frizFile->getStatus() == FileStatus::FSRejected) {
+        std::cerr << "flyover: the install has no Friz Quadrata (FileDataID " << kFriz << ")" << std::endl;
+        m_frizMissing = true;
         return;
     }
-    if (m_popupFontFile->getStatus() != FileStatus::FSLoaded) return;
+    if (m_frizFile->getStatus() != FileStatus::FSLoaded) return;
 
     ImGuiIO &io = ImGui::GetIO();
-    const float px = std::round(kFontSize * io.DisplaySize.y / kUiHeight);
-    if (px < 1 || px == m_popupFontPx) return;
+    const float unit = io.DisplaySize.y / kUiHeight;
+    const float popupPx = std::round(kFontSize * unit), zonePx = std::round(kZoneSize * unit), subzonePx = std::round(kSubzoneSize * unit);
+    if (popupPx < 1 || (m_popupFont != nullptr && popupPx == m_popupFontPx && zonePx == m_zoneFontPx && subzonePx == m_subzoneFontPx)) return;
 
-    if (m_popupFontData.empty()) {
-        auto content = m_popupFontFile->getContent();
-        m_popupFontData.assign(content->begin(), content->end());
+    if (m_frizData.empty()) {
+        auto content = m_frizFile->getContent();
+        m_frizData.assign(content->begin(), content->end());
     }
     io.Fonts->Clear();
     io.Fonts->AddFontDefault();
-    ImFontConfig config;
-    config.FontDataOwnedByAtlas = false;
-    m_popupFont = io.Fonts->AddFontFromMemoryTTF(m_popupFontData.data(), (int) m_popupFontData.size(), px, &config);
-    m_popupFontPx = px;
+    auto add = [&](float px) {
+        ImFontConfig config;
+        config.FontDataOwnedByAtlas = false;
+        return io.Fonts->AddFontFromMemoryTTF(m_frizData.data(), (int) m_frizData.size(), px, &config);
+    };
+    m_popupFontPx = popupPx;
+    m_popupFont = add(popupPx);
+    m_zoneFontPx = zonePx;
+    m_zoneFont = add(zonePx);
+    m_subzoneFontPx = subzonePx;
+    m_subzoneFont = add(subzonePx);
     createFontTexture();
+}
+
+void FrontendUI::drawZoneText() {
+    if (m_zoneFont == nullptr || m_subzoneFont == nullptr) return;
+    const double now = ImGui::GetTime();
+    if (m_zoneShownAt < 0) m_zoneShownAt = now;
+    if (m_subzoneShownAt < 0) m_subzoneShownAt = now;
+    const float zoneAlpha = m_zoneText.empty() ? 0 : zoneFade(now - m_zoneShownAt);
+    const float subzoneAlpha = m_subzoneText.empty() ? 0 : zoneFade(now - m_subzoneShownAt);
+    if (zoneAlpha <= 0 && subzoneAlpha <= 0) return;
+
+    const ImGuiIO &io = ImGui::GetIO();
+    const float unit = io.DisplaySize.y / kUiHeight;
+    const float x = io.DisplaySize.x / 2, width = kZoneWidth * unit, outline = kOutline * unit;
+    ImDrawList *draw = ImGui::GetForegroundDrawList();
+
+    const float zoneHeight = centredLines(nullptr, m_zoneFont, m_zoneFontPx, m_zoneText, x, 0, width, 0, 0);
+    const float zoneTop = kZoneCentre * unit - zoneHeight / 2;
+    if (zoneAlpha > 0) centredLines(draw, m_zoneFont, m_zoneFontPx, m_zoneText, x, zoneTop, width, outline, zoneAlpha);
+    if (subzoneAlpha > 0) centredLines(draw, m_subzoneFont, m_subzoneFontPx, m_subzoneText, x, zoneTop + zoneHeight, width, outline, subzoneAlpha);
 }
 
 bool FrontendUI::popupArtReady() {
@@ -231,7 +334,7 @@ void FrontendUI::initImgui(GLFWwindow *window) {
 }
 
 void FrontendUI::newFrame() {
-    preparePopupFont();
+    prepareFonts();
 
 //    ImGui_ImplOpenGL3_NewFrame();
 
