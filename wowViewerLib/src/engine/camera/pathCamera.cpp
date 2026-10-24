@@ -179,9 +179,10 @@ void PathCamera::tick(animTime_t timeDelta) {
 }
 
 void PathCamera::updatePose(float dtSeconds, bool snapView) {
-    m_position = pointAt(m_distance);
+    mathfu::vec3 onLine = pointAt(m_distance);
+    m_position = onLine + mathfu::vec3(0, 0, m_eye);
 
-    mathfu::vec3 toLook = pointAhead(m_distance + m_lookAhead) - m_position;
+    mathfu::vec3 toLook = pointAhead(m_distance + m_lookAhead) - onLine;
     if (toLook.Length() > 1e-4f) {
         mathfu::vec3 target = toLook.Normalized();
         if (!m_viewDirectionValid || snapView) {

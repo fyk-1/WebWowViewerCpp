@@ -67,6 +67,8 @@ Commands are parsed to name and text on that thread and validated on the main th
 the scene and the cameras live. `look <dx> <dy>`, `move <w|a|s|d|q|e> <1|0>` and `freespeed <steps>` (each step 1.25x, kept across switches) steer the free camera for a
 host that takes the input itself, the window behind the desktop icons getting none; look does nothing in path
 mode, and a move still held at a switch goes with the camera, since every switch to free mode starts a new one.
+`flight <speed> <eye> <lookAhead>` sets the path camera's yards a second, the yards it rides above the route's points and
+its look-ahead, mid-flight, the same three a route file carries.
 
 Config: the viewer starts from the library's Config and holds no policy. The route file's config carries every value the host
 wants at the start, and the host's script sets the rest as the flight goes, from the `world` line (Modules/Flyover/scripts/README.md).
@@ -79,7 +81,7 @@ on its next frame.
 
 End of stdin queues quit, so a host that dies leaves no orphaned viewer. A route command for the same map
 whose point list matches the current route (count, and coordinate sum within 0.01) is a refresh: distance
-and camera stay, and speed, lookAhead, loop, mode and config apply. A differing point list restarts the
+and camera stay, and speed, lookAhead, eye, loop, mode and config apply. A differing point list restarts the
 distance at 0, and a different map reopens.
 
 Ready is sent once the scene has produced a render plan and two more frames have run. The area comes from
@@ -316,6 +318,7 @@ bool FlyoverMode::loadRoute(const std::string &file, FlyoverRoute &route, std::s
         }
         route.speed = root.value("speed", 32.0f);
         route.lookAhead = root.value("lookAhead", 60.0f);
+        route.eye = root.value("eye", 0.0f);
         route.loop = root.value("loop", true);
         route.timeOfDay = root.value("timeOfDay", -1);
 
@@ -501,8 +504,8 @@ void FlyoverMode::parseLine(const std::string &rawLine, CommandQueue &queue) {
     std::string word = line.substr(0, split);
     std::string rest = split == std::string::npos ? "" : trim(line.substr(split));
 
-    if (word == "speed") {
-        post(queue, {CommandType::Speed, "", rest});
+    if (word == "flight") {
+        post(queue, {CommandType::Flight, "", rest});
     } else if (word == "pause") {
         post(queue, {CommandType::Pause, "", ""});
     } else if (word == "play") {
@@ -561,13 +564,22 @@ void FlyoverMode::parseLine(const std::string &rawLine, CommandQueue &queue) {
 
 void FlyoverMode::apply(const Command &command) {
     switch (command.type) {
-        case CommandType::Speed: {
-            char *end = nullptr;
-            double speed = std::strtod(command.text.c_str(), &end);
-            if (command.text.empty() || end != command.text.c_str() + command.text.size() || !(speed >= 0)) {
-                emitError("speed", "expected a number of yards per second, 0 or more");
-            } else if (m_path) {
-                m_path->setMovementSpeed((float) speed);
+        case CommandType::Flight: {
+            float speed = 0, eye = 0, lookAhead = 0;
+            int used = 0;
+            if (std::sscanf(command.text.c_str(), "%f %f %f%n", &speed, &eye, &lookAhead, &used) != 3
+                || used != (int) command.text.size() || !(speed >= 0) || !std::isfinite(speed) || !std::isfinite(eye)
+                || !std::isfinite(lookAhead)) {
+                emitError("flight", "expected yards per second (0 or more), the eye height and the look-ahead in yards");
+                break;
+            }
+            m_route.speed = speed;
+            m_route.eye = eye;
+            m_route.lookAhead = lookAhead;
+            if (m_path) {
+                m_path->setMovementSpeed(speed);
+                m_path->setEyeHeight(eye);
+                m_path->setLookAhead(lookAhead);
             }
             break;
         }
@@ -950,6 +962,7 @@ void FlyoverMode::refreshRoute(const FlyoverRoute &route) {
 
     m_path->setMovementSpeed(route.speed);
     m_path->setLookAhead(route.lookAhead);
+    m_path->setEyeHeight(route.eye);
     m_path->setLoop(route.loop);
     m_route = route;
     setMode(route.freeMode, false);
@@ -972,6 +985,7 @@ void FlyoverMode::applyRoute(const FlyoverRoute &route, bool openMap) {
     }
 
     m_path = std::make_shared<PathCamera>(route.points, route.loop, route.speed, route.lookAhead);
+    m_path->setEyeHeight(route.eye);
     m_path->setPaused(m_paused);
     m_free = nullptr;
     m_isFree = false;

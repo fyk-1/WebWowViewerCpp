@@ -21,6 +21,8 @@ public:
     float getLengthYards() const { return m_length; }
     void setPaused(bool paused) { m_paused = paused; }
     void setLookAhead(float yards) { m_lookAhead = yards; }
+    // Yards the camera rides above the points; the view direction does not change with it.
+    void setEyeHeight(float yards) { m_eye = yards; }
     void setLoop(bool loop) { m_loop = loop; }
     bool isPaused() const { return m_paused; }
     // Starts the eased view direction from the given one, so a switch from another camera does not snap.
@@ -84,6 +86,7 @@ private:
     bool m_loop;
     float m_speed;
     float m_lookAhead;
+    float m_eye = 0;
     bool m_paused = false;
 
     float m_distance = 0;

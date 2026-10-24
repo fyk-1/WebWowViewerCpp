@@ -51,6 +51,8 @@ struct FlyoverRoute {
     std::vector<mathfu::vec3> points;
     float speed = 32.0f;
     float lookAhead = 60.0f;
+    // Yards the path camera rides above the points.
+    float eye = 0.0f;
     bool loop = true;
     bool freeMode = false;
     // A route of one point: free mode only, a switch to the path is refused.
@@ -103,7 +105,7 @@ public:
     // Seconds the draw of the frame just drawn took, for the next `world` line.
     void noteFrame(double seconds);
 private:
-    enum class CommandType { Speed, Pause, Play, ModePath, ModeFree, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Bake, Marker, Popup, ZoneText, Quit };
+    enum class CommandType { Flight, Pause, Play, ModePath, ModeFree, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Bake, Marker, Popup, ZoneText, Quit };
     struct Command {
         CommandType type;
         std::string name;
