@@ -103,6 +103,8 @@ private:
     HSkinGeom m_skinGeom = nullptr;
     HSkelGeom m_skelGeom = nullptr;
     HSkelGeom m_parentSkelGeom = nullptr;
+    // The model's own textures, asked for with its skin and held until its meshes take them (doLoadGeom).
+    std::vector<HBlpTexture> m_texturesAhead;
     std::shared_ptr<CBoneMasterData> m_boneMasterData = nullptr;
 
     HGVertexBufferBindings bufferBindings = nullptr;

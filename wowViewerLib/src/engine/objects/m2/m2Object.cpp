@@ -919,6 +919,19 @@ void M2Object::doLoadGeom(const HMapSceneBufferCreate &sceneRenderer){
             std::string skinFileName = m_nameTemplate + "00.skin";
             m_skinGeom = skinGeomCache->get(skinFileName);
         }
+
+        //The skeleton and the model's own textures go out with the skin, not each after the one before. The textures are
+        //held here, as the cache keeps only weak references, until the meshes take the same instances from it.
+        if (m_m2Geom->m_skid > 0 && m_skelGeom == nullptr)
+            m_skelGeom = m_api->cacheStorage->getSkelCache()->getFileId(m_m2Geom->m_skid);
+
+        m_texturesAhead.clear();
+        auto &textures = m_m2Geom->getM2Data()->textures;
+        for (int i = 0; i < textures.size; i++) {
+            M2Texture *textureDefinition = textures.getElement(i);
+            if (textureDefinition != nullptr && textureDefinition->type != 0) continue;
+            if (auto texture = getHardCodedTexture(i)) m_texturesAhead.push_back(texture);
+        }
         return;
     }
     if (m_skinGeom->getStatus() != FileStatus::FSLoaded) return;
@@ -961,6 +974,7 @@ void M2Object::doLoadGeom(const HMapSceneBufferCreate &sceneRenderer){
 
     m_sceneRendererWeak = sceneRenderer;
     buildCpuBoneSubset();
+    m_texturesAhead.clear();
 
     this->status->m_loaded = true;
     this->status->m_geomLoaded = true;
