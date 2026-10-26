@@ -199,8 +199,10 @@ LightParamBlendResults calculateLightParamBlends(
         }
     }
 
+    // Each light is mixed over the ones before it, so the last says most. Widest first leaves the
+    // tightest light, the most specific place, on top: a wide one's falloff never paints over it.
     std::sort(lightResults.begin(), lightResults.end(), [](const LightResult &a, const LightResult &b) {
-        return a.blendAlpha > b.blendAlpha;
+        return a.fallbackEnd != b.fallbackEnd ? a.fallbackEnd > b.fallbackEnd : a.id < b.id;
     });
     for (auto it = lightResults.begin(); it != lightResults.end(); it++) {
         if (it->blendAlpha > 0) {
