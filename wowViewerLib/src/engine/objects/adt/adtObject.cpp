@@ -1585,8 +1585,23 @@ void AdtObject::getHeight(const mathfu::vec4 &camera, float &height) {
                                     isHoleHighRes(holeHigh, indexX, indexY);
 
         if (!isHole) {
-            int j = indexY * 17 + indexX;
-            height = m_adtFile->mapTile[index].position.z + m_adtFile->mcnkStructs[index].mcvt->height[j];
+            // The surface as it is drawn: the height on the triangle of the chunk's 145-vertex mesh, each of the 8 x 8 quads being four
+            // triangles around its inner vertex, not the height of the quad's corner.
+            const float *h = m_adtFile->mcnkStructs[index].mcvt->height;
+            const float row = std::min(std::max(indexes.x, 0.0f), 8.0f);
+            const float col = std::min(std::max(indexes.y, 0.0f), 8.0f);
+            const int r = std::min<int>((int) row, 7);
+            const int q = std::min<int>((int) col, 7);
+            const float u = row - r;
+            const float v = col - q;
+            const float z00 = h[r * 17 + q], z01 = h[r * 17 + q + 1], z10 = h[(r + 1) * 17 + q], z11 = h[(r + 1) * 17 + q + 1];
+            const float mid = h[r * 17 + 9 + q];
+            float z;
+            if (u <= v && u <= 1 - v) z = (1 - u - v) * z00 + (v - u) * z01 + 2 * u * mid;
+            else if (u >= v && u >= 1 - v) z = (u + v - 1) * z11 + (u - v) * z10 + 2 * (1 - u) * mid;
+            else if (v <= u) z = (1 - v - u) * z00 + (u - v) * z10 + 2 * v * mid;
+            else z = (v + u - 1) * z11 + (v - u) * z01 + 2 * (1 - v) * mid;
+            height = m_adtFile->mapTile[index].position.z + z;
         }
     }
 }
