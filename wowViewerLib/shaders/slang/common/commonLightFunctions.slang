@@ -111,6 +111,22 @@ vec3 calcLight(
     const in vec3 emissive,
     const in float ao
 ) {
+    return calcLight(matDiffuse, vNormal, vPositionCamSpace, applyLight, sceneParams, intLight,
+                     accumLight, precomputedLight, precomputedLight, specular, emissive, ao);
+}
+
+// precomputedLightExterior is the baked colour of the exterior term, precomputedLight that of the interior term.
+vec3 calcLight(
+    const in vec3 matDiffuse,
+    const in vec3 vNormal,
+    const in vec3 vPositionCamSpace,
+    const in bool applyLight,
+    const in SceneWideParams sceneParams,
+    const in InteriorLightParam intLight,
+    const in vec3 accumLight, const in vec3 precomputedLight, const in vec3 precomputedLightExterior, const in vec3 specular,
+    const in vec3 emissive,
+    const in float ao
+) {
 
     vec3 result = matDiffuse;
     if (applyLight) {
@@ -145,7 +161,7 @@ vec3 calcLight(
                 sceneParams.extLight.uExteriorAmbientColor.rgb,
                 sceneParams.extLight.uExteriorHorizontAmbientColor.rgb,
                 sceneParams.extLight.uExteriorGroundAmbientColor.rgb,
-                precomputedLight,
+                precomputedLightExterior,
                 nDotL,
                 nDotUp
             );

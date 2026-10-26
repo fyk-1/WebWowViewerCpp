@@ -11,6 +11,7 @@
 #include "./../../../gapi/interface/IDevice.h"
 #include "../../../renderer/frame/FrameProfile.h"
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 std::vector<mathfu::vec3> createAntiPortal(const HWmoGroupGeom& groupGeom, const mathfu::mat4 &placementMat)
@@ -1446,94 +1447,111 @@ void WmoObject::fillLodGroup(mathfu::vec3 &cameraLocal) {
     }
 
 }
-float distance(C4Plane &plane, C3Vector vertex) {
-    return (float) sqrt(mathfu::vec4::DotProduct(mathfu::vec4(plane.planeVector), mathfu::vec4(vertex.x, vertex.y, vertex.z, 1.0)));
+namespace {
+    //Signed distance from a portal's plane to a point, positive on the side the plane's normal faces
+    float portalPlaneDistance(const C4Plane &plane, const mathfu::vec3 &point) {
+        const C3Vector &normal = plane.planeGeneral.normal;
+        return normal.x * point.x + normal.y * point.y + normal.z * point.z + plane.planeGeneral.distance;
+    }
+
+    //The axis a vector points along most
+    int majorAxis(const C3Vector &vector) {
+        float x = std::fabs(vector.x), y = std::fabs(vector.y), z = std::fabs(vector.z);
+        return (x >= y && x >= z) ? 0 : (y >= z ? 1 : 2);
+    }
+
+    //True when the point lies inside the portal's polygon once both are flattened along `axis`
+    bool pointInsidePortal(const mathfu::vec3 &point, const C3Vector *polygon, int count, int axis) {
+        int u = (axis + 1) % 3, v = (axis + 2) % 3;
+        bool inside = false;
+        for (int i = 0, j = count - 1; i < count; j = i++) {
+            mathfu::vec3 a(polygon[i]), b(polygon[j]);
+            if ((a[v] > point[v]) != (b[v] > point[v]) &&
+                point[u] < (b[u] - a[u]) * (point[v] - a[v]) / (b[v] - a[v]) + a[u]) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+
+    //Shortest distance from the point to any edge of the portal's polygon
+    float distanceToPortalEdges(const mathfu::vec3 &point, const C3Vector *polygon, int count) {
+        float best = std::numeric_limits<float>::max();
+        for (int i = 0, j = count - 1; i < count; j = i++) {
+            mathfu::vec3 a(polygon[i]), edge = mathfu::vec3(polygon[j]) - a;
+            float lengthSqr = mathfu::vec3::DotProduct(edge, edge);
+            float t = lengthSqr > 0.0f ? std::clamp(mathfu::vec3::DotProduct(point - a, edge) / lengthSqr, 0.0f, 1.0f) : 0.0f;
+            best = std::min(best, (point - (a + edge * t)).Length());
+        }
+        return best;
+    }
 }
 
-
+// The client's CMapObj::AttenTransVerts, run on the transition batches' vertices. Each vertex's opacity comes from the group's
+// portals: 1 beside a portal to an exterior group, falling to 0 six yards behind it, and 0 within a yard of an interior portal.
+// It becomes the vertex alpha, and moves the colour toward 127 by the same amount.
 void attenuateTransVerts(WmoMainGeom &mainGeom, WmoGroupGeom& wmoGroupGeom) {
-
-    if (!wmoGroupGeom.mogp->transBatchCount)
+    const MOGP *mogp = wmoGroupGeom.mogp;
+    if (!mogp->transBatchCount || wmoGroupGeom.cvLen == 0 || wmoGroupGeom.batches == nullptr)
     {
         return;
     }
 
-//    for ( std::size_t vertex_index (0); vertex_index < wmoGroupGeom.batches[wmoGroupGeom.mogp->transBatchCount-1].last_vertex; ++vertex_index) {
-//        float opacity_accum (0.0);
-//
-//        for ( std::size_t portal_ref_index (wmoGroupGeom.mogp->moprIndex);
-//              portal_ref_index < (wmoGroupGeom.mogp->moprIndex + wmoGroupGeom.mogp->moprCount);
-//              ++portal_ref_index)
-//        {
-//            SMOPortalRef const& portalRef (mainGeom->portalReferences[portal_ref_index]);
-//            SMOPortal const& portal (mainGeom->portals[portalRef.portal_index]);
-//            C3Vector const& vertex (wmoGroupGeom.verticles[vertex_index]);
-//
-//            float const portal_to_vertex (distance(portal.plane, vertex));
-//
-//            C3Vector vertex_to_use (vertex);
-//
-//            if (portal_to_vertex > 0.001 || portal_to_vertex < -0.001)
-//            {
-//                C3Ray ray ( C3Ray::FromStartEnd
-//                                    ( vertex
-//                                            , vertex
-//                                              + (portal_to_vertex > 0 ? -1 : 1) * portal.plane.planeGeneral.normal
-//                                            , 0
-//                                    )
-//                );
-//                NTempest::Intersect
-//                        (ray, &portal.plane, 0LL, &vertex_to_use, 0.0099999998);
-//            }
-//
-//            float distance_to_use;
-//
-//            if ( NTempest::Intersect ( vertex_to_use
-//                    , &mainGeom->portal_vertices[portal.base_index]
-//                    , portal.index_count
-//                    , C3Vector::MajorAxis (portal.plane.normal)
-//            )
-//                    )
-//            {
-//                distance_to_use = portalRef.side * distance (portal.plane, vertex);
-//            }
-//            else
-//            {
-//                distance_to_use = NTempest::DistanceFromPolygonEdge
-//                        (vertex, &mainGeom->portal_vertices[portal.base_index], portal.index_count);
-//            }
-//
-//            if (mainGeom->groups[portalRef.group_index].flags.EXTERIOR ||
-//                mainGeom->groups[portalRef.group_index].flags.EXTERIOR_LIT)
-//            {
-//                float v25 (distance_to_use >= 0.0 ? distance_to_use / 6.0f : 0.0f);
-//                if ((1.0 - v25) > 0.001)
-//                {
-//                    opacity_accum += 1.0 - v25;
-//                }
-//            }
-//            else if (distance_to_use > -1.0)
-//            {
-//                opacity_accum = 0.0;
-//                if (distance_to_use < 1.0)
-//                {
-//                    break;
-//                }
-//            }
-//        }
-//
-//        float const opacity ( opacity_accum > 0.001
-//                              ? std::min (1.0f, opacity_accum)
-//                              : 0.0f
-//        );
-//
-//        //! \note all assignments asserted to be > -0.5 && < 255.5f
-//        CArgb& color (wmoGroupGeom.colorArray[vertex_index]);
-//        color.r = (unsigned char) (((127.0f - color.r) * opacity) + color.r);
-//        color.g = (unsigned char) (((127.0f - color.g) * opacity) + color.g);
-//        color.b = (unsigned char) (((127.0f - color.b) * opacity) + color.b);
-//        color.a = opacity * 255.0;
-//    }
+    CImVector *colors = (CImVector *) &wmoGroupGeom.colorArray[0];
+    int lastVertex = wmoGroupGeom.batches[mogp->transBatchCount - 1].last_vertex;
+    int vertexCount = std::min(lastVertex + 1, std::min(wmoGroupGeom.cvLen, wmoGroupGeom.verticesLen));
+
+    for (int vertexIndex = 0; vertexIndex < vertexCount; vertexIndex++) {
+        mathfu::vec3 vertex(wmoGroupGeom.verticles[vertexIndex]);
+        float opacityAccum = 0.0f;
+
+        for (int refIndex = mogp->moprIndex; refIndex < mogp->moprIndex + mogp->moprCount; refIndex++) {
+            if (refIndex >= mainGeom.portalReferencesLen) break;
+            const SMOPortalRef &portalRef = mainGeom.portalReferences[refIndex];
+            if (portalRef.portal_index >= mainGeom.portalsLen || portalRef.group_index >= mainGeom.groupsLen) continue;
+            const SMOPortal &portal = mainGeom.portals[portalRef.portal_index];
+            if (portal.base_index + portal.index_count > mainGeom.portal_verticesLen || portal.index_count < 3) continue;
+            const C3Vector *polygon = &mainGeom.portal_vertices[portal.base_index];
+
+            float planeDistance = portalPlaneDistance(portal.plane, vertex);
+
+            //A vertex within a yard of the plane is tested where it projects onto it
+            mathfu::vec3 vertexToTest = vertex;
+            if (std::fabs(planeDistance) > 0.001f && std::fabs(planeDistance) <= 1.0f) {
+                vertexToTest = vertex - mathfu::vec3(portal.plane.planeGeneral.normal) * planeDistance;
+            }
+
+            float distanceToUse;
+            if (pointInsidePortal(vertexToTest, polygon, portal.index_count, majorAxis(portal.plane.planeGeneral.normal))) {
+                distanceToUse = portalRef.side * planeDistance;
+            } else {
+                distanceToUse = distanceToPortalEdges(vertex, polygon, portal.index_count);
+            }
+
+            const auto &otherGroupFlags = mainGeom.groups[portalRef.group_index].flags;
+            if (otherGroupFlags.EXTERIOR || otherGroupFlags.EXTERIOR_LIT) {
+                float fade = distanceToUse >= 0.0f ? distanceToUse / 6.0f : 0.0f;
+                if (1.0f - fade > 0.001f) {
+                    opacityAccum += 1.0f - fade;
+                }
+            } else if (distanceToUse < 1.0f) {
+                //distanceToUse is positive on the vertex's own side of the portal, so the client's test for "within a yard
+                //of an interior portal, or past it" reads < 1 here; > -1 would zero every vertex of a group that has one
+                opacityAccum = 0.0f;
+                if (distanceToUse > -1.0f) {
+                    break;
+                }
+            }
+        }
+
+        float opacity = opacityAccum > 0.001f ? std::min(1.0f, opacityAccum) : 0.0f;
+
+        CImVector &color = colors[vertexIndex];
+        color.r = (unsigned char) (((127.0f - color.r) * opacity) + color.r);
+        color.g = (unsigned char) (((127.0f - color.g) * opacity) + color.g);
+        color.b = (unsigned char) (((127.0f - color.b) * opacity) + color.b);
+        color.a = (unsigned char) (opacity * 255.0f);
+    }
 }
 
 std::function<void(WmoGroupGeom &wmoGroupGeom)> WmoObject::getAttenFunction() {

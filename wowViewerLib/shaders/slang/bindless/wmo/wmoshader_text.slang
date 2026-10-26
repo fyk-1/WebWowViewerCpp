@@ -108,6 +108,8 @@ void main() {
             intLight,
             accumLight /*accumLight*/,
             vColor.rgb * 2.0,
+            //An interior group's exterior term takes no baked colour: it is already in the interior term
+            currentInteriorData.uAmbientColorAndIsExteriorLit.w == 0.0 ? vec3(0.0) : vColor.rgb * 2.0,
             spec, /* specular */
             emissive,
             1.0 /* ao */
