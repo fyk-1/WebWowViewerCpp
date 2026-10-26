@@ -288,7 +288,36 @@ void LiquidMaterialManager::assignLiquidTextures(const std::shared_ptr<ILiquidDa
         //Update DS with textures
         updateLiquidDataAnimatedTextures(liquidData, 0);
     } else {
-        //Client doesn't have those. So use filenames
+        //Client doesn't have those, and the type names its textures instead (Classic Era): slot i is Texture_i, a "%d" in it
+        //numbering its frames from 1 to FrameCountTexture_i. A procedural name gives the depth type and a black texture, as a
+        //texture row of no file does above, and a file the root has no name for stays black.
+        auto textureCache = m_api->cacheStorage->getTextureCache();
+        for (int slot = 0; slot < (int) textureStrings.size() && slot < MAX_LIQUID_TYPE_TEXTURES; slot++) {
+            const std::string &name = textureStrings[slot];
+            if (name.empty()) continue;
+
+            if (name.rfind("procedural", 0) == 0) {
+                if (name == "proceduralOceanDepthTex") waterDepthType = 0;
+                else if (name == "proceduralRiverDepthTex") waterDepthType = 1;
+                else if (name == "proceduralWmoWaterTex") waterDepthType = 2;
+                liquidData->usedTextures[slot].push_back(m_api->hDevice->getBlackTexturePixel());
+                continue;
+            }
+
+            const auto frameMark = name.find("%d");
+            const int frames = frameMark == std::string::npos ? 1 : std::max<int>(frameCountTexture[slot], 1);
+            for (int frame = 1; frame <= frames; frame++) {
+                std::string path = name;
+                if (frameMark != std::string::npos) path.replace(frameMark, 2, std::to_string(frame));
+                // The slime types name their extra textures without one (XTextures\slime\Slime0).
+                if (path.find('.', path.find_last_of("\\/") + 1) == std::string::npos) path += ".blp";
+                HBlpTexture blp = textureCache->get(path);
+                liquidData->usedTextures[slot].push_back(m_api->hDevice->createBlpTexture(blp, true, true));
+            }
+        }
+
+        //Update DS with textures
+        updateLiquidDataAnimatedTextures(liquidData, 0);
     }
 
 }
