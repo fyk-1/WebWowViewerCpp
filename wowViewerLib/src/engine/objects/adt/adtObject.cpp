@@ -18,6 +18,7 @@
 #include "../../../gapi/UniformBufferStructures.h"
 #include "../../persistance/header/adtFileHeader.h"
 #include "tbb/parallel_for.h"
+#include "tbb/task_arena.h"
 #include "tbb/blocked_range2d.h"
 #include "../../../gapi/interface/materials/IMaterial.h"
 #include "../../../renderer/frame/FrameProfile.h"
@@ -769,21 +770,22 @@ void AdtObject::loadAlphaTextures() {
     ZoneScoped;
     int chunkCount = m_adtFileTex->mcnkRead+1;
 
+    // The mode is fixed for the whole tile, so every chunk writes both textures alike.
     bool hasSecondAlphaText = false;
+    for (int i = 0; i < chunkCount; i++) {
+        hasSecondAlphaText |= m_adtFileTex->mcnkStructs[i].mclyCnt > 4;
+    }
     int createdThisRun = 0;
 
 //    memset(bigTexture.data(), 0, bigTexture.size());
 
     if (chunkCount > 0) {
-        ALIGNED_(64) std::array<uint8_t, alphaTexSize * MAX_MCLY_LAYERS> alphaTextureData;
+        oneapi::tbb::task_arena arena(std::min<int>(8, m_api->getConfig()->hardwareThreadCount()), 1);
+        arena.execute([&] {
+            oneapi::tbb::parallel_for(tbb::blocked_range<size_t>(0, chunkCount, 16), [&](tbb::blocked_range<size_t> &r) {
+                ALIGNED_(64) std::array<uint8_t, alphaTexSize * MAX_MCLY_LAYERS> alphaTextureData;
 
-        for (int i = 0; i < chunkCount; i++){
-//        oneapi::tbb::task_arena arena(std::min<int>(8, m_api->getConfig()->hardwareThreadCount()), 1);
-//        arena.execute([&] {
-//            oneapi::tbb::parallel_for(tbb::blocked_range<size_t>(0, chunkCount, 16), [&](tbb::blocked_range<size_t> &r) {
-//                ALIGNED_(16) std::array<uint8_t, alphaTexSize * 4> alphaTextureData;
-//
-//                for (size_t i = r.begin(); i != r.end(); ++i) {
+                for (size_t i = r.begin(); i != r.end(); ++i) {
                     auto const &mapTile = m_adtFile->mapTile[i];
                     const auto indexX = mapTile.IndexX;
                     const auto indexY = mapTile.IndexY;
@@ -804,7 +806,6 @@ void AdtObject::loadAlphaTextures() {
                                            texWidth, texHeight, 0);
 
                         int uncompressedIndex = chunkMcalRuntime.uncompressedIndex;
-                        hasSecondAlphaText |= chunkMcalRuntime.needSecondAlphaTexture;
 #if (__AVX2__)
                         if (!hasSecondAlphaText) {
                             switch (uncompressedIndex) {
@@ -857,8 +858,8 @@ void AdtObject::loadAlphaTextures() {
 #endif
                     }
                 }
-//            }, tbb::auto_partitioner());
-//        });
+            }, tbb::auto_partitioner());
+        });
     }
 
     alphaTexture = m_api->hDevice->createTexture(false, false);
