@@ -352,10 +352,9 @@ void WmoObject::createPlacementMatrix(const SMMapObjDef &mapObjDef){
     mathfu::vec4 bb1vec = mathfu::vec4(bb1.x, bb1.y, bb1.z, 1);
     mathfu::vec4 bb2vec = mathfu::vec4(bb2.x, bb2.y, bb2.z, 1);
 
-    CAaBox worldAABB = MathHelper::transformAABBWithMat4(
-            adtToWorldMat4, bb1vec, bb2vec);
-
-    createBB(worldAABB);
+    //The extents are already in world space once out of ADT coordinates, so they skip createBB, which places a local box
+    this->m_bbox = MathHelper::transformAABBWithMat4(adtToWorldMat4, bb1vec, bb2vec);
+    syncBBoxComponent();
 }
 void WmoObject::createPlacementMatrix(const SMMapObjDefObj1 &mapObjDef){
     mathfu::mat4 adtToWorldMat4 = MathHelper::getAdtToWorldMat4();
@@ -388,10 +387,9 @@ void WmoObject::createPlacementMatrix(const SMMapObjDefObj1 &mapObjDef){
     mathfu::vec4 bb1vec = mathfu::vec4(-1000,-1000,-1000, 1);
     mathfu::vec4 bb2vec = mathfu::vec4(1000, 1000,1000, 1);
 
-    CAaBox worldAABB = MathHelper::transformAABBWithMat4(
-            adtToWorldMat4, bb1vec, bb2vec);
-
-    createBB(worldAABB);
+    //The extents are already in world space once out of ADT coordinates, so they skip createBB, which places a local box
+    this->m_bbox = MathHelper::transformAABBWithMat4(adtToWorldMat4, bb1vec, bb2vec);
+    syncBBoxComponent();
 }
 
 void WmoObject::createGroupObjects(){
