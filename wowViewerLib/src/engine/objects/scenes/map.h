@@ -220,14 +220,14 @@ public:
 
     void update(const HMapRenderPlan &renderPlan);
     void updateBuffers(const HMapSceneBufferCreate &sceneRenderer, const HMapRenderPlan &renderPlan);
+    // Whether this map's fast-load window is open, which is while the map loads after an open; closes it, logging, once the ceiling has passed.
+    bool fastLoadOpen();
 private:
     // The open this map belongs to, taken when it is made; a map from an earlier open never takes part in the window.
     const uint64_t m_fastLoadGeneration = currentFastLoadGeneration();
     // A map with no tiles, one WMO, has nothing to wait on until its queue has held work once.
     bool m_fastLoadSawWork = false;
     static uint64_t currentFastLoadGeneration();
-    // Whether this map's window is open; closes it, logging, once the ceiling has passed.
-    bool fastLoadOpen();
     bool wdtLoaded() const;
     // Whether the frame is settled: see the fast-load window in map.cpp.
     bool loadSettled(bool tilesAsked, bool tilesLoaded, size_t queued);

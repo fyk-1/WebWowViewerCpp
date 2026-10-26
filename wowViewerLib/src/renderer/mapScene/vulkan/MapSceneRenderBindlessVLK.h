@@ -37,6 +37,9 @@ public:
 
     std::shared_ptr<MapRenderPlan> getLastCreatedPlan() override;
 
+    // The GPU size of the scene's vertex, index and shader-data buffers, the ones that grow and never shrink.
+    size_t sceneBufferBytes() override;
+
 //-------------------------------------
 //  Buffer creation
 //-------------------------------------

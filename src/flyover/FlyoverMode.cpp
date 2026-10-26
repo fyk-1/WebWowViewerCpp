@@ -113,6 +113,11 @@ scale (1 when absent), playing its own animation, and replaces a marker of the s
 culled as any doodad, and is not homed to a WMO interior group: inside a building it shows only from where the outside does. A route
 that opens another map drops every marker. A malformed line, or one sent before a map is open, answers `flyover error marker <reason>`.
 
+Trim: `trim` opens the open map again in place, with a new renderer, Map and cache storage, which frees what the scene buffers grew to
+during a flight. It does so only when the scene buffers hold at least twice what they held once the map had loaded, and answers
+`flyover trim reloaded`; otherwise it answers `flyover trim kept`. The camera, its position and look, the pause, the markers, the route,
+the config, the popup, the zone text, the road lines and the take points carry over. With no map open it answers `flyover error trim no map is open`.
+
 Popup: `popup {"text": "...", "x": ..., "y": ..., "z": ...}` shows the text as the game's tooltip beside that world point
 (FrontendUI::setFlyoverPopup), replacing the one shown, and `popup none` hides it. A line that is neither answers `flyover error popup <reason>`.
 
@@ -128,6 +133,9 @@ reads them: a refresh of the same points, a switch of mode and a `look` leave th
 */
 
 namespace {
+    // 🤖 A trim reloads the map when the scene buffers hold at least this many times what they held once the map had loaded.
+    constexpr size_t TRIM_GROWTH = 2;
+
     FILE *g_protocolOut = nullptr;
     std::mutex g_outputMutex;
 
@@ -510,6 +518,8 @@ void FlyoverMode::parseLine(const std::string &rawLine, CommandQueue &queue) {
         post(queue, {CommandType::Pause, "", ""});
     } else if (word == "play") {
         post(queue, {CommandType::Play, "", ""});
+    } else if (word == "trim") {
+        post(queue, {CommandType::Trim, "", ""});
     } else if (word == "mode") {
         if (rest == "path") {
             post(queue, {CommandType::ModePath, "", ""});
@@ -590,6 +600,9 @@ void FlyoverMode::apply(const Command &command) {
         case CommandType::Play:
             m_paused = false;
             if (m_path) m_path->setPaused(false);
+            break;
+        case CommandType::Trim:
+            trimMap();
             break;
         case CommandType::ModePath:
             setMode(false, true);
@@ -758,7 +771,7 @@ void FlyoverMode::applyMarker(const std::string &text) {
     }
 
     if (words.size() == 1 && words[0] == "clear") {
-        for (const auto &[name, id] : m_markers) manager->removeCustomM2(id);
+        for (const auto &[name, marker] : m_markers) manager->removeCustomM2(marker.id);
         m_markers.clear();
         return;
     }
@@ -768,7 +781,7 @@ void FlyoverMode::applyMarker(const std::string &text) {
             emitError("marker", "no marker named " + words[0]);
             return;
         }
-        manager->removeCustomM2(it->second);
+        manager->removeCustomM2(it->second.id);
         m_markers.erase(it);
         return;
     }
@@ -799,16 +812,52 @@ void FlyoverMode::applyMarker(const std::string &text) {
 
     auto it = m_markers.find(words[0]);
     if (it != m_markers.end()) {
-        manager->removeCustomM2(it->second);
+        manager->removeCustomM2(it->second.id);
         m_markers.erase(it);
     }
-    int id = manager->addCustomM2(words[0], "", (int) fileDataId, mathfu::vec3(values[0], values[1], values[2]),
+    const mathfu::vec3 position(values[0], values[1], values[2]);
+    int id = manager->addCustomM2(words[0], "", (int) fileDataId, position,
                                   mathfu::vec3(0, 0, 0), mathfu::vec3(values[3], values[3], values[3]));
     if (id < 0) {
         emitError("marker", "the map refused the model");
         return;
     }
-    m_markers[words[0]] = id;
+    m_markers[words[0]] = {id, (int) fileDataId, position, values[3]};
+}
+
+void FlyoverMode::trimMap() {
+    if (m_mapId < 0 || !m_scene || !m_scene->hasRenderer()) {
+        emitError("trim", "no map is open");
+        return;
+    }
+    if (m_trimBaseline == 0 || m_scene->sceneBufferBytes() < TRIM_GROWTH * m_trimBaseline) {
+        emit("flyover trim kept");
+        return;
+    }
+
+    std::shared_ptr<ICamera> camera = m_isFree ? std::static_pointer_cast<ICamera>(m_free) : std::static_pointer_cast<ICamera>(m_path);
+    float position[3] = {0, 0, 0};
+    camera->getCameraPosition(position);
+
+    m_api->getConfig()->fsrResetRequested = true;
+    m_scene->openMapByIdAndWDTId(m_mapId, m_wdtFileId, position[0], position[1], position[2], -1);
+    m_scene->setCamera(camera);
+    m_trimBaseline = 0;
+
+    if (auto manager = m_scene->getWorldObjectManager()) {
+        for (auto it = m_markers.begin(); it != m_markers.end();) {
+            Marker &marker = it->second;
+            marker.id = manager->addCustomM2(it->first, "", marker.fileDataId, marker.pos,
+                                             mathfu::vec3(0, 0, 0), mathfu::vec3(marker.scale, marker.scale, marker.scale));
+            if (marker.id < 0) {
+                emitError("marker", "the map refused the model of " + it->first);
+                it = m_markers.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+    emit("flyover trim reloaded");
 }
 
 void FlyoverMode::applyPopup(const std::string &text) {
@@ -978,6 +1027,7 @@ void FlyoverMode::applyRoute(const FlyoverRoute &route, bool openMap) {
         m_wdtFileId = route.wdtFileId;
         m_areaReported = false;
         m_markers.clear();
+        m_trimBaseline = 0;
     }
 
     for (const auto &entry : route.config) {
@@ -1085,6 +1135,8 @@ void FlyoverMode::update() {
             emit(text);
         }
     }
+
+    if (m_trimBaseline == 0 && m_mapId >= 0 && !m_scene->mapLoading()) m_trimBaseline = m_scene->sceneBufferBytes();
 
     emitWorld(plan.get());
 }

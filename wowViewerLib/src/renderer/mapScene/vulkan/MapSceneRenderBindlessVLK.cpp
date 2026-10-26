@@ -3096,6 +3096,47 @@ std::shared_ptr<MapRenderPlan> MapSceneRenderBindlessVLK::getLastCreatedPlan() {
     return m_lastCreatedPlan;
 }
 
+size_t MapSceneRenderBindlessVLK::sceneBufferBytes() {
+    size_t bytes = 0;
+    auto add = [&bytes](const HGBufferVLK &buffer) {
+        if (buffer) bytes += buffer->getSize();
+    };
+
+    add(iboBuffer);
+    add(vboM2Buffer);
+    add(vboPortalBuffer);
+    for (const auto &particleBuffer : vboM2ParticleBuffers) add(particleBuffer);
+    add(vboM2RibbonBuffer);
+    add(vboAdtBuffer);
+    add(vboWMOBuffer);
+    add(vboWaterBuffer);
+    add(vboSkyBuffer);
+
+    add(m2Buffers.placementMatrix);
+    add(m2Buffers.boneMatrix);
+    add(m2Buffers.m2Colors);
+    add(m2Buffers.textureWeights);
+    add(m2Buffers.textureMatrices);
+    add(m2Buffers.modelFragmentDatas);
+    add(m2Buffers.m2InstanceData);
+    add(m2Buffers.meshWideBlocks);
+    add(m2Buffers.meshWideBlocksBindless);
+    add(m2Buffers.projectiveData);
+
+    add(adtBuffers.adtMeshWideVSPSes);
+    add(adtBuffers.adtMeshWidePSes);
+    add(adtBuffers.adtInstanceDatas);
+
+    add(wmoBuffers.wmoPlacementMats);
+    add(wmoBuffers.wmoMeshWideVSes);
+    add(wmoBuffers.wmoMeshWidePSes);
+    add(wmoBuffers.wmoMeshWideBindless);
+    add(wmoBuffers.wmoPerMeshData);
+    add(wmoBuffers.wmoGroupInteriorData);
+
+    return bytes;
+}
+
 
 template<typename T>
 std::shared_ptr<ILiquidMaterial> MapSceneRenderBindlessVLK::createLiquidMaterialBindless(

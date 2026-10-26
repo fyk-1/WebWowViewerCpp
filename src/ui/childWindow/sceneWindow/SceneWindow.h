@@ -66,6 +66,10 @@ public:
     const std::map<int, std::set<int>> &getSkyScenesByPlayerCondition();
 
     bool hasRenderer();
+    // Bytes the renderer's scene buffers hold on the GPU; 0 without a renderer.
+    size_t sceneBufferBytes();
+    // True while the current scene is a Map whose fast-load window is open.
+    bool mapLoading();
     std::shared_ptr<IRenderView> createRenderView();
     void render(double deltaTime,
                 float fov,

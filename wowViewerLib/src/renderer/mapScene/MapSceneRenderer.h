@@ -132,6 +132,8 @@ public:
                               const MapRenderPlan &plan);
 
     virtual std::shared_ptr<IRenderView> createRenderView(bool createOutput) = 0;
+    // Bytes the renderer's scene buffers hold on the GPU; 0 for a renderer that does not count them.
+    virtual size_t sceneBufferBytes() { return 0; }
 protected:
     Config *m_config;
 };

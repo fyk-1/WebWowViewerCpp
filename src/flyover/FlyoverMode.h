@@ -105,7 +105,7 @@ public:
     // Seconds the draw of the frame just drawn took, for the next `world` line.
     void noteFrame(double seconds);
 private:
-    enum class CommandType { Flight, Pause, Play, ModePath, ModeFree, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Bake, Marker, Popup, ZoneText, Quit };
+    enum class CommandType { Flight, Pause, Play, Trim, ModePath, ModeFree, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Bake, Marker, Popup, ZoneText, Quit };
     struct Command {
         CommandType type;
         std::string name;
@@ -132,6 +132,7 @@ private:
     void setMode(bool free, bool announce);
     void applyRoadLines(const std::string &file);
     void applyMarker(const std::string &text);
+    void trimMap();
     void applyPopup(const std::string &text);
     void applyZoneText(const std::string &text);
     void takeDump(const std::string &pngFile);
@@ -155,9 +156,17 @@ private:
     int m_mapId = -1;
     int m_wdtFileId = -1;
     FlyoverRoute m_route;
-    // The markers placed by `marker`, by name, as ids of the open map's WorldObjectManager. Emptied when a route opens a map, since
-    // the new map's manager starts with none.
-    std::map<std::string, int> m_markers;
+    // The markers placed by `marker`, by name: the id in the open map's WorldObjectManager, and what places the marker again.
+    // Emptied when a route opens a map, since the new map's manager starts with none; a trim places each again.
+    struct Marker {
+        int id;
+        int fileDataId;
+        mathfu::vec3 pos;
+        float scale;
+    };
+    std::map<std::string, Marker> m_markers;
+    // The scene buffers' bytes once the open map had loaded; 0 until sampled, and again after every open.
+    size_t m_trimBaseline = 0;
 
     std::string m_heightsDir;
     std::string m_bakeDir;

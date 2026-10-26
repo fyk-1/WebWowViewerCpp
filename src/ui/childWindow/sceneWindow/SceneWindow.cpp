@@ -340,6 +340,15 @@ bool SceneWindow::hasRenderer() {
     return m_sceneRenderer != nullptr;
 }
 
+size_t SceneWindow::sceneBufferBytes() {
+    return m_sceneRenderer ? m_sceneRenderer->sceneBufferBytes() : 0;
+}
+
+bool SceneWindow::mapLoading() {
+    auto mapScene = std::dynamic_pointer_cast<Map>(m_currentScene);
+    return mapScene && mapScene->fastLoadOpen();
+}
+
 std::shared_ptr<IRenderView> SceneWindow::createRenderView() {
     if (m_sceneRenderer == nullptr) return nullptr;
 
