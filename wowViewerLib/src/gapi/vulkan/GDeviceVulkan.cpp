@@ -11,6 +11,8 @@
 #include <thread>
 #include <stdlib.h>
 #include "GDeviceVulkan.h"
+#include <fstream>
+#include <filesystem>
 
 #include "meshes/GMeshVLK.h"
 #include "textures/GTextureVLK.h"
@@ -319,6 +321,86 @@ GDeviceVLK::GDeviceVLK(vkCallInitCallback * callback) : m_textureManager(std::ma
     vkSurface = callback->createSurface(vkInstance);
 }
 
+// One VkPipelineCache serves every graphics pipeline, seeded from a file at start and written back at exit. A file is used
+// only when its header names this device (version, vendor and device ids, cache uuid); any other is ignored and replaced.
+static std::string s_pipelineCacheFile;
+
+void GDeviceVLK::setPipelineCacheFile(const std::string &path) {
+    s_pipelineCacheFile = path;
+}
+
+void GDeviceVLK::createPipelineCache() {
+    std::vector<char> blob;
+    if (!s_pipelineCacheFile.empty()) {
+        std::ifstream file(std::filesystem::path(s_pipelineCacheFile), std::ios::binary | std::ios::ate);
+        if (file.is_open()) {
+            const std::streamsize size = file.tellg();
+            file.seekg(0);
+            blob.resize(size > 0 ? (size_t) size : 0);
+            if (size > 0 && !file.read(blob.data(), size)) blob.clear();
+
+            // VkPipelineCacheHeaderVersionOne: length, version, vendor id, device id, then the 16 byte cache uuid.
+            uint32_t header[4] = {};
+            bool valid = blob.size() >= sizeof(header) + VK_UUID_SIZE;
+            if (valid) {
+                std::memcpy(header, blob.data(), sizeof(header));
+                valid = header[0] >= sizeof(header) + VK_UUID_SIZE &&
+                        header[1] == VK_PIPELINE_CACHE_HEADER_VERSION_ONE &&
+                        header[2] == deviceProperties.vendorID &&
+                        header[3] == deviceProperties.deviceID &&
+                        std::memcmp(blob.data() + sizeof(header), deviceProperties.pipelineCacheUUID, VK_UUID_SIZE) == 0;
+            }
+            if (!valid) blob.clear();
+        }
+    }
+
+    VkPipelineCacheCreateInfo createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+    createInfo.initialDataSize = blob.size();
+    createInfo.pInitialData = blob.empty() ? nullptr : blob.data();
+    if (vkCreatePipelineCache(device, &createInfo, nullptr, &m_pipelineCache) != VK_SUCCESS) {
+        // The driver turned the data away: start empty.
+        createInfo.initialDataSize = 0;
+        createInfo.pInitialData = nullptr;
+        blob.clear();
+        if (vkCreatePipelineCache(device, &createInfo, nullptr, &m_pipelineCache) != VK_SUCCESS) {
+            m_pipelineCache = VK_NULL_HANDLE;
+            return;
+        }
+    }
+
+    m_pipelineCacheSavedSize = blob.size();
+}
+
+bool GDeviceVLK::savePipelineCache() {
+    if (m_pipelineCache == VK_NULL_HANDLE || s_pipelineCacheFile.empty()) return false;
+
+    size_t size = 0;
+    if (vkGetPipelineCacheData(device, m_pipelineCache, &size, nullptr) != VK_SUCCESS || size == 0) return false;
+    if (size == m_pipelineCacheSavedSize) return true;
+
+    std::vector<char> blob(size);
+    if (vkGetPipelineCacheData(device, m_pipelineCache, &size, blob.data()) == VK_INCOMPLETE) return false;
+    blob.resize(size);
+
+    // Written beside the cache and renamed over it, so a kill mid-write leaves the old cache whole.
+    const auto target = std::filesystem::path(s_pipelineCacheFile);
+    const auto temporary = std::filesystem::path(s_pipelineCacheFile + ".tmp");
+    {
+        std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+        if (!file.is_open() || !file.write(blob.data(), (std::streamsize) blob.size())) return false;
+    }
+    std::error_code error;
+    std::filesystem::rename(temporary, target, error);
+    if (error) {
+        std::filesystem::remove(temporary, error);
+        return false;
+    }
+
+    m_pipelineCacheSavedSize = size;
+    return true;
+}
+
 GDeviceVLK::~GDeviceVLK() {
 
     //Set framenumber as high as possible to trigger deallocators
@@ -344,6 +426,11 @@ GDeviceVLK::~GDeviceVLK() {
     vkDestroyCommandPool(device, renderCommandPool, nullptr);
     vkDestroyCommandPool(device, uploadCommandPool, nullptr);
     vkDestroyCommandPool(device, commandPoolForImageTransfer, nullptr);
+
+    if (m_pipelineCache != VK_NULL_HANDLE) {
+        savePipelineCache();
+        vkDestroyPipelineCache(device, m_pipelineCache, nullptr);
+    }
 
     if (device) {
         vkDestroyDevice(device, nullptr);
@@ -1006,6 +1093,8 @@ void GDeviceVLK::createLogicalDevice() {
     if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
         throw std::runtime_error("failed to create logical device!");
     }
+
+    createPipelineCache();
 
     vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
 //    vkGetDeviceQueue(device, indices.transferFamily.value(), 0, &uploadQueue);

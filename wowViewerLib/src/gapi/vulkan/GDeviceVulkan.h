@@ -192,6 +192,12 @@ public:
 
     std::shared_ptr<GDescriptorSet> createDescriptorSet(std::shared_ptr<GDescriptorSetLayout> &hDescriptorSetLayout);
 
+    // The file the pipeline cache is loaded from and saved to. Set before the device is made; empty keeps the cache in memory.
+    static void setPipelineCacheFile(const std::string &path);
+    VkPipelineCache getPipelineCache() const { return m_pipelineCache; }
+    // Writes the cache to its file unless it has not grown since the last write. False when it could not be written.
+    bool savePipelineCache();
+
     virtual VkDevice getVkDevice() override {
         return device;
     };
@@ -377,6 +383,10 @@ protected:
     VkSurfaceKHR vkSurface = VK_NULL_HANDLE;
 
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+
+    void createPipelineCache();
+    VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
+    size_t m_pipelineCacheSavedSize = 0;
     VkDevice device;
 
     bool m_debugUtilsAvailable = false;

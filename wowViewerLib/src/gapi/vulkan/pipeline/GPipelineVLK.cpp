@@ -337,7 +337,7 @@ void GPipelineVLK::createPipeline(
 
     auto res = vkCreateGraphicsPipelines(
         m_device.getVkDevice(),
-        VK_NULL_HANDLE, 1,
+        m_device.getPipelineCache(), 1,
         &pipelineInfo, nullptr,
         &graphicsPipeline);
 

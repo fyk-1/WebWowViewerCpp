@@ -8,6 +8,7 @@
 
 #ifdef _WIN32
  #include <errhandlingapi.h>
+ #include <libloaderapi.h>
 #endif
 
 // Include GLEW. Always include it before gl.h and glfw.h, since it's a bit magic.
@@ -40,6 +41,8 @@
 #include "../wowViewerLib/src/engine/objects/scenes/map.h"
 #include "screenshots/screenshotMaker.h"
 #include "database/CEmptySqliteDB.h"
+#include "../wowViewerLib/src/gapi/vulkan/GDeviceVulkan.h"
+#include <filesystem>
 #include <exception>
 #ifdef WIN32
 #include <timeapi.h>
@@ -452,6 +455,18 @@ std::ios_base::Init a;
 
     //Open Sql storage
     HApiContainer apiContainer = std::make_shared<ApiContainer>();
+
+    //The pipeline cache lives beside the executable
+#ifdef LINK_VULKAN
+#ifdef _WIN32
+    wchar_t exePath[MAX_PATH];
+    if (GetModuleFileNameW(nullptr, exePath, MAX_PATH) > 0) {
+        GDeviceVLK::setPipelineCacheFile((std::filesystem::path(exePath).parent_path() / "pipeline-cache.bin").string());
+    }
+#else
+    GDeviceVLK::setPipelineCacheFile((std::filesystem::absolute(argv[0]).parent_path() / "pipeline-cache.bin").string());
+#endif
+#endif
 
     //Create device
     auto hdevice = IDeviceFactory::createDevice(rendererName, &callback);
