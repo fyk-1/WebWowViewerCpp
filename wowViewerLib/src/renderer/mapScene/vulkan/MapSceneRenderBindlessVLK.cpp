@@ -849,6 +849,10 @@ void MapSceneRenderBindlessVLK::createADTGlobalMaterialData() {
             .createDescriptorSet(4, [&](std::shared_ptr<GDescriptorSet> &ds) {
                 adtHeightLayerTextureDS = ds;
             }).toMaterial();
+
+        adtLayerTextureHolder->attach(m_device, adtLayerTextureDS, 0, m_device->getBlackTexturePixel());
+        adtAlphaTextureHolder->attach(m_device, adtAlphaTextureDS, 0, m_device->getBlackTexturePixel());
+        adtHeightLayerTextureHolder->attach(m_device, adtHeightLayerTextureDS, 0, m_device->getBlackTexturePixel());
     }
 }
 
@@ -889,6 +893,7 @@ void MapSceneRenderBindlessVLK::createWaterGlobalMaterialData() {
         .toMaterial();;
 
     waterTextureHolder = std::make_shared<BindlessTextureHolder>(waterTexturesBindlessCount);
+    waterTextureHolder->attach(m_device, waterTexturesDS, 0, m_device->getBlackTexturePixel());
 
     // Slot 0-style fallback: black placeholder for sampler slots with no texture this frame
     waterFallbackTexture = waterTextureHolder->allocate(m_device->getBlackTexturePixel());
@@ -921,6 +926,7 @@ void MapSceneRenderBindlessVLK::createWMOGlobalMaterialData() {
             wmoTexturesDS = ds;
         }).toMaterial();
     wmoTextureHolder = std::make_shared<BindlessTextureHolder>(m2TexturesBindlessCount);
+    wmoTextureHolder->attach(m_device, wmoTexturesDS, 0, m_device->getBlackTexturePixel());
 }
 
 void MapSceneRenderBindlessVLK::createM2GlobalMaterialData() {
@@ -955,6 +961,7 @@ void MapSceneRenderBindlessVLK::createM2GlobalMaterialData() {
             m2TextureDS = ds;
         }).toMaterial();
     m2TextureHolder = std::make_shared<BindlessTextureHolder>(m2TexturesBindlessCount);
+    m2TextureHolder->attach(m_device, m2TextureDS, 0, m_device->getBlackTexturePixel());
 }
 void MapSceneRenderBindlessVLK::createM2WaterfallGlobalMaterialData() {
     MaterialBuilderVLK::fromShader(m_device, {"waterfallShader", "waterfallShader"}, m2WaterfallBindlessShaderConfig)
@@ -970,6 +977,7 @@ void MapSceneRenderBindlessVLK::createM2WaterfallGlobalMaterialData() {
         }).toMaterial();
 
     m2WaterfallTextureHolder = std::make_shared<BindlessTextureHolder>(m2WaterfallTexturesBindlessCount);
+    m2WaterfallTextureHolder->attach(m_device, m2WaterfallTextureDS, 0, m_device->getBlackTexturePixel());
 }
 
 std::shared_ptr<ISimpleMaterialVLK> MapSceneRenderBindlessVLK::getM2StaticMaterial(const PipelineTemplate &pipelineTemplate) {
@@ -2026,6 +2034,14 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
     ZoneScoped;
     auto l_this = std::dynamic_pointer_cast<MapSceneRenderBindlessVLK>(this->shared_from_this());
     auto mapScene = std::dynamic_pointer_cast<Map>(frameInputParams->frameParameters->scene);
+
+    adtLayerTextureHolder->releaseFreedSlots();
+    adtHeightLayerTextureHolder->releaseFreedSlots();
+    adtAlphaTextureHolder->releaseFreedSlots();
+    waterTextureHolder->releaseFreedSlots();
+    wmoTextureHolder->releaseFreedSlots();
+    m2TextureHolder->releaseFreedSlots();
+    m2WaterfallTextureHolder->releaseFreedSlots();
 
     resolvePendingPickResult();
     framePlan->hasSelectedM2 = m_hasSelectedM2;
