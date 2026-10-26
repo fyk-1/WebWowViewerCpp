@@ -11,6 +11,7 @@ class M2Object;
 #include <array>
 #include <vector>
 #include <set>
+#include <mutex>
 #include <tbb/concurrent_unordered_set.h>
 
 #include "../../persistance/header/adtFileHeader.h"
@@ -63,6 +64,10 @@ public:
     int getAdtY() {return adt_y;}
 
     CAaBox calcAABB();
+
+    // The box the map culls the tile by: its terrain and water chunks and every object it owns. False until the tile has
+    // finished loading, so a tile still loading is never culled by it.
+    bool getCullBox(CAaBox &box);
     bool getWaterColorFromDB(mathfu::vec4 cameraPos, mathfu::vec3 &closeRiverColor);
 
     bool checkFrustumCulling(
@@ -151,6 +156,12 @@ private:
     std::vector<std::shared_ptr<LiquidInstance>> m_liquidInstances = {};
     std::vector<HGMesh> adtLodMeshes;
 
+    // The cull box, written when the tile finishes loading and read by the culling thread.
+    std::mutex m_cullBoxMutex;
+    bool m_hasCullBox = false;
+    mathfu::vec3 m_cullBoxMin = mathfu::vec3(0, 0, 0);
+    mathfu::vec3 m_cullBoxMax = mathfu::vec3(0, 0, 0);
+
     std::vector<CAaBox> tileAabb;
     std::vector<CAaBox> waterTileAabb;
     //Per-chunk flags for chunks that actually have liquid instances (set in loadWater).
@@ -182,6 +193,7 @@ private:
     HGSamplableTexture getAdtSpecularTexture(int textureId);
 
     void calcBoundingBoxes();
+    void calcCullBox();
     void loadM2s();
     void loadWmos();
     void loadWater(const HMapSceneBufferCreate &sceneRenderer, const std::unique_ptr<LiquidMaterialManager> &liquidMaterialManager);

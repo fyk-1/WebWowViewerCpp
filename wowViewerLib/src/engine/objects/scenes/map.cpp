@@ -1000,30 +1000,19 @@ void Map::checkADTCulling(int i, int j,
                           const HMapRenderPlan &mapRenderPlan,
                           M2ObjectListContainer &m2ObjectsCandidates,
                           WMOListContainer &wmoCandidates) {
-    if ((i < 0) || (i > 64)) return;
-    if ((j < 0) || (j > 64)) return;
-
-    if (this->m_adtConfigHolder != nullptr) {
-        mathfu::vec3 min = m_adtConfigHolder->adtMin[i][j];
-        mathfu::vec3 max = m_adtConfigHolder->adtMax[i][j];
-
-        CAaBox box = {
-            C3Vector(min),
-            C3Vector(max)
-
-//            C3Vector({AdtIndexToWorldCoordinate(j + 1) , AdtIndexToWorldCoordinate(i + 1), minZ}),
-//            C3Vector({AdtIndexToWorldCoordinate(j) , AdtIndexToWorldCoordinate(i), maxZ})
-        };
-
-        bool bbCheck = MathHelper::checkFrustum( frustumData, box);
-
-        if (!bbCheck)
-            return;
-    }
+    if ((i < 0) || (i >= 64)) return;
+    if ((j < 0) || (j >= 64)) return;
 
     auto &adtObject = mapTiles[i][j];
     auto &adtArray = mapRenderPlan->adtArray;
     if (adtObject != nullptr) {
+        //A tile whose box is out of view collects nothing, but stays alive as any tile in range does: a tile freed here would
+        //load again the moment the camera turned. A tile still loading has no box and is let through.
+        CAaBox cullBox;
+        if (adtObject->getCullBox(cullBox) && !MathHelper::checkFrustum(frustumData, cullBox)) {
+            adtObject->getFreeStrategy()(false, true, getCurrentSceneTime());
+            return;
+        }
 
         auto &adtFrustRes = adtArray.emplace_back();
         adtFrustRes.adtObject = adtObject;

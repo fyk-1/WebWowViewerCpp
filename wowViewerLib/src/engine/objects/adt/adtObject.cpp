@@ -45,6 +45,59 @@ void AdtObject::loadingFinished(const HMapSceneBufferCreate &sceneRenderer, cons
 
 
     loadWater(sceneRenderer, liquidMaterialManager);
+
+    calcCullBox();
+}
+
+// The box Map::checkADTCulling tests: a tile that fails it collects nothing, so it holds the terrain and water chunks and every
+// object the tile owns. An object stands past the tile's footprint, so each is widened by kObjectReach (a quarter of a tile),
+// a bound and not a measurement, and a model's box is only known once its file has loaded.
+static constexpr float kObjectReach = 128.0f;
+
+void AdtObject::calcCullBox() {
+    mathfu::vec3 boxMin(20000, 20000, 20000);
+    mathfu::vec3 boxMax(-20000, -20000, -20000);
+
+    auto join = [&](const mathfu::vec3 &min, const mathfu::vec3 &max) {
+        boxMin = mathfu::vec3::Min(boxMin, min);
+        boxMax = mathfu::vec3::Max(boxMax, max);
+    };
+    auto joinBox = [&](const CAaBox &box) {
+        join(mathfu::vec3(box.min), mathfu::vec3(box.max));
+    };
+    const mathfu::vec3 reach(kObjectReach, kObjectReach, kObjectReach);
+
+    for (int i = 0; i < 256; i++) {
+        joinBox(tileAabb[i]);
+        if (m_chunkHasWater[i]) joinBox(waterTileAabb[i]);
+    }
+    for (auto const &m2Object : objectLods[0].m2Objects) {
+        if (m2Object == nullptr) continue;
+
+        const mathfu::vec3 position = m2Object->getWorldPosition();
+        join(position - reach, position + reach);
+        if (m2Object->getHasBoundingBox()) joinBox(m2Object->getAABB());
+    }
+    for (auto const &wmoId : objectLods[0].wmoObjectIds) {
+        if (wmoId == emptyWMO) continue;
+
+        const CAaBox &box = retrieveAABB(wmoId);
+        if (box.min.x > box.max.x) continue;
+        join(mathfu::vec3(box.min) - reach, mathfu::vec3(box.max) + reach);
+    }
+
+    std::lock_guard<std::mutex> lock(m_cullBoxMutex);
+    m_cullBoxMin = boxMin;
+    m_cullBoxMax = boxMax;
+    m_hasCullBox = true;
+}
+
+bool AdtObject::getCullBox(CAaBox &box) {
+    std::lock_guard<std::mutex> lock(m_cullBoxMutex);
+    if (!m_hasCullBox) return false;
+
+    box = CAaBox(C3Vector(m_cullBoxMin), C3Vector(m_cullBoxMax));
+    return true;
 }
 
 void AdtObject::loadM2s() {
