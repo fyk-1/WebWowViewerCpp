@@ -881,7 +881,7 @@ void MapSceneRenderBindlessVLK::drawAABBDebug(CmdBufRecorder &frameBufCmd, const
 }
 
 void MapSceneRenderBindlessVLK::createWeatherMaterials() {
-    // Particles and the flash are quads from the quad index buffer, a bolt link is a line from two indices.
+    // Particles are quads from the quad index buffer, a bolt link is a line from two indices.
     m_drawWeatherVao = m_device->createVertexBufferBindings();
     m_drawWeatherVao->setIndexBuffer(m_iboQuad);
     m_drawWeatherVao->save();
@@ -899,9 +899,9 @@ void MapSceneRenderBindlessVLK::createWeatherMaterials() {
     m_weatherBuffer = m_device->createSSBOBuffer("Scene_SSBO_Weather", sizeof(mathfu::vec4_packed) * (2 + 2 * WeatherSim::MaxParticles),
                                                  sizeof(mathfu::vec4_packed));
     allBuffers.push_back(m_weatherBuffer);
-    // The flash, then two records for each link of the bolts.
+    // Two records for each link of the bolts.
     m_lightningBuffer = m_device->createSSBOBuffer("Scene_SSBO_Lightning",
-                                                   sizeof(mathfu::vec4_packed) * (1 + 2 * WeatherSim::MaxBolts * WeatherSim::MaxBoltLinks),
+                                                   sizeof(mathfu::vec4_packed) * (2 * WeatherSim::MaxBolts * WeatherSim::MaxBoltLinks),
                                                    sizeof(mathfu::vec4_packed));
     allBuffers.push_back(m_lightningBuffer);
 
@@ -920,15 +920,6 @@ void MapSceneRenderBindlessVLK::createWeatherMaterials() {
         true,
         EGxBlendEnum::GxBlend_Add,
         true,
-        false,
-        0xFF
-    };
-    static const PipelineTemplate s_flashPipeline = {
-        DrawElementMode::TRIANGLES,
-        false,
-        true,
-        EGxBlendEnum::GxBlend_Alpha,
-        false,
         false,
         0xFF
     };
@@ -961,7 +952,36 @@ void MapSceneRenderBindlessVLK::createWeatherMaterials() {
 
     m_weatherMat = build("weather", m_drawWeatherVao, s_particlePipeline, m_weatherBuffer);
     m_boltMat = build("lightningBolt", m_drawBoltVao, s_boltPipeline, m_lightningBuffer);
-    m_flashMat = build("lightningFlash", m_drawWeatherVao, s_flashPipeline, m_lightningBuffer);
+}
+
+// robots@Impl: A lightning strike lights the scene instead of wiping the screen white. The flash (WeatherSim::flash, 1 at the strike
+// and fading to 0) lifts each colour toward white by k * flash, mix(c, 1, k * flash). The sky lifts most, since a strike lights the
+// clouds first. It works on a copy of the frame's light, after the light smoothing, so the flash is never smoothed and the next frame
+// starts from the unlifted light. The tile-light grid and the glow stay as they are.
+static constexpr float kFlashLightLift = 0.5f;
+static constexpr float kFlashSkyLift = 0.7f;
+
+static HFrameDependantData liftLightForFlash(const HFrameDependantData &fdd, float flash) {
+    if (flash <= 0.0f || !fdd) return fdd;
+
+    auto lit = std::make_shared<FrameDependantData>(*fdd);
+    auto lift = [](mathfu::vec3 &colour, float k) { colour = colour + (mathfu::vec3(1.0f, 1.0f, 1.0f) - colour) * k; };
+
+    const float light = kFlashLightLift * flash;
+    lift(lit->colors.exteriorAmbientColor, light);
+    lift(lit->colors.exteriorHorizontAmbientColor, light);
+    lift(lit->colors.exteriorGroundAmbientColor, light);
+    lift(lit->colors.exteriorDirectColor, light);
+    if (!lit->fogResults.empty()) lift(lit->fogResults.back().FogColor, light);
+
+    const float sky = kFlashSkyLift * flash;
+    lift(lit->skyColors.SkyTopColor, sky);
+    lift(lit->skyColors.SkyMiddleColor, sky);
+    lift(lit->skyColors.SkyBand1Color, sky);
+    lift(lit->skyColors.SkyBand2Color, sky);
+    lift(lit->skyColors.SkySmogColor, sky);
+    lift(lit->skyColors.SkyFogColor, sky);
+    return lit;
 }
 
 MapSceneRenderBindlessVLK::WeatherFrame MapSceneRenderBindlessVLK::updateWeather(
@@ -1002,7 +1022,6 @@ MapSceneRenderBindlessVLK::WeatherFrame MapSceneRenderBindlessVLK::updateWeather
     }
 
     std::vector<mathfu::vec4_packed> records;
-    records.push_back(record(m_weather.flash(), 0, 0, 0));
     for (const auto &bolt : m_weather.bolts()) {
         if (!bolt.active) continue;
         for (const auto &link : bolt.links) {
@@ -1011,8 +1030,7 @@ MapSceneRenderBindlessVLK::WeatherFrame MapSceneRenderBindlessVLK::updateWeather
             frame.boltLinks++;
         }
     }
-    frame.flash = m_weather.flash() > 0.01f;
-    if (frame.flash || frame.boltLinks > 0) {
+    if (frame.boltLinks > 0) {
         m_lightningBuffer->uploadData(records.data(), (int) (records.size() * sizeof(mathfu::vec4_packed)));
     }
 
@@ -1046,11 +1064,6 @@ void MapSceneRenderBindlessVLK::drawWeather(CmdBufRecorder &frameBufCmd, const W
         frameBufCmd.bindVertexBindings(m_drawBoltVao);
         frameBufCmd.bindMaterial(m_boltMat);
         frameBufCmd.drawIndexed(2, weatherFrame.boltLinks, 0, 0, 0);
-    }
-    if (weatherFrame.flash) {
-        frameBufCmd.bindVertexBindings(m_drawWeatherVao);
-        frameBufCmd.bindMaterial(m_flashMat);
-        frameBufCmd.drawIndexed(6, 1, 0, 0, 0);
     }
     if (weatherFrame.roadSegments > 0) {
         frameBufCmd.bindVertexBindings(m_drawBoltVao);
@@ -2532,6 +2545,10 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
         }
     }
 
+    // The sim ticks before the scene chunk is filled, since a strike lights the frame it is in.
+    const WeatherFrame weatherFrame = updateWeather(framePlan, renderingMatricessAndSizes);
+    const HFrameDependantData litFrameData = liftLightForFlash(framePlan->frameDependentData, m_weather.flash());
+
     if (stepBufferUpdates) {
         // Only a frame whose grid is a new colouring pays for the upload.
         const auto &tileLight = framePlan->frameDependentData->tileLight;
@@ -2542,7 +2559,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
 
         updateSceneWideChunk(sceneWideChunk,
                              renderingMatricessAndSizes,
-                             framePlan->frameDependentData,
+                             litFrameData,
                              true,
                              mapScene->getCurrentSceneTime(),
                              *framePlan);
@@ -2569,7 +2586,6 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
     // may run while the next frame's update is already rebuilding m_gpuDraws state.
     auto gpuFrameDraws = m_gpuDraws.buildFrameDraws(framePlan);
     updateSelectedAABB(framePlan);
-    const WeatherFrame weatherFrame = updateWeather(framePlan, renderingMatricessAndSizes);
 
     // GPU M2 animation: collect the per-frame dispatch list from the objects whose
     // GPU anim state was written during this frame's update (skipped objects keep
@@ -2987,7 +3003,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
                         l_this->m_pickResultIsHoverPeek[pickFrameNum] = frameInputParams->frameParameters->pickIsHoverPeek;
                     }
 
-                    if (weatherFrame.particles > 0 || weatherFrame.boltLinks > 0 || weatherFrame.flash || weatherFrame.roadSegments > 0) {
+                    if (weatherFrame.particles > 0 || weatherFrame.boltLinks > 0 || weatherFrame.roadSegments > 0) {
                         auto debugHelper = frameBufCmd.beginDebugLabel("Weather Pass", {0.5f, 0.5f, 1.0f});
                         auto passHelper = currentView->beginForwardPass(frameBufCmd, false, false,
                                                                         frameInputParams->frameParameters->clearColor, false);

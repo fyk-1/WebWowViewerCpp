@@ -32,12 +32,16 @@ inline float clampF(float val, float min, float max) {
 struct LightParamBlendResults {
     std::vector<IdAndBlendAndPriority> params;           // lightParamId[0] — scene fog / light
     std::vector<IdAndBlendAndPriority> underwaterParams; // lightParamId[1] — underwater fog
+    std::vector<IdAndBlendAndPriority> stormParams;           // lightParamId[2] — the storm scene, slot 0 where a Light has none
+    std::vector<IdAndBlendAndPriority> stormUnderwaterParams; // lightParamId[3] — the storm underwater, slot 1 where a Light has none
 };
 
-// Computes the light-param blends for BOTH param slots in one pass:
+// Computes the light-param blends for ALL FOUR param slots in one pass:
 // the expensive parts (env info query, zone-light geometry, per-zone Light lookup)
 // are index-independent, so they are done once and only the final lightParamId[index]
 // selection differs. Underwater entries with an empty param slot (id <= 0) are skipped.
+// A storm list holds the same entries as its clear list, in the same order and with the same blends,
+// so a Light whose storm slot is empty lights the storm as it lights the clear.
 inline
 LightParamBlendResults calculateLightParamBlends(
     const std::shared_ptr<IClientDatabase> &databaseHandler,
@@ -48,6 +52,13 @@ LightParamBlendResults calculateLightParamBlends(
 ) {
     const int sceneParamIndex = 0;
     const int underwaterParamIndex = 1;
+    const int stormSceneParamIndex = 2;
+    const int stormUnderwaterParamIndex = 3;
+
+    // The storm slot's param, or the clear slot's where the Light has none.
+    auto stormOrClear = [](const int *lightParamId, int stormIndex, int clearIndex) {
+        return lightParamId[stormIndex] > 0 ? lightParamId[stormIndex] : lightParamId[clearIndex];
+    };
 
     LightParamBlendResults blendResults;
 
@@ -65,6 +76,8 @@ LightParamBlendResults calculateLightParamBlends(
 
     int defaultLightParamId = -1;
     int defaultUnderwaterLightParamId = -1;
+    int defaultStormLightParamId = -1;
+    int defaultStormUnderwaterLightParamId = -1;
     int defaultLightId = -1;
     bool selectedDefault = false;
     bool selectedDefaultMap = false;
@@ -77,11 +90,15 @@ LightParamBlendResults calculateLightParamBlends(
                         selectedDefaultMap = true;
                         defaultLightParamId = it->lightParamId[sceneParamIndex];
                         defaultUnderwaterLightParamId = it->lightParamId[underwaterParamIndex];
+                        defaultStormLightParamId = stormOrClear(it->lightParamId, stormSceneParamIndex, sceneParamIndex);
+                        defaultStormUnderwaterLightParamId = stormOrClear(it->lightParamId, stormUnderwaterParamIndex, underwaterParamIndex);
                         defaultLightId = it->id;
                     } else if (!selectedDefault && it->continentId == 0) {
                         selectedDefault = true;
                         defaultLightParamId = it->lightParamId[sceneParamIndex];
                         defaultUnderwaterLightParamId = it->lightParamId[underwaterParamIndex];
+                        defaultStormLightParamId = stormOrClear(it->lightParamId, stormSceneParamIndex, sceneParamIndex);
+                        defaultStormUnderwaterLightParamId = stormOrClear(it->lightParamId, stormUnderwaterParamIndex, underwaterParamIndex);
                         defaultLightId = it->id;
                     }
                 }
@@ -145,6 +162,10 @@ LightParamBlendResults calculateLightParamBlends(
         if (defaultUnderwaterLightParamId > 0) {
             blendResults.underwaterParams.push_back({defaultUnderwaterLightParamId, 1.0f, 0});
         }
+        blendResults.stormParams.push_back({defaultStormLightParamId, 1.0f, 0});
+        if (defaultStormUnderwaterLightParamId > 0) {
+            blendResults.stormUnderwaterParams.push_back({defaultStormUnderwaterLightParamId, 1.0f, 0});
+        }
     }
 
     bool applyFirstAsDefault = !selectedDefaultMap;
@@ -166,6 +187,11 @@ LightParamBlendResults calculateLightParamBlends(
         if (zoneLightResult.lightParamId[underwaterParamIndex] > 0) {
             blendResults.underwaterParams.push_back({zoneLightResult.lightParamId[underwaterParamIndex], blendFactor, 1});
         }
+        blendResults.stormParams.push_back({stormOrClear(zoneLightResult.lightParamId, stormSceneParamIndex, sceneParamIndex), blendFactor, 1});
+        const int zoneStormUnderwater = stormOrClear(zoneLightResult.lightParamId, stormUnderwaterParamIndex, underwaterParamIndex);
+        if (zoneStormUnderwater > 0) {
+            blendResults.stormUnderwaterParams.push_back({zoneStormUnderwater, blendFactor, 1});
+        }
 
         if (stateForConditions != nullptr) {
             stateForConditions->currentLightParams.push_back({zoneLightResult.lightParamId[sceneParamIndex], blendFactor});
@@ -181,6 +207,11 @@ LightParamBlendResults calculateLightParamBlends(
             blendResults.params.push_back({it->lightParamId[sceneParamIndex], it->blendAlpha, 2});
             if (it->lightParamId[underwaterParamIndex] > 0) {
                 blendResults.underwaterParams.push_back({it->lightParamId[underwaterParamIndex], it->blendAlpha, 2});
+            }
+            blendResults.stormParams.push_back({stormOrClear(it->lightParamId, stormSceneParamIndex, sceneParamIndex), it->blendAlpha, 2});
+            const int stormUnderwater = stormOrClear(it->lightParamId, stormUnderwaterParamIndex, underwaterParamIndex);
+            if (stormUnderwater > 0) {
+                blendResults.stormUnderwaterParams.push_back({stormUnderwater, it->blendAlpha, 2});
             }
         }
 

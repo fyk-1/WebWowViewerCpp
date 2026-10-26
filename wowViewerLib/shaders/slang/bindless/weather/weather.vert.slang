@@ -14,7 +14,8 @@ precision highp int;
 // pull model draws a quad per instance here, the same size in pixels. The buffer holds the draw's colour, then its look
 // (x the size in pixels, y the seconds of fall the streak spans, 0 for a dot), then a position and a velocity per particle.
 // A rain streak runs from the particle back along its velocity on the screen, at most MaxStreak pixels, so a particle
-// close to the camera does not cross the view. Positions are in the scene's world space, z up.
+// close to the camera does not cross the view. A position is an offset from the camera, z up, and the shader adds the camera of the frame it draws, which the scene's inverse view
+// matrix holds.
 
 layout(std430, set=1, binding=0) StructuredBuffer<vec4> weather;
 
@@ -25,7 +26,8 @@ const float MaxStreak = 40.0;
 [shader("vertex")]
 void main() {
     vec4 look = weather[1];
-    vec3 position = weather[2 + 2 * gl_InstanceIndex].xyz;
+    vec3 camera = (scene.uInvLookAtMat * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    vec3 position = weather[2 + 2 * gl_InstanceIndex].xyz + camera;
     vec3 velocity = weather[3 + 2 * gl_InstanceIndex].xyz;
 
     mat4 viewProjection = scene.uPMatrix * scene.uLookAtMat;

@@ -22,6 +22,9 @@ void TileLightGrid::advanceBlends(const std::shared_ptr<IClientDatabase> &databa
         for (const auto &param : results.params) {
             m_blends[tile].push_back({param.id, param.blend});
         }
+        for (const auto &param : results.stormParams) {
+            m_stormBlends[tile].push_back({param.id, param.blend});
+        }
         done++;
     }
 
@@ -31,6 +34,12 @@ void TileLightGrid::advanceBlends(const std::shared_ptr<IClientDatabase> &databa
         }
         std::sort(m_paramIds.begin(), m_paramIds.end());
         m_paramIds.erase(std::unique(m_paramIds.begin(), m_paramIds.end()), m_paramIds.end());
+
+        for (const auto &blends : m_stormBlends) {
+            for (const auto &blend : blends) m_stormParamIds.push_back(blend.id);
+        }
+        std::sort(m_stormParamIds.begin(), m_stormParamIds.end());
+        m_stormParamIds.erase(std::unique(m_stormParamIds.begin(), m_stormParamIds.end()), m_stormParamIds.end());
     }
 }
 

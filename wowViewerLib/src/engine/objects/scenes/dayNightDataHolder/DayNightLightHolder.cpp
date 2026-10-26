@@ -414,6 +414,7 @@ void DayNightLightHolder::updateLightAndSkyboxData(const HMapRenderPlan &mapRend
 
         SkyBoxCollector skyBoxCollector(m_api, m_exteriorSkyBoxes);
 
+        easeStormShare(config, mapRenderPlan->deltaTime);
         getLightResultsFromDB(frustumData.cameraPos, config,
                               currentGlow,
                               skyColors, skyBodyData, exteriorColors,
@@ -541,6 +542,10 @@ void DayNightLightHolder::updateLightAndSkyboxData(const HMapRenderPlan &mapRend
 // since the database's statements are shared with the camera's query and no other thread may use them. The colours follow the time of
 // day: the grid is recoloured on the frame Config::currentTime differs from the last colouring, once per distinct light param and then
 // once per tile through the mixers the camera's light uses. It is on only while the exterior and water colours come from the database.
+// 🤖 The storm light of the camera path (m_stormShare) reaches the grid as a second set of blends per tile, from the same database pass,
+// so a map costs no more queries. The grid mixes the two with the share rounded to 1/256, the finest step an 8-bit colour shows, and
+// is recoloured when that rounded share changes too, from the colours kept per param, so an ease costs mixing and a publish and no
+// database calls. A share that rounds to 0 colours the clear light alone, as before.
 void DayNightLightHolder::updateTileLight(const HFrameDependantData &fdd, const Config *config) {
     constexpr int kTileBlendsPerFrame = 8;
 
@@ -551,31 +556,33 @@ void DayNightLightHolder::updateTileLight(const HFrameDependantData &fdd, const 
     m_tileLight.advanceBlends(m_api->databaseHandler, m_mapId, m_zoneLights, m_tileLightSource, kTileBlendsPerFrame);
     if (!m_tileLight.blendsReady()) return;
 
-    if (m_tileLight.colouredAt() != config->currentTime) colourTileLight(config);
+    if (m_tileLight.colouredAt() != config->currentTime || m_tileColouredShare != tileStormShare()) colourTileLight(config);
 
     fdd->tileLight = m_tileLight.published();
     fdd->tileLightVersion = m_tileLight.version();
 }
 
-void DayNightLightHolder::colourTileLight(const Config *config) {
-    struct ParamColours {
-        ExteriorColors exterior;
-        LiquidColors liquid;
-    };
-    const auto &ids = m_tileLight.paramIds();
-    std::vector<ParamColours> colours(ids.size());
-    for (size_t i = 0; i < ids.size(); i++) {
-        float glow = 0.0f;
-        SkyBodyData skyBodyData;
-        FogResult fogResult;
-        SkyColors skyColors;
-        calcLightParamResult(ids[i], config, glow, skyBodyData, colours[i].exterior, fogResult, colours[i].liquid, skyColors);
-    }
+float DayNightLightHolder::tileStormShare() const {
+    return std::round(m_stormShare * 256.0f) / 256.0f;
+}
 
-    for (int tile = 0; tile < TileLightGrid::kTiles; tile++) {
-        const auto &blends = m_tileLight.blendsOf(tile);
-        ExteriorColors exterior;
-        LiquidColors liquid;
+void DayNightLightHolder::colourTileLight(const Config *config) {
+    auto colourParams = [&](const std::vector<int> &ids, std::vector<ParamColours> &colours, int &colouredAt) {
+        if (colouredAt == config->currentTime && colours.size() == ids.size()) return;
+        colours.assign(ids.size(), ParamColours());
+        for (size_t i = 0; i < ids.size(); i++) {
+            float glow = 0.0f;
+            SkyBodyData skyBodyData;
+            FogResult fogResult;
+            SkyColors skyColors;
+            calcLightParamResult(ids[i], config, glow, skyBodyData, colours[i].exterior, fogResult, colours[i].liquid, skyColors);
+        }
+        colouredAt = config->currentTime;
+    };
+
+    // The blends of one tile, mixed in the order the camera's light mixes them.
+    auto mixBlends = [](const std::vector<IdAndBlend> &blends, const std::vector<int> &ids,
+                        const std::vector<ParamColours> &colours, ExteriorColors &exterior, LiquidColors &liquid) {
         if (!blends.empty()) {
             exterior.assignZeros();
             liquid.assignZeros();
@@ -586,9 +593,29 @@ void DayNightLightHolder::colourTileLight(const Config *config) {
             mixStructure(exterior, param.exterior, blend.blend);
             mixStructure(liquid, param.liquid, blend.blend);
         }
+    };
+
+    const float share = tileStormShare();
+    colourParams(m_tileLight.paramIds(), m_tileParamColours, m_tileParamColoursAt);
+    if (share > 0.0f) colourParams(m_tileLight.stormParamIds(), m_tileStormParamColours, m_tileStormParamColoursAt);
+
+    for (int tile = 0; tile < TileLightGrid::kTiles; tile++) {
+        const auto &blends = m_tileLight.blendsOf(tile);
+        ExteriorColors exterior;
+        LiquidColors liquid;
+        mixBlends(blends, m_tileLight.paramIds(), m_tileParamColours, exterior, liquid);
+
+        if (share > 0.0f && !blends.empty()) {
+            ExteriorColors stormExterior;
+            LiquidColors stormLiquid;
+            mixBlends(m_tileLight.stormBlendsOf(tile), m_tileLight.stormParamIds(), m_tileStormParamColours, stormExterior, stormLiquid);
+            mixStructure(exterior, stormExterior, share);
+            mixStructure(liquid, stormLiquid, share);
+        }
         m_tileLight.setTile(tile, !blends.empty(), exterior, liquid);
     }
     m_tileLight.publish(config->currentTime);
+    m_tileColouredShare = share;
 }
 
 // robots@Impl: The light a frame computes is the target. The shown light follows it as WoWee's lighting manager does,
@@ -873,6 +900,21 @@ static float sunFogStrengthDayCurve(float dayProgress) {
     return 1.0f - (dayProgress - rampDownStart) / (rampDownEnd - rampDownStart);
 }
 
+void DayNightLightHolder::easeStormShare(const Config *config, animTime_t deltaTime) {
+    const bool stormy = config->weatherType >= 1 && config->weatherType <= 3;
+    const float target = stormy ? clampF(config->weatherIntensity, 0.0f, 1.0f) : 0.0f;
+
+    if (deltaTime <= 0.0) {
+        m_stormShare = target;
+        return;
+    }
+
+    const float seconds = float(deltaTime) * 0.001f;
+    m_stormShare = mix(m_stormShare, target, 1.0f - std::exp(-seconds / kStormEaseSeconds));
+    // The ease never lands, and a share too small to show would keep the storm light computed.
+    if (std::fabs(target - m_stormShare) < 1.0f / 256.0f) m_stormShare = target;
+}
+
 void DayNightLightHolder::getLightResultsFromDB(mathfu::vec3 &cameraVec3, const Config *config,
                                 float &glow,
                                 SkyColors &skyColors,
@@ -893,19 +935,61 @@ void DayNightLightHolder::getLightResultsFromDB(mathfu::vec3 &cameraVec3, const 
         stateForConditions,
         m_zoneLights
     );
-    auto &paramsBlend = blendResults.params;
 
+    LightSet clear;
+    clear.glow = glow;
+    clear.skyColors = skyColors;
+    clear.skyBodyData = skyBodyData;
+    clear.exteriorColors = exteriorColors;
+    clear.fog = fogResult;
+    clear.underWaterFog = underWaterFogResult;
+    clear.liquidColors = liquidColors;
 
-    if (!paramsBlend.empty()) {
+    // The storm set starts from the same defaults, and is worked out only while it shows.
+    LightSet storm = clear;
+
+    computeLightSet(blendResults.params, blendResults.underwaterParams, config, clear, skyBoxCollector, 1.0f, stateForConditions);
+
+    if (m_stormShare > 0.0f) {
+        // 🤖 The storm's skyboxes layer over the clear ones at their blend times the share, which fades the clear ones by the same.
+        computeLightSet(blendResults.stormParams, blendResults.stormUnderwaterParams, config, storm, skyBoxCollector,
+                        m_stormShare, stateForConditions);
+
+        const float share = m_stormShare;
+        mixStructure(clear.skyColors,      storm.skyColors,      share);
+        mixStructure(clear.exteriorColors, storm.exteriorColors, share);
+        mixStructure(clear.liquidColors,   storm.liquidColors,   share);
+        mixStructure(clear.skyBodyData,    storm.skyBodyData,    share);
+        mixStructure(clear.fog,            storm.fog,            share);
+        mixStructure(clear.underWaterFog,  storm.underWaterFog,  share);
+        clear.glow = mix(clear.glow, storm.glow, share);
+    }
+
+    glow = clear.glow;
+    skyColors = clear.skyColors;
+    skyBodyData = clear.skyBodyData;
+    exteriorColors = clear.exteriorColors;
+    fogResult = clear.fog;
+    underWaterFogResult = clear.underWaterFog;
+    liquidColors = clear.liquidColors;
+
+    stateForConditions->currentLightParams = blendResults.params;
+}
+
+void DayNightLightHolder::computeLightSet(const std::vector<IdAndBlendAndPriority> &sceneBlends,
+                                          const std::vector<IdAndBlendAndPriority> &underwaterBlends,
+                                          const Config *config, LightSet &set, SkyBoxCollector &skyBoxCollector,
+                                          float skyBoxAlphaScale, StateForConditions *stateForConditions) {
+    if (!sceneBlends.empty()) {
         // assign zero values
-        skyColors.assignZeros();
-        exteriorColors.assignZeros();
-        liquidColors.assignZeros();
-        skyBodyData.assignZeros();
+        set.skyColors.assignZeros();
+        set.exteriorColors.assignZeros();
+        set.liquidColors.assignZeros();
+        set.skyBodyData.assignZeros();
         //fogResult.assignZeros();
     }
 
-    for (auto it = paramsBlend.begin(); it != paramsBlend.end(); it++) {
+    for (auto it = sceneBlends.begin(); it != sceneBlends.end(); it++) {
         SkyColors tmp_skyColors;
         ExteriorColors tmp_exteriorColors;
 
@@ -919,20 +1003,20 @@ void DayNightLightHolder::getLightResultsFromDB(mathfu::vec3 &cameraVec3, const 
                              tmp_glow,
                              tmp_skyBodyData, tmp_exteriorColors, tmp_fogResult, tmp_liquidColors, tmp_skyColors);
 
-        mixStructure(skyColors,      tmp_skyColors,      it->blend);
-        mixStructure(exteriorColors, tmp_exteriorColors, it->blend);
-        mixStructure(liquidColors,   tmp_liquidColors,   it->blend);
-        mixStructure(skyBodyData,    tmp_skyBodyData,    it->blend);
-        mixStructure(fogResult,      tmp_fogResult,      it->blend);
-        glow =   mix(glow,           tmp_glow,           it->blend);
+        mixStructure(set.skyColors,      tmp_skyColors,      it->blend);
+        mixStructure(set.exteriorColors, tmp_exteriorColors, it->blend);
+        mixStructure(set.liquidColors,   tmp_liquidColors,   it->blend);
+        mixStructure(set.skyBodyData,    tmp_skyBodyData,    it->blend);
+        mixStructure(set.fog,            tmp_fogResult,      it->blend);
+        set.glow = mix(set.glow,         tmp_glow,           it->blend);
 
         if (tmp_skyBodyData.skyBoxInfo.id > 0 && (stateForConditions != nullptr)) {
-            skyBoxCollector.addSkyBox(*stateForConditions, tmp_skyBodyData.skyBoxInfo, it->blend);
+            skyBoxCollector.addSkyBox(*stateForConditions, tmp_skyBodyData.skyBoxInfo, it->blend * skyBoxAlphaScale);
         }
     }
 
-    // Underwater fog (Light param slot 1) — from the same blend computation, no re-query
-    for (auto it = blendResults.underwaterParams.begin(); it != blendResults.underwaterParams.end(); it++) {
+    // Underwater fog (Light param slot 1, or 3 in a storm) - from the same blend computation, no re-query
+    for (auto it = underwaterBlends.begin(); it != underwaterBlends.end(); it++) {
         SkyColors tmp_skyColors;
         ExteriorColors tmp_exteriorColors;
         LiquidColors tmp_liquidColors;
@@ -945,18 +1029,16 @@ void DayNightLightHolder::getLightResultsFromDB(mathfu::vec3 &cameraVec3, const 
                              tmp_glow,
                              tmp_skyBodyData, tmp_exteriorColors, tmp_underWaterFogResult, tmp_liquidColors, tmp_skyColors);
 
-        mixStructure(underWaterFogResult, tmp_underWaterFogResult, it->blend);
+        mixStructure(set.underWaterFog, tmp_underWaterFogResult, it->blend);
     }
 
 
-    float blendCoeff = fmaxf(fminf(getClampedFarClip(config->farPlane) / fogResult.EndFogColorDistance, 1.0f), 0.0f);
-    skyColors.SkyFogColor = mix(skyColors.SkyFogColor, fogResult.EndFogColor, blendCoeff);
+    float blendCoeff = fmaxf(fminf(getClampedFarClip(config->farPlane) / set.fog.EndFogColorDistance, 1.0f), 0.0f);
+    set.skyColors.SkyFogColor = mix(set.skyColors.SkyFogColor, set.fog.EndFogColor, blendCoeff);
 
     // The client scales the sun fog blend factor by a day-progress curve (SetPlanets),
     // which is what actually turns the sun halo off at night
-    fogResult.SunAngleBlend *= sunFogStrengthDayCurve(config->currentTime / 2880.0f);
-
-    stateForConditions->currentLightParams = paramsBlend;
+    set.fog.SunAngleBlend *= sunFogStrengthDayCurve(config->currentTime / 2880.0f);
 }
 
 void DayNightLightHolder::calcLightParamResult(int lightParamId, const Config *config,

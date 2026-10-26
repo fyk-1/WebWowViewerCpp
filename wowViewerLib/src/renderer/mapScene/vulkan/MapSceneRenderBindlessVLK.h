@@ -355,7 +355,6 @@ protected:
     struct WeatherFrame {
         uint32_t particles = 0;
         uint32_t boltLinks = 0;
-        bool flash = false;
         // The segments of the road recorder's ghost line, which the weather pass draws after the weather.
         uint32_t roadSegments = 0;
     };
@@ -369,7 +368,6 @@ protected:
     HGVertexBufferBindings m_drawBoltVao = nullptr;
     std::shared_ptr<ISimpleMaterialVLK> m_weatherMat;
     std::shared_ptr<ISimpleMaterialVLK> m_boltMat;
-    std::shared_ptr<ISimpleMaterialVLK> m_flashMat;
     HGBufferVLK m_roadLinesBuffer;
     std::shared_ptr<ISimpleMaterialVLK> m_roadLineMat;
     std::vector<RoadLines::Segment> m_roadSegments;

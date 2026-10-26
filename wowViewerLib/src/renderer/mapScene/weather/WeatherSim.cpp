@@ -27,6 +27,7 @@ void WeatherSim::update(const mathfu::vec3 &camera, float seconds, int type, flo
     if (type < Rain || type > Storm || indoors) {
         m_type = Clear;
         m_particles.clear();
+        m_haveCamera = false;
         stopLightning();
         return;
     }
@@ -34,13 +35,21 @@ void WeatherSim::update(const mathfu::vec3 &camera, float seconds, int type, flo
     if (type != m_type) {
         m_type = type;
         m_particles.clear();
+        m_haveCamera = false;
     }
 
+    const mathfu::vec3 delta = m_haveCamera ? camera - m_lastCamera : mathfu::vec3(0, 0, 0);
+    m_lastCamera = camera;
+    m_haveCamera = true;
+    const float ground = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+    m_heading = ground > 0.001f ? mathfu::vec2(delta.x / ground, delta.y / ground) : mathfu::vec2(0, 0);
+    for (auto &particle : m_particles) particle.position -= delta;
+
     const int target = (int) (MaxParticles * intensity);
-    while ((int) m_particles.size() < target) spawn(camera, random(0, 1));
+    while ((int) m_particles.size() < target) spawn(random(0, 1));
     if ((int) m_particles.size() > target) m_particles.resize(target);
 
-    for (auto &particle : m_particles) move(particle, camera, seconds);
+    for (auto &particle : m_particles) move(particle, seconds);
 
     if (m_type == Storm) updateLightning(camera, seconds, intensity);
     else stopLightning();
@@ -52,14 +61,18 @@ WeatherSim::Look WeatherSim::look() const {
     return {mathfu::vec4(1.0f, 1.0f, 1.0f, 0.9f), 8, 0};
 }
 
-void WeatherSim::respawn(Particle &particle, const mathfu::vec3 &camera, float heightShare) {
-    particle.position = mathfu::vec3(camera.x + random(-1, 1) * SpawnVolume,
-                                     camera.y + random(-1, 1) * SpawnVolume,
-                                     camera.z + SpawnHeight * heightShare);
+void WeatherSim::respawn(Particle &particle, float heightShare, bool ahead) {
+    float x = random(-1, 1) * SpawnVolume;
+    float y = random(-1, 1) * SpawnVolume;
+    if (ahead && x * m_heading.x + y * m_heading.y < 0) {
+        x = -x;
+        y = -y;
+    }
+    particle.position = mathfu::vec3(x, y, SpawnHeight * heightShare);
     particle.lifetime = 0;
 }
 
-void WeatherSim::spawn(const mathfu::vec3 &camera, float heightShare) {
+void WeatherSim::spawn(float heightShare) {
     Particle particle;
     if (m_type == Rain) {
         particle.velocity = mathfu::vec3(0, 0, -50);
@@ -71,20 +84,21 @@ void WeatherSim::spawn(const mathfu::vec3 &camera, float heightShare) {
         particle.velocity = mathfu::vec3(0, 0, -5);
         particle.maxLifetime = SnowLifetime;
     }
-    respawn(particle, camera, heightShare);
+    respawn(particle, heightShare, false);
     // Flakes that start together would sway together.
     particle.lifetime = random(0, particle.maxLifetime * 0.5f);
     m_particles.push_back(particle);
 }
 
-void WeatherSim::move(Particle &particle, const mathfu::vec3 &camera, float seconds) {
+void WeatherSim::move(Particle &particle, float seconds) {
     particle.lifetime += seconds;
 
-    const mathfu::vec3 toCamera = particle.position - camera;
-    const float distanceSquared = mathfu::vec3::DotProduct(toCamera, toCamera);
-    if (particle.lifetime >= particle.maxLifetime || distanceSquared > SpawnVolume * SpawnVolume ||
-        particle.position.z < camera.z - SinkLimit) {
-        respawn(particle, camera, 1);
+    const float distanceSquared = mathfu::vec3::DotProduct(particle.position, particle.position);
+    if (distanceSquared > SpawnVolume * SpawnVolume) {
+        // Outrun by the camera: back at any height, or a moving camera's column refills from the top only.
+        respawn(particle, random(0, 1), true);
+    } else if (particle.lifetime >= particle.maxLifetime || particle.position.z < -SinkLimit) {
+        respawn(particle, 1, true);
     }
 
     if (m_type == Snow) {
@@ -100,13 +114,17 @@ void WeatherSim::move(Particle &particle, const mathfu::vec3 &camera, float seco
 }
 
 void WeatherSim::updateLightning(const mathfu::vec3 &camera, float seconds, float intensity) {
-    if (m_nextStrike <= 0) m_nextStrike = random(MinStrikeInterval, MaxStrikeInterval);
-    m_strikeTimer += seconds;
-    if (m_strikeTimer >= m_nextStrike) {
+    bool fire;
+    if (m_followUpIn > 0) {
+        m_followUpIn -= seconds;
+        fire = m_followUpIn <= 0;
+    } else {
+        fire = random(0, 1) < seconds * intensity * kStrikesPerSecond;
+    }
+    if (fire) {
+        m_followUpIn = 0;
         strike(camera);
-        m_strikeTimer = 0;
-        const float interval = MinStrikeInterval + (MaxStrikeInterval - MinStrikeInterval) * (1 - intensity);
-        m_nextStrike = random(interval * 0.8f, interval * 1.2f);
+        if (random(0, 1) < kFollowUpChance) m_followUpIn = random(0.2f, 1.0f);
     }
 
     for (auto &bolt : m_bolts) {
@@ -186,6 +204,5 @@ void WeatherSim::stopLightning() {
         bolt.links.clear();
     }
     m_flash = 0;
-    m_strikeTimer = 0;
-    m_nextStrike = 0;
+    m_followUpIn = 0;
 }

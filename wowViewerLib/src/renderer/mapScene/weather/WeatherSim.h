@@ -15,16 +15,23 @@
 // robots@Impl: WoWee's numbers are kept and its axes are turned to the viewer's, z up and in yards.
 //
 // Particles:
-// - They follow the camera. They spawn SpawnHeight above it, SpawnVolume yards to each side, and respawn there once they
-//   leave that radius, outlive their lifetime or sink SinkLimit yards below it.
+// - They follow the camera. A particle's position is an offset from the camera, and each update first subtracts the camera's
+//   move since the last one, so a drop stays where it is in the world. The vertex shader adds the camera of the frame it draws,
+//   since the camera the plan was made with and the one drawing differ by a frame, and an absolute position would swim by that
+//   much. They spawn SpawnHeight above the camera, SpawnVolume yards to each side, and respawn there once they leave that
+//   radius, outlive their lifetime or sink SinkLimit yards below it. While the camera moves, a respawn lands in the half of the
+//   volume the camera is heading into, so the drops it flies into are not thinner than the ones behind it, and one the camera
+//   outran comes back at a random height, since a camera faster than the fall would otherwise fly under a column refilled
+//   from the top alone. The first update after a change of weather or an interior takes no move.
 // - The intensity sets the share of MaxParticles that fall. A particle added while the count grows starts at a random
 //   height, where WoWee started it at the top, so a rise of the intensity does not drop a burst.
 // - Snow drifts on a sine in x and a cosine in y, and a storm falls slanted with a gust over x.
 //
 // Lightning, in a storm only:
-// - A strike comes every MinStrikeInterval seconds at full intensity and every MaxStrikeInterval at none, each interval
-//   varied by a fifth either way. It lands at a random bearing 50 to 200 yards off, starts 80 to 150 yards above the camera
-//   and runs 100 to 200 yards down.
+// - Each tick a strike falls with probability seconds * intensity * kStrikesPerSecond, so the gaps are exponential and a full
+//   storm averages one strike in twenty seconds. A strike is followed, with probability kFollowUpChance, by another 0.2 to 1 s
+//   later with no roll, since a real storm clusters. A strike lands at a random bearing 50 to 200 yards off, starts 80 to 150 yards above
+//   the camera and runs 100 to 200 yards down.
 // - A bolt is a chain of 8 to 15 jagged links whose offsets taper to nothing at the foot. Each link may fork a branch, a
 //   chain of its own, to three deep, and a bolt keeps at most MaxBoltLinks.
 // - WoWee took the offset axes from the cross product of the bolt and the up axis, which is the zero vector for a bolt
@@ -80,16 +87,16 @@ private:
     static constexpr float SpawnVolume = 100;
     static constexpr float SpawnHeight = 80;
     static constexpr float SinkLimit = 20;
-    static constexpr float MinStrikeInterval = 2;
-    static constexpr float MaxStrikeInterval = 8;
+    static constexpr float kStrikesPerSecond = 0.05f;
+    static constexpr float kFollowUpChance = 1.0f / 3.0f;
     static constexpr float BoltLifetime = 0.15f;
     static constexpr float FlashLifetime = 0.3f;
     static constexpr float BranchChance = 0.3f;
 
     float random(float low, float high) { return low + std::uniform_real_distribution<float>(0, 1)(m_rng) * (high - low); }
-    void spawn(const mathfu::vec3 &camera, float heightShare);
-    void respawn(Particle &particle, const mathfu::vec3 &camera, float heightShare);
-    void move(Particle &particle, const mathfu::vec3 &camera, float seconds);
+    void spawn(float heightShare);
+    void respawn(Particle &particle, float heightShare, bool ahead);
+    void move(Particle &particle, float seconds);
     void updateLightning(const mathfu::vec3 &camera, float seconds, float intensity);
     void strike(const mathfu::vec3 &camera);
     void chain(const mathfu::vec3 &from, const mathfu::vec3 &to, int depth, std::vector<Link> &links);
@@ -101,8 +108,12 @@ private:
     std::vector<Bolt> m_bolts = std::vector<Bolt>(MaxBolts);
     float m_flash = 0;
     float m_flashLifetime = 0;
-    float m_strikeTimer = 0;
-    float m_nextStrike = 0;
+    // The camera of the last update, and the direction it moved in on the ground, zero while it stood still.
+    mathfu::vec3 m_lastCamera = mathfu::vec3(0, 0, 0);
+    bool m_haveCamera = false;
+    mathfu::vec2 m_heading = mathfu::vec2(0, 0);
+    // Seconds until the follow-up strike of the last one, 0 when none is due.
+    float m_followUpIn = 0;
 };
 
 #endif //AWEBWOWVIEWERCPP_WEATHERSIM_H

@@ -41,6 +41,9 @@ public:
     const std::vector<int> &paramIds() const { return m_paramIds; }
     // The params a tile mixes and by how much, in the order the camera's light mixes them. Empty for a tile the map lacks.
     const std::vector<IdAndBlend> &blendsOf(int tile) const { return m_blends[tile]; }
+    // The same for the storm slot: the params and blends the tile's light has in a storm. Valid once blendsReady.
+    const std::vector<int> &stormParamIds() const { return m_stormParamIds; }
+    const std::vector<IdAndBlend> &stormBlendsOf(int tile) const { return m_stormBlends[tile]; }
 
     // Writes one tile of the colouring in progress.
     void setTile(int tile, bool valid, const ExteriorColors &exterior, const LiquidColors &liquid);
@@ -55,7 +58,9 @@ public:
 
 private:
     std::array<std::vector<IdAndBlend>, kTiles> m_blends;
+    std::array<std::vector<IdAndBlend>, kTiles> m_stormBlends;
     std::vector<int> m_paramIds;
+    std::vector<int> m_stormParamIds;
     int m_next = 0;
 
     std::vector<mathfu::vec4_packed> m_work = std::vector<mathfu::vec4_packed>(kVec4s);

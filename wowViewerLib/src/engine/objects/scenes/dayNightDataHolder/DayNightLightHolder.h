@@ -97,12 +97,54 @@ private:
 
     void smoothLight(const HFrameDependantData &fdd, animTime_t deltaTime);
 
+    // robots@Impl: The Light rows carry a storm light beside the clear one, in param slots 2 (scene) and 3 (underwater) where
+    // slots 0 and 1 hold the clear pair. The frame's light is mix(clear, storm, m_stormShare), every blended quantity linearly. The share
+    // eases toward Config::weatherIntensity while Config::weatherType is rain, snow or storm and toward 0 otherwise, with a time constant
+    // of kStormEaseSeconds: the host rolls a zone's weather by thirds every ten minutes, and a jump of a third must not pop. The ease
+    // runs whether or not Config::lightSmoothing is on, which smooths the mixed result after. A frame in which no time passed takes the
+    // target as it is, as smoothLight does. A share of 0 leaves the storm light uncomputed, so a clear sky costs nothing more.
+    static constexpr float kStormEaseSeconds = 3.0f;
+    float m_stormShare = 0.0f;
+    void easeStormShare(const Config *config, animTime_t deltaTime);
+
+    // One complete light, the clear one or the storm one, before the two are mixed.
+    struct LightSet {
+        float glow = 0.0f;
+        SkyColors skyColors;
+        SkyBodyData skyBodyData;
+        ExteriorColors exteriorColors;
+        FogResult fog;
+        FogResult underWaterFog;
+        LiquidColors liquidColors;
+    };
+
+    // Blends the params of one weather into `set`, which holds the caller's defaults on entry. Each skybox it finds goes to the
+    // collector at its blend times skyBoxAlphaScale.
+    void computeLightSet(const std::vector<IdAndBlendAndPriority> &sceneBlends,
+                         const std::vector<IdAndBlendAndPriority> &underwaterBlends,
+                         const Config *config, LightSet &set, SkyBoxCollector &skyBoxCollector,
+                         float skyBoxAlphaScale, StateForConditions *stateForConditions);
+
     // The per-tile light of Config::tileLight. Its blends are worked out a few tiles a frame, then the grid is coloured on the
     // frame the time of day changes and published to the frame data.
     TileLightGrid m_tileLight;
     TileLightGrid::Source m_tileLightSource;
     void updateTileLight(const HFrameDependantData &fdd, const Config *config);
     void colourTileLight(const Config *config);
+
+    // What each light param of the grid gives the tiles at the time of day it was worked out for, kept so a change of the storm share
+    // alone mixes the tiles again without asking the database.
+    struct ParamColours {
+        ExteriorColors exterior;
+        LiquidColors liquid;
+    };
+    std::vector<ParamColours> m_tileParamColours;
+    std::vector<ParamColours> m_tileStormParamColours;
+    int m_tileParamColoursAt = -1;
+    int m_tileStormParamColoursAt = -1;
+    // The share the published grid was mixed with.
+    float m_tileColouredShare = 0.0f;
+    float tileStormShare() const;
 
     void
     inline calcLightParamResult(int lightParamId, const Config *config,
