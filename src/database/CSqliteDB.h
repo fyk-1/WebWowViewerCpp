@@ -116,6 +116,10 @@ private:
     // so the table may be absent entirely — absence is cached too. Queried per loaded
     // sky scene, and raw sqlite reads are too slow for that.
     bool m_skySceneXPlayerConditionLoaded = false;
+
+    // A database of a pre-Cataclysm build stores LightData.FogEnd in 1/36 of a yard, where later builds store yards.
+    // Told apart by the newest expansion the Map table lists.
+    bool m_legacyFogUnits = false;
     std::vector<SkySceneXPlayerConditionRecord> m_skySceneXPlayerConditionCache;
 
     bool getHasLiquidTypeXTexture(SQLite::Database &sqliteDatabase) {

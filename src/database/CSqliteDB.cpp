@@ -180,6 +180,16 @@ CSqliteDB::CSqliteDB(std::string dbFileName) :
     sqlite3_exec(m_sqliteDatabase.getHandle(), "PRAGMA synchronous = OFF", NULL, NULL, &sErrMsg);
     sqlite3_exec(m_sqliteDatabase.getHandle(), "PRAGMA temp_store = MEMORY", NULL, NULL, &sErrMsg);
     sqlite3_exec(m_sqliteDatabase.getHandle(), "PRAGMA schema.journal_mode = MEMORY", NULL, NULL, &sErrMsg);
+
+    // A database without the Map table, or without its ExpansionID column, keeps the current fog unit.
+    if (m_sqliteDatabase.tableExists("Map")) {
+        SQLite::Statement hasExpansion(m_sqliteDatabase, "select count(*) from pragma_table_info('Map') where name = 'ExpansionID'");
+        if (hasExpansion.executeStep() && hasExpansion.getColumn(0).getInt() > 0) {
+            SQLite::Statement newestExpansion(m_sqliteDatabase, "select max(ExpansionID) from Map");
+            if (newestExpansion.executeStep() && !newestExpansion.getColumn(0).isNull())
+                m_legacyFogUnits = newestExpansion.getColumn(0).getInt() < 3;
+        }
+    }
 }
 
 void CSqliteDB::getMapArray(std::vector<MapRecord> &mapRecords) {
@@ -535,6 +545,7 @@ void CSqliteDB::getTimedLightParamData(int lightParamId, int time, LightParamDat
         currLdRes.SunColor = getLightData.getField("SunColor");
 
         currLdRes.FogEnd = getLightData.getField("FogEnd").getDouble();
+        if (m_legacyFogUnits) currLdRes.FogEnd /= 36.0f;
         currLdRes.FogScaler = getLightData.getField("FogScaler").getDouble();
         currLdRes.FogDensity = hasFogDensity ? getLightData.getField("FogDensity").getDouble() : 0.000001f;
         currLdRes.FogHeight = hasFogHeight ? getLightData.getField("FogHeight").getDouble() : -10000.0;
