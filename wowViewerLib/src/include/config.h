@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <compare>
 #include <limits>
+#include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
 #include <string>
@@ -18,6 +20,24 @@
 #include <mathfu/glsl_mappings.h>
 #include "../renderer/mapScene/FrameDependentData.h"
 #include "../renderer/mapScene/roadLines/RoadLines.h"
+
+class BlpTexture;
+
+// The picture of the weather's particles, loaded by the host mode and read by the renderer on its own thread.
+class WeatherPicture {
+public:
+    void set(std::shared_ptr<BlpTexture> picture) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_picture = std::move(picture);
+    }
+    std::shared_ptr<BlpTexture> get() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_picture;
+    }
+private:
+    mutable std::mutex m_mutex;
+    std::shared_ptr<BlpTexture> m_picture;
+};
 
 constexpr float DEFAULT_FOV_VALUE = 53.9726294579437f;
 
@@ -282,6 +302,11 @@ public:
     // How much of it falls, from 0 to 1: the share of the particles WoWee's weather draws at most, and in a storm how
     // often lightning strikes.
     float weatherIntensity = 0.5f;
+    // The FileDataID of the picture the particles are drawn with, 0 for the viewer's own dot and streak. The picture is loaded
+    // from the install when this changes, and shows once it has loaded. A change shows from the next frame.
+    int weatherTexture = 0;
+    // The picture weatherTexture names, loaded by the host mode and held here for the renderer. Empty while it is 0.
+    std::shared_ptr<WeatherPicture> weatherPicture = std::make_shared<WeatherPicture>();
     // The road recorder's ghost line, drawn in the weather pass: the baked roads near the camera and the running take. Empty draws nothing.
     std::shared_ptr<RoadLines> roadLines = std::make_shared<RoadLines>();
     // Set by the host when the camera jumps, so the next FSR dispatch drops its history. The renderer clears it.

@@ -98,7 +98,7 @@ namespace {
     X(Float, renderScale) \
     X(Float, fsrSharpness)     X(Float, fsrOutputScale)     X(Float, minM2ScreenPercent)     X(Float, minM2WorldSize) \
     X(Int, woweeShaders)     X(Bool, randomAnimationPhase)   X(Bool, foliageTint)   X(Float, foliageTintStrength)   X(Float, m2FadeStartPercent) \
-    X(Bool, skyGlow)   X(Bool, lightSmoothing)   X(Bool, tileLight)   X(Bool, waterSkyReflection)   X(Bool, drawBackFaces)     X(Int, weatherType)   X(Float, weatherIntensity) \
+    X(Bool, skyGlow)   X(Bool, lightSmoothing)   X(Bool, tileLight)   X(Bool, waterSkyReflection)   X(Bool, drawBackFaces)     X(Int, weatherType)   X(Float, weatherIntensity)   X(Int, weatherTexture) \
     X(Float, fogDensityIncreaser)     X(Float, classicFogKept) X(Float, classicFogKeptAt) X(Float, classicFogGroundZ) \
     X(Float, adtSpecMult) \
     X(Float, currentGlow) \

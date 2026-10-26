@@ -229,6 +229,22 @@ static const ShaderConfig aabbDebugShaderConfig = {
     }
 };
 
+const int weatherTexturesBindlessCount = 4;
+
+static const ShaderConfig weatherParticleShaderConfig = {
+    "bindless/weather",
+    "bindless/weather",
+    {
+        {0, SceneDataSetConfig},
+        {1, {
+            {0, {VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, false, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT}},
+        }},
+        {2, {
+            {0, {VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, true, weatherTexturesBindlessCount, VK_SHADER_STAGE_FRAGMENT_BIT}}
+        }}
+    }
+};
+
 static const ShaderConfig weatherShaderConfig = {
     "bindless/weather",
     "bindless/weather",
@@ -950,7 +966,23 @@ void MapSceneRenderBindlessVLK::createWeatherMaterials() {
     };
     m_roadLineMat = build("roadLine", m_drawBoltVao, s_roadLinePipeline, m_roadLinesBuffer);
 
-    m_weatherMat = build("weather", m_drawWeatherVao, s_particlePipeline, m_weatherBuffer);
+    // The particles' material has a bindless set of its own for their picture.
+    m_weatherMat = MaterialBuilderVLK::fromShader(m_device, {"weather", "weather"}, weatherParticleShaderConfig)
+        .createPipeline(m_drawWeatherVao, m_forwardRenderPass, s_particlePipeline)
+        .bindDescriptorSet(0, sceneWideDS)
+        .createDescriptorSet(1, [this](std::shared_ptr<GDescriptorSet> &ds) {
+            ds->beginUpdate()
+                .ssbo(0, m_weatherBuffer)
+                .delayUpdate();
+        })
+        .createDescriptorSet(2, [this](std::shared_ptr<GDescriptorSet> &ds) {
+            m_weatherTexturesDS = ds;
+        })
+        .toMaterial();
+    m_weatherTextureHolder = std::make_shared<BindlessTextureHolder>(weatherTexturesBindlessCount);
+    m_weatherTextureHolder->attach(m_device, m_weatherTexturesDS, 0, m_device->getBlackTexturePixel());
+    m_weatherFallbackSlot = m_weatherTextureHolder->allocate(m_device->getBlackTexturePixel());
+    m_weatherTexturesDS->beginUpdate().texture(0, m_device->getBlackTexturePixel(), m_weatherFallbackSlot->getIndex());
     m_boltMat = build("lightningBolt", m_drawBoltVao, s_boltPipeline, m_lightningBuffer);
 }
 
@@ -1008,13 +1040,14 @@ MapSceneRenderBindlessVLK::WeatherFrame MapSceneRenderBindlessVLK::updateWeather
 
     const auto &particles = m_weather.particles();
     if (!particles.empty()) {
-        const auto look = m_weather.look();
+        const int slot = weatherPictureSlot();
+        const auto look = m_weather.look(slot >= 0);
         std::vector<mathfu::vec4_packed> records;
         records.reserve(2 + 2 * particles.size());
         records.push_back(mathfu::vec4_packed(look.color));
-        records.push_back(record(look.size, look.streakSeconds, 0, 0));
+        records.push_back(record(look.size, look.streakSeconds, (float) slot, 0));
         for (const auto &particle : particles) {
-            records.push_back(record(particle.position.x, particle.position.y, particle.position.z, 0));
+            records.push_back(record(particle.position.x, particle.position.y, particle.position.z, particle.lifetime));
             records.push_back(record(particle.velocity.x, particle.velocity.y, particle.velocity.z, 0));
         }
         m_weatherBuffer->uploadData(records.data(), (int) (records.size() * sizeof(mathfu::vec4_packed)));
@@ -1047,6 +1080,26 @@ MapSceneRenderBindlessVLK::WeatherFrame MapSceneRenderBindlessVLK::updateWeather
         frame.roadSegments = (uint32_t) m_roadSegments.size();
     }
     return frame;
+}
+
+// robots@Impl: The particles' picture is Config::weatherPicture, which the host mode loads from the texture cache when
+// weatherTexture changes. A new picture takes a slot of the weather pass's own bindless set at once, and the descriptor follows
+// the texture's upload by itself. The shader is given the slot only once the picture can be sampled, and -1 until then, so a
+// picture still loading draws today's dot and streak and one that arrives switches the index, with nothing rebuilt.
+int MapSceneRenderBindlessVLK::weatherPictureSlot() {
+    HBlpTexture blp = m_config->weatherPicture->get();
+    if (blp != m_weatherBlp) {
+        m_weatherPictureSlot = nullptr;
+        m_weatherPicture = nullptr;
+        m_weatherBlp = blp;
+        if (m_weatherBlp) {
+            m_weatherPicture = m_device->createBlpTexture(m_weatherBlp, false, false);
+            m_weatherPictureSlot = m_weatherTextureHolder->allocate(m_weatherPicture);
+            m_weatherTexturesDS->beginUpdate().texture(0, m_weatherPicture, m_weatherPictureSlot->getIndex());
+        }
+    }
+    if (m_weatherPictureSlot && m_weatherPicture->getTexture()->getIsSamplable()) return (int) m_weatherPictureSlot->getIndex();
+    return -1;
 }
 
 void MapSceneRenderBindlessVLK::drawWeather(CmdBufRecorder &frameBufCmd, const WeatherFrame &weatherFrame) {
@@ -2450,6 +2503,7 @@ std::unique_ptr<IRenderFunction> MapSceneRenderBindlessVLK::update(const std::sh
     adtHeightLayerTextureHolder->releaseFreedSlots();
     adtAlphaTextureHolder->releaseFreedSlots();
     waterTextureHolder->releaseFreedSlots();
+    m_weatherTextureHolder->releaseFreedSlots();
     wmoTextureHolder->releaseFreedSlots();
     m2TextureHolder->releaseFreedSlots();
     m2WaterfallTextureHolder->releaseFreedSlots();

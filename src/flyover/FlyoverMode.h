@@ -135,6 +135,7 @@ private:
     void trimMap();
     void applyPopup(const std::string &text);
     void applyZoneText(const std::string &text);
+    void refreshWeatherPicture();
     void takeDump(const std::string &pngFile);
     void answerDump(const std::string &pngFile, FrameCapture &&capture);
     void emitWorld(const MapRenderPlan *plan);
@@ -173,6 +174,9 @@ private:
     std::unique_ptr<HeightBake> m_bake;
     // Shared with the stdin thread, which can outlive this object at exit.
     std::shared_ptr<CommandQueue> m_queue = std::make_shared<CommandQueue>();
+
+    // The weatherTexture the picture in the config was loaded for.
+    int m_weatherPictureId = 0;
 
     bool m_readySent = false;
     int m_framesWithPlan = 0;

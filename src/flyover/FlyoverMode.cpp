@@ -1085,6 +1085,7 @@ void FlyoverMode::update() {
     for (const auto &command : commands) {
         apply(command);
     }
+    refreshWeatherPicture();
 
     if (!m_scene || !m_scene->hasRenderer()) return;
 
@@ -1144,6 +1145,15 @@ void FlyoverMode::update() {
 std::shared_ptr<ICamera> FlyoverMode::activeCamera() const {
     if (m_bake && m_bake->camera()) return m_bake->camera();
     return m_isFree && m_free ? std::static_pointer_cast<ICamera>(m_free) : std::static_pointer_cast<ICamera>(m_path);
+}
+
+// The picture of the weather's particles follows the weatherTexture field: the texture cache loads it by FileDataID and the
+// config holds it for the renderer, which draws once it has loaded.
+void FlyoverMode::refreshWeatherPicture() {
+    Config &config = *m_api->getConfig();
+    if (config.weatherTexture == m_weatherPictureId) return;
+    m_weatherPictureId = config.weatherTexture;
+    config.weatherPicture->set(m_weatherPictureId > 0 ? m_api->cacheStorage->getTextureCache()->getFileId(m_weatherPictureId) : nullptr);
 }
 
 void FlyoverMode::noteFrame(double seconds) {

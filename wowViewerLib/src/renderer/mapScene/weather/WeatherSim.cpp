@@ -17,6 +17,8 @@ namespace {
     constexpr float StormLifetime = 3.5f;
     constexpr float Turn = 6.2831853f;
     constexpr float StreakSeconds = 0.02f;
+    // The raindrop picture is a 16-texel-wide strip with the drop over 5 of them: on WoWee's 3-pixel streak it came out a pixel wide.
+    constexpr float TexturedStreakWidth = 10;
 }
 
 void WeatherSim::update(const mathfu::vec3 &camera, float seconds, int type, float intensity, bool indoors) {
@@ -55,9 +57,9 @@ void WeatherSim::update(const mathfu::vec3 &camera, float seconds, int type, flo
     else stopLightning();
 }
 
-WeatherSim::Look WeatherSim::look() const {
-    if (m_type == Rain) return {mathfu::vec4(0.7f, 0.8f, 0.9f, 0.6f), 3, StreakSeconds};
-    if (m_type == Storm) return {mathfu::vec4(0.6f, 0.65f, 0.75f, 0.7f), 3.5f, StreakSeconds};
+WeatherSim::Look WeatherSim::look(bool textured) const {
+    if (m_type == Rain) return {textured ? mathfu::vec4(1.0f, 1.0f, 1.0f, 0.6f) : mathfu::vec4(0.7f, 0.8f, 0.9f, 0.6f), textured ? TexturedStreakWidth : 3, StreakSeconds};
+    if (m_type == Storm) return {textured ? mathfu::vec4(1.0f, 1.0f, 1.0f, 0.7f) : mathfu::vec4(0.6f, 0.65f, 0.75f, 0.7f), textured ? TexturedStreakWidth : 3.5f, StreakSeconds};
     return {mathfu::vec4(1.0f, 1.0f, 1.0f, 0.9f), 8, 0};
 }
 

@@ -367,6 +367,15 @@ protected:
     HGVertexBufferBindings m_drawWeatherVao = nullptr;
     HGVertexBufferBindings m_drawBoltVao = nullptr;
     std::shared_ptr<ISimpleMaterialVLK> m_weatherMat;
+    // The particles' picture (Config::weatherPicture): kept alive here, with the slot of the weather pass's own bindless set that
+    // samples it. m_weatherFallbackSlot holds the black placeholder, so a slot never read stays valid.
+    std::shared_ptr<GDescriptorSet> m_weatherTexturesDS;
+    std::shared_ptr<BindlessTextureHolder> m_weatherTextureHolder;
+    std::shared_ptr<BindlessTexture> m_weatherFallbackSlot;
+    std::shared_ptr<BindlessTexture> m_weatherPictureSlot;
+    HBlpTexture m_weatherBlp;
+    HGSamplableTexture m_weatherPicture;
+    int weatherPictureSlot();
     std::shared_ptr<ISimpleMaterialVLK> m_boltMat;
     HGBufferVLK m_roadLinesBuffer;
     std::shared_ptr<ISimpleMaterialVLK> m_roadLineMat;

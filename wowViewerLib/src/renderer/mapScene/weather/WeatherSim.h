@@ -55,7 +55,8 @@ public:
     };
 
     // What a particle of the current weather looks like: WoWee's colour and size in pixels, and the seconds of fall a streak spans,
-    // 0 for the round dot WoWee draws. Rain and storm draw streaks, which are the dot stretched along the fall.
+    // 0 for the round dot WoWee draws. Rain and storm draw streaks, which are the dot stretched along the fall. A particle
+    // drawn with a picture takes the picture's colours, so its colour is white at WoWee's alpha.
     struct Look {
         mathfu::vec4 color;
         float size;
@@ -81,7 +82,7 @@ public:
     const std::vector<Bolt> &bolts() const { return m_bolts; }
     float flash() const { return m_flash; }
     int type() const { return m_type; }
-    Look look() const;
+    Look look(bool textured) const;
 
 private:
     static constexpr float SpawnVolume = 100;
