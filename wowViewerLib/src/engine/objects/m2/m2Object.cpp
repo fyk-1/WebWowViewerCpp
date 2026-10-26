@@ -2065,7 +2065,8 @@ void M2Object::forEachVisibleMesh(const std::function<void(const HGM2Mesh &mesh)
     M2SkinProfile* skinData = this->m_skinGeom->getSkinData();
 
     int minBatch = config->m2MinBatch;
-    int maxBatch = std::min(config->m2MaxBatch, (const int &) this->m_meshArray.size());
+    //A geoset list can leave batches out, so the range runs to the configured cap and not to the mesh count
+    int maxBatch = config->m2MaxBatch;
     bool discardInvisible = config->discardInvisibleMeshes;
 
     for (int i = 0; i < this->m_meshArray.size(); i++) {
