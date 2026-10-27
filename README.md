@@ -1,6 +1,6 @@
 # Wowely-Planet-Farseer
 
-A flyover-only build of [Deamon87/WebWowViewerCpp](https://github.com/Deamon87/WebWowViewerCpp), made for the Wowely Planet host. The branch `flyover-decruft` keeps the map renderer, the CASC and database readers, and the stdout protocol the host speaks. The model viewer, the map editor, the exporters, the OpenGL backends and the web build are gone.
+A flyover-only build of [Deamon87/WebWowViewerCpp](https://github.com/Deamon87/WebWowViewerCpp), made for the Wowely Planet host. The branch `Farseer` keeps the map renderer, the CASC and database readers, and the stdout protocol the host speaks. The model viewer, the map editor, the exporters, the OpenGL backends and the web build are gone.
 
 Upstream ships no license file, and this fork adds none. The third-party code it builds against keeps its own licenses.
 
@@ -24,6 +24,6 @@ Prerequisites:
 - The Vulkan SDK, whose `slangc` compiles the shaders
 - Git, with the submodules fetched by `git submodule update --init --recursive`
 
-The host repository keeps three scripts for this fork in `Modules\Flyover\Viewer\`: `configure-decruft.bat`, `build-decruft.bat` and `run-decruft.ps1`. They configure into `build-decruft\`, build the `Wowely-Planet-Farseer` target, install into `install-decruft\`, and run a one-point route that passes when the viewer reports its first map area.
+The host repository keeps three scripts for this fork in `Modules\Flyover\Viewer\`: `configure.bat`, `build.bat` and `run.ps1`. They configure into `build\`, build the `Wowely-Planet-Farseer` target, install into `install\bin\`, and run a one-point route that passes when the viewer reports its first map area.
 
 Tracy, the profiler, stays in the tree and is off by default. Configure with `-DFLYOVER_TRACY=ON` for a profiling build.
