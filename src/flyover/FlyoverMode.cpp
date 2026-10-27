@@ -826,7 +826,8 @@ void FlyoverMode::applyMarker(const std::string &text) {
 }
 
 void FlyoverMode::trimMap() {
-    if (m_mapId < 0 || !m_scene || !m_scene->hasRenderer()) {
+    // An open whose renderer is still pending has a map; its buffers count 0, so the trim is kept.
+    if (m_mapId < 0 || !m_scene) {
         emitError("trim", "no map is open");
         return;
     }

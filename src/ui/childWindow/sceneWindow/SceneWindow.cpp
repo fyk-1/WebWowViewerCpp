@@ -186,11 +186,13 @@ HApiContainer SceneWindow::createNewApiContainer() {
 }
 
 void SceneWindow::openMapByIdAndWDTId(int mapId, int wdtFileId, float x, float y, float z, int timeOverride) {
+    if (m_sceneRenderer) m_retiredRenderer = std::move(m_sceneRenderer);
     unload();
 
     m_mapId = mapId;
 
-    m_sceneRenderer = MapSceneRendererFactory::createRenderer(m_api->hDevice, m_api->getConfig());
+    m_rendererPending = true;
+    createPendingRenderer();
     auto mapScene = std::make_shared<Map>(createNewApiContainer(), mapId, wdtFileId);
     mapScene->setWorldObjectManager(std::make_shared<WorldObjectManager>(createNewApiContainer(), mapId));
     m_currentScene = mapScene;
@@ -203,6 +205,28 @@ void SceneWindow::openMapByIdAndWDTId(int mapId, int wdtFileId, float x, float y
         m_api->getConfig()->currentTime = timeOverride;
     }
 }
+
+/*
+robots@Impl: A map open hands its old renderer to m_retiredRenderer instead of dropping it. The culling and update threads
+still hold it for the frames in flight (the renderer's own captures in IRenderParameters.h), and building the new renderer
+while the old one lives, or while its destructor runs on the update thread, made the frame flicker and ghost whenever the
+camera moved, for the rest of the process. Which device state the two share was not pinned down. Once the retired renderer's
+only owner is this window, the GPU is waited idle, the renderer is destroyed here on the main thread, and only then is the
+new one built. That takes the pipeline's depth in frames, during which hasRenderer() is false and nothing is drawn; the map
+and the camera exist from the open. With no retired renderer, at start-up, the renderer is built at once.
+*/
+void SceneWindow::createPendingRenderer() {
+    if (m_retiredRenderer) {
+        if (m_retiredRenderer.use_count() > 1) return;
+        m_api->hDevice->waitForAllWorkToComplete();
+        m_retiredRenderer = nullptr;
+    }
+    if (!m_rendererPending) return;
+
+    m_sceneRenderer = MapSceneRendererFactory::createRenderer(m_api->hDevice, m_api->getConfig());
+    m_rendererPending = false;
+}
+
 void SceneWindow::openM2SceneByfdid(int m2Fdid, const std::vector<int> &replacementTextureIds, float size) {
     unload();
 
@@ -298,6 +322,7 @@ void SceneWindow::unload() {
     //Every open comes through here, so the map that follows loads in full as well, not a budget's worth a frame
     Map::requestFastLoad();
     m_sceneRenderer = nullptr;
+    m_rendererPending = false;
     m_currentScene = std::make_shared<NullScene>();
     m_camera = nullptr;
     m_cameraList.resize(0);
@@ -363,6 +388,7 @@ SceneWindow::render(double deltaTime,
                     const std::function<uint32_t()> &updateFrameNumberLambda
                     )
 {
+    createPendingRenderer();
     if (!hasRenderer()) return;
 
     deltaTime *= m_api->getConfig()->timeMultiplier;

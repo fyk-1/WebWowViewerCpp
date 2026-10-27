@@ -120,6 +120,12 @@ public:
     };
 private:
     std::shared_ptr<MapSceneRenderer> m_sceneRenderer = nullptr;
+    // The renderer a map open replaced, kept until no frame in flight holds it. A renderer built beside it flickers the
+    // whole frame while the camera moves, so the new one waits (createPendingRenderer).
+    std::shared_ptr<MapSceneRenderer> m_retiredRenderer = nullptr;
+    // A map open has set up its scene and camera and waits for the retired renderer to go before building its own.
+    bool m_rendererPending = false;
+    void createPendingRenderer();
     std::shared_ptr<IScene> m_currentScene = nullptr;
     bool m_renderToSwapChain = true;
 
