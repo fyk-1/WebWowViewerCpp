@@ -1095,6 +1095,9 @@ void WmoObject::countBakeGroups(float minX, float maxX, float minY, float maxY, 
     for (size_t i = 0; i < groupObjects.size() && i < m_groupWorldBorders.size(); i++) {
         const CAaBox &box = m_groupWorldBorders[i];
         if (isGroupSkipped((int) i) || box.max.x < minX || box.min.x > maxX || box.max.y < minY || box.min.y > maxY) continue;
+        // A group whose file the install lacks never loads, so it is never waited for.
+        const auto geom = groupObjects[i]->getWmoGroupGeom();
+        if (geom != nullptr && geom->getStatus() == FileStatus::FSRejected) continue;
         total++;
         if (!groupObjects[i]->getIsLoaded()) pending++;
     }
