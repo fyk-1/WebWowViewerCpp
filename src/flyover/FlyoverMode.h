@@ -107,7 +107,7 @@ public:
     // Seconds the draw of the frame just drawn took, for the next `world` line.
     void noteFrame(double seconds);
 private:
-    enum class CommandType { Flight, Pause, Play, Trim, ModePath, ModeFree, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Bake, Marker, Popup, ZoneText, Quit };
+    enum class CommandType { Flight, Pause, Play, Trim, ModePath, ModeFree, Look, Move, FreeSpeed, Route, Config, Ambient, Dump, RoadLines, Take, PosInterval, Bake, Marker, Popup, OsdText, Quit };
     struct Command {
         CommandType type;
         std::string name;
@@ -136,7 +136,7 @@ private:
     void applyMarker(const std::string &text);
     void trimMap();
     void applyPopup(const std::string &text);
-    void applyZoneText(const std::string &text);
+    void applyOsdText(const std::string &text);
     void refreshWeatherPicture();
     void takeDump(const std::string &pngFile);
     void answerDump(const std::string &pngFile, FrameCapture &&capture);

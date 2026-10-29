@@ -118,12 +118,14 @@ during a flight. It does so only when the scene buffers hold at least twice what
 `flyover trim reloaded`; otherwise it answers `flyover trim kept`. The camera, its position and look, the pause, the markers, the route,
 the config, the popup, the zone text, the road lines and the take points carry over. With no map open it answers `flyover error trim no map is open`.
 
-Popup: `popup {"text": "...", "x": ..., "y": ..., "z": ...}` shows the text as the game's tooltip beside that world point
-(FrontendUI::setFlyoverPopup), replacing the one shown, and `popup none` hides it. A line that is neither answers `flyover error popup <reason>`.
+Popup: `popup {"text": "...", "set": "...", "x": ..., "y": ..., "z": ...}` shows the text as the game's tooltip beside that world point
+(FrontendUI::setFlyoverPopup), with the optional `set` line under it, replacing the one shown, and `popup none` hides it. A line that is neither answers `flyover error popup <reason>`.
 
-Zone text: `zonetext {"zone": "...", "subzone": "..."}` shows each line it names as the game's zone banner (FrontendUI::setFlyoverZoneText),
-the line fading in, holding and fading out from then; a line it leaves out is left as it is, and an empty one is hidden. `zonetext none`
-hides both. Which line shows when is the host's. A line that is neither answers `flyover error zonetext <reason>`.
+On-screen text: `osd_text {"text": "...", "subtext": "...", "hold": true}` shows each line it names as the game's zone banner
+(FrontendUI::setFlyoverOsdText), `text` the big line and `subtext` the one under it. A line fades in, holds and fades out from then, or
+with `hold` stays at full opacity until it is replaced; a line it leaves out is left as it is, and an empty one is hidden. `osd_text none`
+hides both. What shows when is the host's: the zone names, a transport's countdown. A line that is neither answers
+`flyover error osd_text <reason>`.
 
 Start facing: a route in free mode may carry `yawDegrees` and `pitchDegrees`, and the free camera then starts facing that
 way instead of along the route. They use the dump's convention, so a dump's camera replays as a route. The free camera
@@ -570,8 +572,8 @@ void FlyoverMode::parseLine(const std::string &rawLine, CommandQueue &queue) {
         post(queue, {CommandType::Take, "", rest});
     } else if (word == "popup") {
         post(queue, {CommandType::Popup, "", rest});
-    } else if (word == "zonetext") {
-        post(queue, {CommandType::ZoneText, "", rest});
+    } else if (word == "osd_text") {
+        post(queue, {CommandType::OsdText, "", rest});
     } else if (word == "marker") {
         post(queue, {CommandType::Marker, "", rest});
     } else if (word == "posinterval") {
@@ -695,8 +697,8 @@ void FlyoverMode::apply(const Command &command) {
         case CommandType::Popup:
             applyPopup(command.text);
             break;
-        case CommandType::ZoneText:
-            applyZoneText(command.text);
+        case CommandType::OsdText:
+            applyOsdText(command.text);
             break;
         case CommandType::Marker:
             applyMarker(command.text);
@@ -876,7 +878,7 @@ void FlyoverMode::trimMap() {
 
 void FlyoverMode::applyPopup(const std::string &text) {
     if (text == "none") {
-        m_frontendUI.setFlyoverPopup("", mathfu::vec3(0, 0, 0));
+        m_frontendUI.setFlyoverPopup("", "", mathfu::vec3(0, 0, 0));
         return;
     }
     try {
@@ -886,30 +888,32 @@ void FlyoverMode::applyPopup(const std::string &text) {
             emitError("popup", "expected a text that is not empty");
             return;
         }
-        m_frontendUI.setFlyoverPopup(shown, mathfu::vec3(document.at("x").get<float>(), document.at("y").get<float>(), document.at("z").get<float>()));
+        std::string set = document.contains("set") ? document.at("set").get<std::string>() : "";
+        m_frontendUI.setFlyoverPopup(shown, set, mathfu::vec3(document.at("x").get<float>(), document.at("y").get<float>(), document.at("z").get<float>()));
     } catch (const std::exception &e) {
-        emitError("popup", std::string("expected none or {\"text\", \"x\", \"y\", \"z\"}: ") + e.what());
+        emitError("popup", std::string("expected none or {\"text\", \"set\", \"x\", \"y\", \"z\"}: ") + e.what());
     }
 }
 
-void FlyoverMode::applyZoneText(const std::string &text) {
+void FlyoverMode::applyOsdText(const std::string &text) {
     if (text == "none") {
         const std::string hidden;
-        m_frontendUI.setFlyoverZoneText(&hidden, &hidden);
+        m_frontendUI.setFlyoverOsdText(&hidden, &hidden, false);
         return;
     }
     try {
         json document = json::parse(text);
-        if (!document.is_object() || (!document.contains("zone") && !document.contains("subzone"))) {
-            emitError("zonetext", "expected none or {\"zone\", \"subzone\"} with at least one of them");
+        if (!document.is_object() || (!document.contains("text") && !document.contains("subtext"))) {
+            emitError("osd_text", "expected none or {\"text\", \"subtext\", \"hold\"} with text or subtext");
             return;
         }
-        std::string zone, subzone;
-        if (document.contains("zone")) zone = document.at("zone").get<std::string>();
-        if (document.contains("subzone")) subzone = document.at("subzone").get<std::string>();
-        m_frontendUI.setFlyoverZoneText(document.contains("zone") ? &zone : nullptr, document.contains("subzone") ? &subzone : nullptr);
+        std::string line, subline;
+        if (document.contains("text")) line = document.at("text").get<std::string>();
+        if (document.contains("subtext")) subline = document.at("subtext").get<std::string>();
+        const bool hold = document.contains("hold") && document.at("hold").get<bool>();
+        m_frontendUI.setFlyoverOsdText(document.contains("text") ? &line : nullptr, document.contains("subtext") ? &subline : nullptr, hold);
     } catch (const std::exception &e) {
-        emitError("zonetext", std::string("expected none or {\"zone\", \"subzone\"}: ") + e.what());
+        emitError("osd_text", std::string("expected none or {\"text\", \"subtext\", \"hold\"}: ") + e.what());
     }
 }
 

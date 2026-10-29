@@ -57,19 +57,19 @@ public:
     // Opens the build in the folder, as the storage dialog does for a folder the user picked.
     bool openBuild(const std::string &cascPath, const BuildDefinition &buildDef);
     void composeFlyoverUI();
-    // The trivia popup: the text drawn as the game's tooltip centred on a world point, from the install's own art and font. An empty
-    // text hides it.
-    void setFlyoverPopup(const std::string &text, const mathfu::vec3 &at);
-    // The zone text: the zone's name, and the subzone's under it, drawn as the game's banner at the top of the screen. A line that is
-    // set fades in, holds and fades out; a null one is left as it is, and an empty one is hidden at once.
-    void setFlyoverZoneText(const std::string *zone, const std::string *subzone);
+    // The trivia popup: the text drawn as the game's tooltip centred on a world point, from the install's own art and font, with the
+    // set line under it unless that is empty. An empty text hides it.
+    void setFlyoverPopup(const std::string &text, const std::string &set, const mathfu::vec3 &at);
+    // The on-screen text: a line, and a smaller one under it, drawn as the game's zone banner at the top of the screen. A line that is
+    // set fades in, holds and fades out, or with `hold` stays until replaced; a null one is left as it is, and an empty one is hidden.
+    void setFlyoverOsdText(const std::string *text, const std::string *subtext, bool hold);
 private:
     void prepareFonts();
     bool popupArtReady();
     void drawPopup();
-    void drawZoneText();
+    void drawOsdText();
 
-    std::string m_popupText;
+    std::string m_popupText, m_popupSet;
     double m_popupShownAt = 0;
     mathfu::vec3 m_popupAt = {0, 0, 0};
     std::shared_ptr<Db2File> m_frizFile;
@@ -77,8 +77,9 @@ private:
     bool m_frizMissing = false;
     ImFont *m_popupFont = nullptr;
     float m_popupFontPx = 0;
-    std::string m_zoneText, m_subzoneText;
-    double m_zoneShownAt = 0, m_subzoneShownAt = 0;   // -1 until the line's first drawable frame
+    std::string m_osdText, m_osdSubtext;
+    bool m_osdHold = false;
+    double m_osdShownAt = 0, m_osdSubShownAt = 0;   // -1 until the line's first drawable frame
     ImFont *m_zoneFont = nullptr, *m_subzoneFont = nullptr;
     float m_zoneFontPx = 0, m_subzoneFontPx = 0;
     HBlpTexture m_tooltipBackgroundBlp, m_tooltipBorderBlp;
