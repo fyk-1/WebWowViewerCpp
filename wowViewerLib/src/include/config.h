@@ -173,8 +173,8 @@ public:
     // The FileDataIDs of the M2 models and the WMOs the cull drops wherever they stand, as it drops one outside the view: what a height
     // bake leaves out of the heights. A WMO entry naming a group drops that group alone. Only the bake sets it, and empty drops none.
     IdSet modelBlock;
-    // The FileDataIDs of the M2 models and the WMOs a height bake records beside its tiles (FarHeights::writeLandmarks), for the far
-    // pass to draw as themselves at any distance; a WMO entry naming a group draws that group alone. Only the bake reads it.
+    // The FileDataIDs of the M2 models and the WMOs the far pass draws as themselves at any distance, the route file's landmarks; a WMO
+    // entry naming a group draws that group alone. A map's far terrain reads them when it starts.
     IdSet landmarks;
     bool renderBSP = false;
     bool renderPortals = false;

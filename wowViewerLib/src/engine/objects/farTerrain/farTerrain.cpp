@@ -404,10 +404,14 @@ void FarTerrain::makeFrame(const Config &config, const View &view, const std::ve
     frame.levels.clear();
     frame.terrain = shared_from_this();
 
-    // The landmarks the bake recorded beside the heights (FarHeights::readLandmarks), read once; the frame carries them once built.
+    // The config's landmarks, read once; the frame carries them once built.
     if (!m_landmarksRead) {
         m_landmarksRead = true;
-        const std::vector<IdEntry> ids = m_heightsDir.empty() ? std::vector<IdEntry>() : FarHeights::readLandmarks(m_heightsDir);
+        std::vector<IdEntry> ids;
+        {
+            std::shared_lock lock(config.landmarks.lock);
+            ids = config.landmarks.entries();
+        }
         if (!ids.empty()) m_landmarks = std::make_shared<FarLandmarks>(m_api, m_wdt, m_mapId, ids);
     }
     frame.landmarks = m_landmarks != nullptr && m_landmarks->poll() ? m_landmarks : nullptr;

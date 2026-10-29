@@ -17,10 +17,10 @@ class WmoMainGeom;
 class WmoGroupGeom;
 
 /*
- * The landmarks of a map: every placement of the M2 models and WMOs its landmarks.ids names (FarHeights), found in the object file of every
+ * The landmarks of a map: every placement of the M2 models and WMOs the config's landmarks name, found in the object file of every
  * tile and in the map's GameObjectSpawn rows, flattened into world-space geometry with one draw for each texture batch. The far pass draws
  * them at any distance, fogged as the far land is.
- * The map's FarTerrain makes one when it opens a map whose file names any.
+ * The map's FarTerrain makes one when it opens a map while the config names any.
  */
 class FarLandmarks {
 public:

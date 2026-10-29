@@ -53,7 +53,6 @@ namespace {
     X(Bool, renderGameObjectSpawns) \
     X(IntSet, activeSpawnEvents) \
     X(IntSet, modelBlock) \
-    X(IntSet, landmarks) \
     X(Bool, renderBSP) \
     X(Bool, renderPortals) \
     X(Bool, renderAntiPortals) \

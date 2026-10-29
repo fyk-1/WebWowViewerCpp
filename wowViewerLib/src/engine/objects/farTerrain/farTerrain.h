@@ -58,7 +58,7 @@ struct FarTerrainFrame {
     mathfu::vec3 cameraPos = mathfu::vec3(0.0f, 0.0f, 0.0f);
     // Keeps the geometry and the textures alive for the renderer, which reads them by tile index.
     std::shared_ptr<FarTerrain> terrain;
-    // The landmarks of the map's landmarks.ids once their geometry is built, null before and for a map with none. Drawn at any distance,
+    // The landmarks of the config's landmarks once their geometry is built, null before and for a map with none. Drawn at any distance,
     // fogged as the far land is, after it and in its band of depth.
     std::shared_ptr<const FarLandmarks> landmarks;
 };
@@ -186,7 +186,7 @@ private:
     bool m_cornersChecked = false;
     bool m_reachLogged = false;
 
-    // The landmarks of the map's landmarks.ids, loading or built, and whether the file has been read.
+    // The landmarks of the config's landmarks, loading or built, and whether the config has been read.
     std::shared_ptr<FarLandmarks> m_landmarks;
     bool m_landmarksRead = false;
 };

@@ -64,6 +64,8 @@ struct FlyoverRoute {
     bool hasFacing = false;
     float yawDegrees = 0.0f;
     float pitchDegrees = 0.0f;
+    // The map's landmarks, `landmarks` in the file, each a FileDataID or an `"<id>:<group>"` string; the far pass draws them (FarLandmarks).
+    std::vector<IdEntry> landmarks;
     // Config fields as name and value text, in file order.
     std::vector<std::pair<std::string, std::string>> config;
 };

@@ -363,6 +363,19 @@ bool FlyoverMode::loadRoute(const std::string &file, FlyoverRoute &route, std::s
             return false;
         }
 
+        route.landmarks.clear();
+        if (root.contains("landmarks")) {
+            for (const auto &item : root.at("landmarks")) {
+                IdEntry entry;
+                const std::string text = item.is_string() ? item.get<std::string>() : item.is_number_integer() ? item.dump() : "";
+                if (!IdEntry::parse(text, entry)) {
+                    error = "landmarks entry " + item.dump() + " is neither a FileDataID nor \"<id>:<group>\"";
+                    return false;
+                }
+                route.landmarks.push_back(entry);
+            }
+        }
+
         route.config.clear();
         if (root.contains("config")) {
             for (const auto &item : root.at("config").items()) {
@@ -1021,6 +1034,17 @@ void FlyoverMode::refreshRoute(const FlyoverRoute &route) {
 void FlyoverMode::applyRoute(const FlyoverRoute &route, bool openMap) {
     m_route = route;
     m_api->getConfig()->fsrResetRequested = true;
+    // Before the map opens: its far terrain reads them once, when it starts.
+    {
+        IdSet &landmarks = m_api->getConfig()->landmarks;
+        std::unique_lock lock(landmarks.lock);
+        landmarks.ids.clear();
+        landmarks.groups.clear();
+        for (const IdEntry &entry : route.landmarks) {
+            if (entry.group < 0) landmarks.ids.insert(entry.fileId);
+            else landmarks.groups[entry.fileId].insert(entry.group);
+        }
+    }
     if (openMap) {
         const mathfu::vec3 &start = route.points.front();
         m_scene->openMapByIdAndWDTId(route.mapId, route.wdtFileId, start.x, start.y, start.z, route.timeOfDay);

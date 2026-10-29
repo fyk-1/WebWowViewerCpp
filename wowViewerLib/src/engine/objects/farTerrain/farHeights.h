@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include "../../../include/config.h"
 
 /*
  * One baked height tile of the far terrain: 128 x 128 heights of the tile with its buildings, in the frame of the WDL's grid.
@@ -61,14 +60,6 @@ struct FarHeights {
     static bool readHeader(const std::string &file, float &zMin, float &zMax);
     // Writes `<file>.tmp` and renames it over `file`, so a reader never sees half of one.
     static bool writeAtomic(const std::string &file, const HeightTile &tile, std::string &error);
-
-    // The map's landmarks, `<mapDir>/landmarks.ids`: the FileDataIDs of the M2 models and WMOs the bake left out of the heights and the
-    // far pass draws as themselves (FarLandmarks), one a line as a decimal id, or `<id>:<group>` for one group of a WMO alone. Written
-    // whole by the bake, read when the far land opens a map.
-    static std::string landmarksPath(const std::string &mapDir);
-    static bool writeLandmarks(const std::string &mapDir, const std::vector<IdEntry> &ids, std::string &error);
-    // The entries, sorted; none when the file is missing or a line does not parse.
-    static std::vector<IdEntry> readLandmarks(const std::string &mapDir);
 
     // The largest height difference in yards along the edge two neighbouring tiles share. `edge` is the side of `a` that touches `b`:
     // 0 row 0 (a's higher x), 1 row 127, 2 column 0 (a's higher y), 3 column 127.

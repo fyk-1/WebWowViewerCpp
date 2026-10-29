@@ -121,52 +121,6 @@ bool FarHeights::readColor(const std::string &file, ColorTile &out, std::string 
     return true;
 }
 
-std::string FarHeights::landmarksPath(const std::string &mapDir) {
-    return mapDir + "/landmarks.ids";
-}
-
-bool FarHeights::writeLandmarks(const std::string &mapDir, const std::vector<IdEntry> &ids, std::string &error) {
-    const auto native = std::filesystem::u8path(landmarksPath(mapDir));
-    auto temp = native;
-    temp += ".tmp";
-
-    std::error_code code;
-    std::filesystem::create_directories(native.parent_path(), code);
-    {
-        std::ofstream stream(temp, std::ios::trunc);
-        for (const IdEntry &id : ids) stream << id.text() << "\n";
-        stream.flush();
-        if (!stream) {
-            error = "cannot write " + temp.string();
-            return false;
-        }
-    }
-    std::filesystem::rename(temp, native, code);
-    if (code) {
-        error = "cannot rename " + temp.string() + ": " + code.message();
-        return false;
-    }
-    return true;
-}
-
-std::vector<IdEntry> FarHeights::readLandmarks(const std::string &mapDir) {
-    std::ifstream stream(std::filesystem::u8path(landmarksPath(mapDir)));
-    std::vector<IdEntry> ids;
-    std::string line;
-    while (std::getline(stream, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line.empty()) continue;
-        IdEntry entry;
-        if (!IdEntry::parse(line, entry)) {
-            std::cerr << "far heights: " << landmarksPath(mapDir) << ": \"" << line << "\" is no id, so the map has no landmarks" << std::endl;
-            return {};
-        }
-        ids.push_back(entry);
-    }
-    std::sort(ids.begin(), ids.end());
-    return ids;
-}
-
 bool FarHeights::writeAtomic(const std::string &file, const HeightTile &tile, std::string &error) {
     const auto native = std::filesystem::u8path(file);
     auto temp = native;
