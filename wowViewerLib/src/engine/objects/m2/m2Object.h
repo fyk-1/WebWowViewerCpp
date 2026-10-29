@@ -71,6 +71,15 @@ public:
         std::shared_ptr<M2Object> m2;
         int id = 0;
         bool missing = false;
+        bool hasLocal = false;
+        mathfu::mat4 local = mathfu::mat4::Identity();
+    };
+
+    // A local transform of an attached model, applied after its attachment point: a move, a turn about z in radians and a scale.
+    struct AttachLocal {
+        mathfu::vec3 offset = mathfu::vec3(0, 0, 0);
+        float yaw = 0.0f;
+        float scale = 1.0f;
     };
 
     friend class M2MeshBufferUpdater;
@@ -359,7 +368,8 @@ public:
     // Hangs `child` on the attachment point `id`. The child is owned by this model and goes with it. From then on it follows the
     // attachment's bone as of this model's update, which also updates it, and it is loaded, culled and drawn with this model, never
     // alone. Call it once this model has its load params and its placement, since the child starts where this model stands.
-    void attach(const std::shared_ptr<M2Object> &child, int id);
+    // The id -1 is this model's own origin, its placement alone. With `local` the child stands at the point as that transform moves it.
+    void attach(const std::shared_ptr<M2Object> &child, int id, const AttachLocal *local = nullptr);
     const std::vector<Attachment> &getAttachments() const { return m_attached; }
 
     void calcWorldPosition(){

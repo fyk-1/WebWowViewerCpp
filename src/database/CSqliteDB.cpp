@@ -147,7 +147,7 @@ const std::string liquidTextureFileDataIdsSQL = R"===(
 static std::string creatureSpawnsSQL(const std::string &condition) {
     return "select X, Y, Z, Facing, Scale, ModelFileDataID, Texture_0, Texture_1, Texture_2, "
            "BodyTexture, CapeTexture, HairTexture, SkinExtraTexture, Geosets, Alpha, Attachments, Events, "
-           "Anim, MountAnim, MountModelFileDataID, MountTexture_0, MountTexture_1, MountTexture_2"
+           "Anim, MountAnim, MountModelFileDataID, MountTexture_0, MountTexture_1, MountTexture_2, Visuals"
            " from CreatureSpawn where " + condition + ";";
 }
 
@@ -210,6 +210,35 @@ static std::vector<CreatureAttachmentRecord> parseAttachments(const std::string 
             attachment.Attachment = fields[0];
             attachment.ModelFileDataID = fields[1];
             attachment.Textures.assign(fields.begin() + 2, fields.end());
+        }
+
+        at = end + 1;
+    }
+    return result;
+}
+
+// "-1,166237,1,0,0,0,0;19,166381,1.5,0,0,0.3,1.57" to the models an aura attaches: attachment, model, scale, x, y, z and yaw in radians.
+static std::vector<CreatureVisualRecord> parseVisuals(const std::string &visuals) {
+    std::vector<CreatureVisualRecord> result;
+    size_t at = 0;
+    while (at < visuals.size()) {
+        size_t end = visuals.find(';', at);
+        if (end == std::string::npos) end = visuals.size();
+
+        std::vector<double> fields;
+        size_t fieldAt = at;
+        while (fieldAt <= end) {
+            size_t fieldEnd = std::min(visuals.find(',', fieldAt), end);
+            fields.push_back(std::atof(visuals.substr(fieldAt, fieldEnd - fieldAt).c_str()));
+            fieldAt = fieldEnd + 1;
+        }
+        if (fields.size() >= 7) {
+            CreatureVisualRecord &visual = result.emplace_back();
+            visual.Attachment = (int) fields[0];
+            visual.ModelFileDataID = (int) fields[1];
+            visual.Scale = (float) fields[2];
+            visual.Offset = {(float) fields[3], (float) fields[4], (float) fields[5]};
+            visual.Yaw = (float) fields[6];
         }
 
         at = end + 1;
@@ -819,6 +848,7 @@ void CSqliteDB::readCreatureSpawns(StatementFieldHolder &statement, std::vector<
         spawn.MeshIds = parseMeshIds(statement.getField("Geosets").getString());
         spawn.Alpha = statement.getField("Alpha").getInt();
         spawn.Attachments = parseAttachments(statement.getField("Attachments").getString());
+        spawn.Visuals = parseVisuals(statement.getField("Visuals").getString());
         spawn.Events = parseEvents(statement.getField("Events").getString());
         spawn.MountModelFileDataID = statement.getField("MountModelFileDataID").getInt();
         spawn.MountTextures[0] = statement.getField("MountTexture_0").getInt();

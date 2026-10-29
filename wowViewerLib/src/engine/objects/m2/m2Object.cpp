@@ -474,7 +474,7 @@ void M2Object::createPlacementMatrix (mathfu::vec3 pos, float f, mathfu::vec3 sc
     m_scale = placementMatrix.GetColumn(0).Length();
 }
 
-void M2Object::attach(const std::shared_ptr<M2Object> &child, int id) {
+void M2Object::attach(const std::shared_ptr<M2Object> &child, int id, const AttachLocal *local) {
     child->m_isAttachment = true;
 
     //The child starts where this model stands, so that the box it gets as it loads is not at the origin of the world
@@ -483,7 +483,13 @@ void M2Object::attach(const std::shared_ptr<M2Object> &child, int id) {
     child->m_placementMatrixChanged = true;
     child->calcWorldPosition();
 
-    m_attached.push_back({child, id});
+    Attachment attachment{child, id};
+    if (local) {
+        attachment.hasLocal = true;
+        attachment.local = mathfu::mat4::FromTranslationVector(local->offset) * MathHelper::RotationZ(local->yaw) *
+                           mathfu::mat4::FromScaleVector(mathfu::vec3(local->scale, local->scale, local->scale));
+    }
+    m_attached.push_back(attachment);
     status->m_hasAttachments = true;
 }
 
@@ -501,6 +507,11 @@ bone before it is written. Each is updated by the body, at the end of the body's
 the lists' addToDraw whenever the body is. A model that is not loaded is skipped in the update and, in addToDraw, not drawn.
 */
 bool M2Object::getAttachmentMatrix(int id, mathfu::mat4 &matrix) const {
+    if (id == -1) {
+        matrix = m_placementMatrix;
+        return true;
+    }
+
     auto const *skelData = m_boneMasterData->getSkelData();
     auto const *lookup = skelData->m_attachment_lookup_table;
     auto const *attachments = skelData->m_attachments;
@@ -527,6 +538,7 @@ void M2Object::updateAttachment(Attachment &attached, double deltaTime, mathfu::
         attached.missing = true;
         return;
     }
+    if (attached.hasLocal) placementMatrix = placementMatrix * attached.local;
 
     child.m_placementMatrix = placementMatrix;
     child.m_placementInvertMatrix = placementMatrix.Inverse();

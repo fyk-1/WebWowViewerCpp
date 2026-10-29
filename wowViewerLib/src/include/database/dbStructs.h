@@ -236,6 +236,16 @@ struct CreatureAttachmentRecord {
     std::vector<int> Textures;
 };
 
+// A spell visual model a creature's aura attaches, hung on one of its M2 attachment points (-1 for the creature's own origin) with a local
+// transform: the offset, the yaw in radians and the scale. The model plays its own default animation.
+struct CreatureVisualRecord {
+    int Attachment = -1;
+    int ModelFileDataID = 0;
+    float Scale = 1.0f;
+    std::array<float, 3> Offset = {0.0f, 0.0f, 0.0f};
+    float Yaw = 0.0f;
+};
+
 // Row of CreatureSpawn, a table the host adds to the database: one creature model standing on a map tile. The textures
 // are FileDataIDs for the model's creature-skin texture types 11, 12 and 13, 0 for none.
 // A humanoid carries its look too: FileDataIDs for the character texture types 1 (body), 2 (cape), 6 (hair) and 8 (skin
@@ -256,6 +266,7 @@ struct CreatureSpawnRecord {
     int SkinExtraTexture = 0;
     std::vector<uint8_t> MeshIds; //Indexed by geoset group, as M2Object::setLoadParams takes it
     std::vector<CreatureAttachmentRecord> Attachments;
+    std::vector<CreatureVisualRecord> Visuals; // The spell visual models of its auras
     int Alpha = 255;
     std::vector<int> Events;
     int Anim = -1;

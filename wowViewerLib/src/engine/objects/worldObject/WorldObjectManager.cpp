@@ -53,6 +53,21 @@ std::shared_ptr<PlacedCreature> WorldObjectManager::createCreature(HApiContainer
         m2Object->attach(item, attachment.Attachment);
     }
 
+    //The spell visuals of its auras, each on its attachment point with its own transform, playing their default animation
+    for (auto const &visual : spawn.Visuals) {
+        if (visual.ModelFileDataID <= 0) continue;
+
+        auto effect = m2Factory->createObject(api);
+        effect->markSpawn();
+        effect->setLoadParams(0, {}, {});
+        effect->setModelFileId(visual.ModelFileDataID);
+        M2Object::AttachLocal local;
+        local.offset = mathfu::vec3(visual.Offset[0], visual.Offset[1], visual.Offset[2]);
+        local.yaw = visual.Yaw;
+        local.scale = visual.Scale;
+        m2Object->attach(effect, visual.Attachment, &local);
+    }
+
     auto placed = m2Object;
     if (spawn.MountModelFileDataID > 0) {
         std::vector<HBlpTexture> mountTextures(14, nullptr);
